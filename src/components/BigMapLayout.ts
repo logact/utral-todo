@@ -1,0 +1,486 @@
+import type { Todo, ActionEdge, TodoRelation } from '../types';
+import {
+  NODE_W,
+  NODE_H,
+  GOAL_W,
+  GOAL_H,
+  LEVEL_H,
+  NODE_GAP,
+  COMPONENT_PAD_X,
+  COMPONENT_PAD_Y,
+} from './BigMapConstants';
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface LayoutNode {
+  todo: Todo;
+  x: number;
+  y: number;
+  depth: number;
+  componentId: string;
+  isGoal: boolean;
+  hasParent: boolean;
+}
+
+export interface LayoutResult {
+  nodes: LayoutNode[];
+  actionEdges: ActionEdge[];
+  parentChildEdges: { fromId: string; toId: string }[];
+  width: number;
+  height: number;
+}
+
+interface LayoutItem {
+  id: string;
+  nodes: LayoutNode[];
+  width: number;
+  height: number;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Union-Find                                                         */
+/* ------------------------------------------------------------------ */
+
+class UnionFind {
+  private parent = new Map<string, string>();
+
+  constructor(ids: Iterable<string>) {
+    for (const id of ids) this.parent.set(id, id);
+  }
+
+  find(id: string): string {
+    let root = id;
+    while (this.parent.get(root) !== root) {
+      root = this.parent.get(root)!;
+    }
+    // Path compression
+    let curr = id;
+    while (this.parent.get(curr) !== root) {
+      const next = this.parent.get(curr)!;
+      this.parent.set(curr, root);
+      curr = next;
+    }
+    return root;
+  }
+
+  union(a: string, b: string): void {
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra !== rb) this.parent.set(ra, rb);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function getNodeSize(todoId: string, goalId: string | null) {
+  const isGoal = todoId === goalId;
+  return {
+    w: isGoal ? GOAL_W : NODE_W,
+    h: isGoal ? GOAL_H : NODE_H,
+  };
+}
+
+function computeBounds(nodes: LayoutNode[]): { width: number; height: number } {
+  if (nodes.length === 0) return { width: 0, height: 0 };
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const n of nodes) {
+    const { w, h } = getNodeSize(n.todo.id, n.isGoal ? n.todo.id : null);
+    minX = Math.min(minX, n.x - w / 2);
+    maxX = Math.max(maxX, n.x + w / 2);
+    minY = Math.min(minY, n.y - h / 2);
+    maxY = Math.max(maxY, n.y + h / 2);
+  }
+  return { width: maxX - minX + COMPONENT_PAD_X, height: maxY - minY + COMPONENT_PAD_Y };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Hierarchical Layout (per component)                                */
+/* ------------------------------------------------------------------ */
+
+function hierarchicalLayout(
+  componentTodos: Todo[],
+  componentEdges: ActionEdge[],
+  goalId: string
+): LayoutNode[] {
+  const todoMap = new Map(componentTodos.map((t) => [t.id, t]));
+  const nodeIds = new Set(componentTodos.map((t) => t.id));
+
+  // Build adjacency: edge from -> to means from is lower, to is upper (toward goal)
+  const childrenOf = new Map<string, string[]>();
+  const parentOf = new Map<string, string[]>();
+
+  for (const t of componentTodos) {
+    childrenOf.set(t.id, []);
+    parentOf.set(t.id, []);
+  }
+
+  for (const edge of componentEdges) {
+    if (!nodeIds.has(edge.fromTodoId) || !nodeIds.has(edge.toTodoId)) continue;
+    if (!childrenOf.has(edge.toTodoId)) childrenOf.set(edge.toTodoId, []);
+    if (!parentOf.has(edge.fromTodoId)) parentOf.set(edge.fromTodoId, []);
+    childrenOf.get(edge.toTodoId)!.push(edge.fromTodoId);
+    parentOf.get(edge.fromTodoId)!.push(edge.toTodoId);
+  }
+
+  // Compute depth from goal using BFS
+  const depth = new Map<string, number>();
+  depth.set(goalId, 0);
+  const queue = [goalId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const d = depth.get(id)!;
+    for (const childId of childrenOf.get(id) || []) {
+      if (!depth.has(childId) || depth.get(childId)! < d + 1) {
+        depth.set(childId, d + 1);
+        queue.push(childId);
+      }
+    }
+  }
+
+  // For nodes with no path from goal (cycles), place them at max depth + 1
+  const maxDepth = Math.max(0, ...Array.from(depth.values()));
+  for (const t of componentTodos) {
+    if (!depth.has(t.id)) {
+      depth.set(t.id, maxDepth + 1);
+    }
+  }
+
+  // Group by depth
+  const depthGroups = new Map<number, string[]>();
+  for (const [id, d] of depth) {
+    if (!depthGroups.has(d)) depthGroups.set(d, []);
+    depthGroups.get(d)!.push(id);
+  }
+
+  // Sort within each depth: pending first, then by title
+  for (const [, ids] of depthGroups) {
+    ids.sort((a, b) => {
+      const ta = todoMap.get(a)!;
+      const tb = todoMap.get(b)!;
+      const doneA = ta.status === 'done' ? 1 : 0;
+      const doneB = tb.status === 'done' ? 1 : 0;
+      if (doneA !== doneB) return doneA - doneB;
+      return ta.title.localeCompare(tb.title);
+    });
+  }
+
+  // Position nodes
+  const sortedDepths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+  const maxNodesInLevel = Math.max(...sortedDepths.map((d) => depthGroups.get(d)!.length), 1);
+  const neededW = Math.max(maxNodesInLevel * (NODE_W + NODE_GAP) + NODE_GAP, GOAL_W + NODE_GAP * 2);
+
+  const nodes: LayoutNode[] = [];
+
+  for (const d of sortedDepths) {
+    const ids = depthGroups.get(d)!;
+    const totalW = ids.length * NODE_W + (ids.length - 1) * NODE_GAP;
+    const startX = (neededW - totalW) / 2;
+    for (let i = 0; i < ids.length; i++) {
+      const todo = todoMap.get(ids[i])!;
+      const h = ids[i] === goalId ? GOAL_H : NODE_H;
+      nodes.push({
+        todo,
+        x: startX + i * (NODE_W + NODE_GAP) + NODE_W / 2,
+        y: d * LEVEL_H + h / 2,
+        depth: d,
+        componentId: goalId,
+        isGoal: ids[i] === goalId,
+        hasParent: !!todo.parentId,
+      });
+    }
+  }
+
+  return nodes;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mini Tree Layout (for isolated parent-child groups)                */
+/* ------------------------------------------------------------------ */
+
+function miniTreeLayout(rootTodo: Todo, descendants: Todo[]): LayoutNode[] {
+  const all = [rootTodo, ...descendants];
+  const todoMap = new Map(all.map((t) => [t.id, t]));
+
+  // Build parent -> children
+  const childrenOf = new Map<string, string[]>();
+  for (const t of all) childrenOf.set(t.id, []);
+  for (const t of descendants) {
+    if (t.parentId && childrenOf.has(t.parentId)) {
+      childrenOf.get(t.parentId)!.push(t.id);
+    }
+  }
+
+  // BFS to compute depth from root
+  const depth = new Map<string, number>();
+  depth.set(rootTodo.id, 0);
+  const queue = [rootTodo.id];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const d = depth.get(id)!;
+    for (const childId of childrenOf.get(id) || []) {
+      depth.set(childId, d + 1);
+      queue.push(childId);
+    }
+  }
+
+  // Group by depth
+  const depthGroups = new Map<number, string[]>();
+  for (const [id, d] of depth) {
+    if (!depthGroups.has(d)) depthGroups.set(d, []);
+    depthGroups.get(d)!.push(id);
+  }
+
+  // Sort within depth
+  for (const [, ids] of depthGroups) {
+    ids.sort((a, b) => {
+      const ta = todoMap.get(a)!;
+      const tb = todoMap.get(b)!;
+      return ta.title.localeCompare(tb.title);
+    });
+  }
+
+  const sortedDepths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+  const maxNodesInLevel = Math.max(...sortedDepths.map((d) => depthGroups.get(d)!.length), 1);
+  const neededW = Math.max(maxNodesInLevel * (NODE_W + NODE_GAP) + NODE_GAP, GOAL_W + NODE_GAP * 2);
+
+  const nodes: LayoutNode[] = [];
+  for (const d of sortedDepths) {
+    const ids = depthGroups.get(d)!;
+    const totalW = ids.length * NODE_W + (ids.length - 1) * NODE_GAP;
+    const startX = (neededW - totalW) / 2;
+    for (let i = 0; i < ids.length; i++) {
+      const todo = todoMap.get(ids[i])!;
+      nodes.push({
+        todo,
+        x: startX + i * (NODE_W + NODE_GAP) + NODE_W / 2,
+        y: d * LEVEL_H + NODE_H / 2,
+        depth: d,
+        componentId: `group-${rootTodo.id}`,
+        isGoal: false,
+        hasParent: !!todo.parentId,
+      });
+    }
+  }
+
+  return nodes;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Grid Packing                                                       */
+/* ------------------------------------------------------------------ */
+
+function packItems(items: LayoutItem[], containerWidth: number): LayoutItem[] {
+  // Sort by height descending for better packing
+  items.sort((a, b) => b.height - a.height);
+
+  let currentX = 0;
+  let currentY = 0;
+  let rowHeight = 0;
+
+  for (const item of items) {
+    if (currentX + item.width > containerWidth && currentX > 0) {
+      currentX = 0;
+      currentY += rowHeight + COMPONENT_PAD_Y;
+      rowHeight = 0;
+    }
+
+    // Offset all nodes in this item
+    for (const n of item.nodes) {
+      n.x += currentX + COMPONENT_PAD_X / 2;
+      n.y += currentY + COMPONENT_PAD_Y / 2;
+    }
+
+    currentX += item.width + COMPONENT_PAD_X;
+    rowHeight = Math.max(rowHeight, item.height);
+  }
+
+  return items;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Layout Function                                               */
+/* ------------------------------------------------------------------ */
+
+export function computeLayout(
+  todos: Todo[],
+  actionEdges: ActionEdge[],
+  _relations: TodoRelation[]
+): LayoutResult {
+  const todoMap = new Map(todos.map((t) => [t.id, t]));
+  const allTodoIds = new Set(todos.map((t) => t.id));
+
+  // --- Step 1: Find connected components via action edges ---
+  const uf = new UnionFind(allTodoIds);
+  for (const edge of actionEdges) {
+    if (allTodoIds.has(edge.fromTodoId) && allTodoIds.has(edge.toTodoId)) {
+      uf.union(edge.fromTodoId, edge.toTodoId);
+    }
+  }
+
+  const componentMap = new Map<string, Set<string>>();
+  for (const id of allTodoIds) {
+    const root = uf.find(id);
+    if (!componentMap.has(root)) componentMap.set(root, new Set());
+    componentMap.get(root)!.add(id);
+  }
+
+  // Split into action-edge components and isolated nodes
+  const actionComponents: { goalId: string; todoIds: Set<string> }[] = [];
+  const isolatedIds = new Set<string>();
+
+  for (const [, ids] of componentMap) {
+    const hasEdges = actionEdges.some(
+      (e) => ids.has(e.fromTodoId) && ids.has(e.toTodoId)
+    );
+    if (hasEdges) {
+      // Find the topmost node(s) in this component
+      const outgoingCount = new Map<string, number>();
+      for (const id of ids) outgoingCount.set(id, 0);
+      for (const edge of actionEdges) {
+        if (ids.has(edge.fromTodoId) && ids.has(edge.toTodoId)) {
+          outgoingCount.set(edge.fromTodoId, (outgoingCount.get(edge.fromTodoId) || 0) + 1);
+        }
+      }
+
+      // Nodes with outgoing edges are "lower" (pointing up). Nodes with NO outgoing edges are topmost goals.
+      // But if there's a cycle, all nodes have outgoing edges. In that case, pick the one with fewest outgoing.
+      const idsArray = Array.from(ids);
+      let goalId = idsArray[0];
+      let minOutgoing = Infinity;
+      for (const id of idsArray) {
+        const count = outgoingCount.get(id) || 0;
+        if (count < minOutgoing) {
+          minOutgoing = count;
+          goalId = id;
+        }
+      }
+
+      actionComponents.push({ goalId, todoIds: ids });
+    } else {
+      for (const id of ids) isolatedIds.add(id);
+    }
+  }
+
+  // Attach children to their parent's action-edge component if applicable
+  for (const id of Array.from(isolatedIds)) {
+    const todo = todoMap.get(id);
+    if (!todo?.parentId) continue;
+    // Find which component the parent belongs to
+    for (const comp of actionComponents) {
+      if (comp.todoIds.has(todo.parentId)) {
+        comp.todoIds.add(id);
+        isolatedIds.delete(id);
+        break;
+      }
+    }
+  }
+
+  // --- Step 2: Layout each action-edge component ---
+  const layoutItems: LayoutItem[] = [];
+
+  for (const comp of actionComponents) {
+    const compTodos = Array.from(comp.todoIds)
+      .map((id) => todoMap.get(id)!)
+      .filter(Boolean);
+    const compEdges = actionEdges.filter(
+      (e) => comp.todoIds.has(e.fromTodoId) && comp.todoIds.has(e.toTodoId)
+    );
+    const nodes = hierarchicalLayout(compTodos, compEdges, comp.goalId);
+    const bounds = computeBounds(nodes);
+    layoutItems.push({
+      id: comp.goalId,
+      nodes,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }
+
+  // --- Step 3: Group isolated nodes by parent-child trees ---
+  // Find root-level isolated nodes (no parent OR parent is not isolated)
+  const isolatedRoots: Todo[] = [];
+  const isolatedChildren = new Map<string, Todo[]>(); // parentId -> children
+
+  for (const id of isolatedIds) {
+    const todo = todoMap.get(id)!;
+    if (!todo.parentId || !isolatedIds.has(todo.parentId)) {
+      isolatedRoots.push(todo);
+    } else {
+      const parentId = todo.parentId;
+      if (!isolatedChildren.has(parentId)) isolatedChildren.set(parentId, []);
+      isolatedChildren.get(parentId)!.push(todo);
+    }
+  }
+
+  // Collect all descendants for each root
+  for (const root of isolatedRoots) {
+    const descendants: Todo[] = [];
+    const queue = [root.id];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const children = isolatedChildren.get(id) || [];
+      for (const child of children) {
+        descendants.push(child);
+        queue.push(child.id);
+      }
+    }
+
+    const nodes = miniTreeLayout(root, descendants);
+    const bounds = computeBounds(nodes);
+    layoutItems.push({
+      id: `group-${root.id}`,
+      nodes,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }
+
+  // --- Step 4: Pack all items into a grid ---
+  const maxItemWidth = Math.max(...layoutItems.map((i) => i.width), 400);
+  const containerWidth = Math.max(maxItemWidth * 2 + COMPONENT_PAD_X, 1200);
+  packItems(layoutItems, containerWidth);
+
+  // --- Step 5: Collect all nodes ---
+  const allNodes: LayoutNode[] = [];
+  for (const item of layoutItems) {
+    allNodes.push(...item.nodes);
+  }
+
+  // --- Step 6: Compute parent-child edges ---
+  const parentChildEdges: { fromId: string; toId: string }[] = [];
+  for (const n of allNodes) {
+    if (n.todo.parentId && todoMap.has(n.todo.parentId)) {
+      parentChildEdges.push({ fromId: n.todo.id, toId: n.todo.parentId });
+    }
+  }
+
+  // --- Step 7: Compute total bounds ---
+  const totalWidth = Math.max(
+    ...layoutItems.map((i) => {
+      const maxNodeX = Math.max(...i.nodes.map((n) => n.x + NODE_W / 2));
+      return maxNodeX + COMPONENT_PAD_X;
+    }),
+    containerWidth
+  );
+  const totalHeight = Math.max(
+    ...layoutItems.map((i) => {
+      const maxNodeY = Math.max(...i.nodes.map((n) => n.y + NODE_H / 2));
+      return maxNodeY + COMPONENT_PAD_Y;
+    }),
+    400
+  );
+
+  return {
+    nodes: allNodes,
+    actionEdges,
+    parentChildEdges,
+    width: totalWidth,
+    height: totalHeight,
+  };
+}
