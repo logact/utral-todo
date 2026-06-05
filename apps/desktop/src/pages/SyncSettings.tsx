@@ -6,6 +6,7 @@ import { db } from '../db/database';
 export function SyncSettings() {
   const [serverUrl, setServerUrl] = useState('');
   const [apiToken, setApiToken] = useState('');
+  const [remoteOpsEnabled, setRemoteOpsEnabled] = useState(false);
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | undefined>(undefined);
@@ -18,6 +19,9 @@ export function SyncSettings() {
     if (config) {
       setServerUrl(config.serverUrl);
       setApiToken(config.apiToken || '');
+      setRemoteOpsEnabled(config.remoteOpsEnabled ?? false);
+    } else {
+      setServerUrl('http://localhost:3001');
     }
     setLastSync(getLastSyncAt());
   }, []);
@@ -29,7 +33,7 @@ export function SyncSettings() {
       return;
     }
     setUrlError('');
-    saveSyncConfig({ serverUrl, apiToken: apiToken || undefined });
+    saveSyncConfig({ serverUrl, apiToken: apiToken || undefined, remoteOpsEnabled });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -45,7 +49,7 @@ export function SyncSettings() {
     setLastResult(undefined);
 
     try {
-      const result = await syncAll({ serverUrl, apiToken: apiToken || undefined });
+      const result = await syncAll({ serverUrl, apiToken: apiToken || undefined, remoteOpsEnabled });
       setLastResult(result);
       if (!result.success) {
         setError(result.error || 'Sync failed');
@@ -159,6 +163,18 @@ export function SyncSettings() {
               className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={remoteOpsEnabled}
+              onChange={(e) => setRemoteOpsEnabled(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Send todo changes to server automatically
+            </span>
+          </label>
         </div>
 
         <button

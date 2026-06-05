@@ -1,16 +1,23 @@
 # Dependencies
 node_modules
+**/node_modules
 .pnp
 .pnp.js
+.pnpm-store
 
 # Build outputs
 dist
 dist-ssr
+**/dist
+**/dist-ssr
+server-dist
 *.local
 
 # Tauri
 src-tauri/target
 src-tauri/gen
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
 
 # Editor
 .vscode/*
@@ -39,3 +46,10 @@ lerna-debug.log*
 .env
 .env.local
 .env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+prisma/server/
+apps/server/prisma/server/

@@ -122,3 +122,45 @@ export interface Project {
   deadline?: Date;
   createdAt: Date;
 }
+
+export interface SyncPayload {
+  todos?: Todo[];
+  projects?: Project[];
+  relations?: TodoRelation[];
+  todoLogs?: TodoLog[];
+  roadmaps?: Roadmap[];
+  actionEdges?: ActionEdge[];
+  pluses?: Pluse[];
+  timerSessions?: TimerSession[];
+}
+
+export interface SyncConfig {
+  serverUrl: string;
+  apiToken?: string;
+  remoteOpsEnabled?: boolean;
+}
+
+export interface SyncResult {
+  success: boolean;
+  pulled: {
+    todos: number;
+    projects: number;
+    relations: number;
+    todoLogs: number;
+    roadmaps: number;
+    actionEdges: number;
+    pluses: number;
+    timerSessions: number;
+  };
+  pushed: {
+    todos: number;
+    projects: number;
+    relations: number;
+    todoLogs: number;
+    roadmaps: number;
+    actionEdges: number;
+    pluses: number;
+    timerSessions: number;
+  };
+  error?: string;
+}

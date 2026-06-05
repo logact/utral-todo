@@ -1,0 +1,14 @@
+node_modules
+dist
+server-dist
+.git
+.env
+.env.local
+.env.*.local
+*.md
+data
+logs
+.claude
+TODO
+ONBOARDING.md
+DEPLOY.md

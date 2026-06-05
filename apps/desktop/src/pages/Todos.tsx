@@ -30,6 +30,7 @@ import {
   CheckSquare,
   Square,
   GripVertical,
+  Trash2,
 } from 'lucide-react';
 import { useTodos } from '../hooks/useTodos';
 import { bulkUpdateTodoProject } from '../db/todos';
@@ -261,7 +262,7 @@ function SortableTodoRow({
 
 export function Todos() {
   const navigate = useNavigate();
-  const { todos, isLoading, setStatus, reorder, refresh } = useTodos();
+  const { todos, isLoading, setStatus, reorder, refresh, remove } = useTodos();
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
@@ -611,6 +612,21 @@ export function Todos() {
                 </>
               )}
             </div>
+
+            <button
+              onClick={async () => {
+                const ids = Array.from(selectedIds);
+                for (const id of ids) {
+                  await remove(id);
+                }
+                setSelectedIds(new Set());
+                setShowProjectDropdown(false);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
 
             <button
               onClick={() => {

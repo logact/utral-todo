@@ -6,6 +6,7 @@ import type { Todo, Project, TodoRelation, TodoLog, Roadmap, ActionEdge, Pluse, 
 export interface SyncConfig {
   serverUrl: string;
   apiToken?: string;
+  remoteOpsEnabled?: boolean;
 }
 
 export interface SyncPayload {
@@ -277,6 +278,7 @@ export function getSyncConfig(): SyncConfig | undefined {
   return {
     serverUrl,
     apiToken: localStorage.getItem('syncApiToken') || undefined,
+    remoteOpsEnabled: localStorage.getItem('syncRemoteOpsEnabled') === 'true',
   };
 }
 
@@ -287,6 +289,7 @@ export function saveSyncConfig(config: SyncConfig): void {
   } else {
     localStorage.removeItem('syncApiToken');
   }
+  localStorage.setItem('syncRemoteOpsEnabled', config.remoteOpsEnabled ? 'true' : 'false');
 }
 
 export function validateServerUrl(url: string): { valid: boolean; error?: string } {

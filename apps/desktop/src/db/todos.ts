@@ -1,5 +1,6 @@
 import { db } from './database';
 import { createRelation } from './relations';
+import { createRemoteTodo, updateRemoteTodo, deleteRemoteTodo } from './remote';
 import type { Todo, TodoStatus, Priority, RepeatRule } from '../types';
 
 export async function createTodo(
@@ -39,6 +40,7 @@ export async function createTodo(
     isGoal: options?.isGoal,
   };
   await db.todos.add(todo);
+  createRemoteTodo(todo).catch(() => {});
   return todo;
 }
 
@@ -107,12 +109,14 @@ export async function getTodoDescendants(todoId: string): Promise<Todo[]> {
 export async function reorderSubTodos(_parentId: string, orderedIds: string[]): Promise<void> {
   for (let i = 0; i < orderedIds.length; i++) {
     await db.todos.update(orderedIds[i], { order: i });
+    updateRemoteTodo(orderedIds[i], { order: i }).catch(() => {});
   }
 }
 
 export async function reorderTodos(orderedIds: string[]): Promise<void> {
   for (let i = 0; i < orderedIds.length; i++) {
     await db.todos.update(orderedIds[i], { order: i });
+    updateRemoteTodo(orderedIds[i], { order: i }).catch(() => {});
   }
 }
 
@@ -122,6 +126,7 @@ export async function getTodo(id: string): Promise<Todo | undefined> {
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
   await db.todos.update(id, updates);
+  updateRemoteTodo(id, updates).catch(() => {});
 }
 
 export async function bulkUpdateTodoProject(
@@ -130,11 +135,13 @@ export async function bulkUpdateTodoProject(
 ): Promise<void> {
   for (const id of todoIds) {
     await db.todos.update(id, { projectId });
+    updateRemoteTodo(id, { projectId }).catch(() => {});
   }
 }
 
 export async function deleteTodo(id: string): Promise<void> {
   await db.todos.delete(id);
+  deleteRemoteTodo(id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
@@ -143,6 +150,7 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
   if (status === 'pending') updates.startedAt = undefined;
   if (status === 'done') updates.completedAt = new Date();
   await db.todos.update(id, updates);
+  updateRemoteTodo(id, updates).catch(() => {});
 }
 
 export async function updateTodoSchedule(
@@ -150,6 +158,7 @@ export async function updateTodoSchedule(
   scheduledDate: Date | undefined
 ): Promise<void> {
   await db.todos.update(id, { scheduledDate });
+  updateRemoteTodo(id, { scheduledDate }).catch(() => {});
 }
 
 export async function getTodaysTodos(): Promise<Todo[]> {
@@ -301,4 +310,5 @@ export async function updateRepeatRule(
   rule: RepeatRule | undefined
 ): Promise<void> {
   await db.todos.update(id, { repeatRule: rule });
+  updateRemoteTodo(id, { repeatRule: rule }).catch(() => {});
 }
