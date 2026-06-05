@@ -20,7 +20,7 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
   const ancestors = chain.slice(0, currentIndex + 1);
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5 overflow-hidden">
       <div className="flex items-center gap-2 mb-4">
         <Flag className="w-4 h-4 text-indigo-500" />
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
@@ -84,7 +84,7 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
                           : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/80'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     {isRoot && todo.isGoal ? (
                       <Target className="w-4 h-4 text-indigo-500" />
                     ) : (

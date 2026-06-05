@@ -1148,7 +1148,7 @@ export function Today() {
       {/* ─── Right Main: Execution Detail ─── */}
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col min-h-0 overflow-hidden">
         {selectedTodoId ? (
-          <div className="flex-1 overflow-y-auto pb-40">
+          <div className="flex-1 overflow-y-auto min-w-0 pb-40">
             <TodoExecutionPanel
               todoId={panelTodoId ?? selectedTodoId}
               onNavigate={handleNavigate}

@@ -328,10 +328,17 @@ export function PluseRun() {
           if (soundEnabled) playBeep(660, 150);
         }, 2000);
       } else {
-        completedRef.current = true;
+        // Last interval finished — auto-restart the whole pulse after a brief pause
+        if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
-        setIsCompleted(true);
-        if (soundEnabled) playFinish();
+        setCurrentIndex(0);
+        setElapsedSeconds(0);
+        setSmoothElapsed(0);
+        completedRef.current = false;
+        setTimeout(() => {
+          setIsRunning(true);
+          if (soundEnabled) playBeep(660, 150);
+        }, 2000);
       }
     }
   }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length, soundEnabled, playBeep, playFinish]);
