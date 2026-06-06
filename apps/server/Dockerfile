@@ -39,6 +39,7 @@ RUN apk add --no-cache wget
 COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/prisma ./prisma
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/server/node_modules ./node_modules
 COPY --from=builder /app/apps/server/package.json ./
 COPY apps/server/docker-entrypoint.sh ./
 
