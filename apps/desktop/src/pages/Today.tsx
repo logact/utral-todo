@@ -374,9 +374,11 @@ function PluseMiniTimer({
 
   // Check completion / auto-advance
   useEffect(() => {
+    console.log('[timer] completion effect', { isCompleted, isRunning, elapsed, itemDurationSeconds, currentIndex, totalItems, autoAdvance: pluse.autoAdvance });
     if (isCompleted || !isRunning) return;
     const shouldAutoAdvance = pluse.autoAdvance !== false;
     if (elapsed >= itemDurationSeconds) {
+      console.log('[timer] interval complete', { currentIndex, nextIndex: currentIndex + 1, shouldAutoAdvance });
       if (currentIndex < totalItems - 1) {
         const nextIndex = currentIndex + 1;
         setIsRunning(false);
@@ -393,7 +395,9 @@ function PluseMiniTimer({
 
         if (shouldAutoAdvance) {
           if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          console.log('[timer] scheduling auto-advance in 2s');
           timeoutRef.current = setTimeout(() => {
+            console.log('[timer] auto-advance timeout fired');
             setIsRunning(true);
             setStartTime(Date.now());
             if (sessionId) {
