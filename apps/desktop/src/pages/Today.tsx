@@ -38,7 +38,7 @@ import {
   GripVertical,
 } from 'lucide-react';
 import { useTodayData } from '../hooks/useTodos';
-import { getInProgressTodos, reorderTodos } from '../db/todos';
+import { getInProgressTodos, reorderTodos, getAllTodos } from '../db/todos';
 import { getAllPluses } from '../db/pluse';
 import { createTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
@@ -52,6 +52,7 @@ import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import {
   formatDuration,
   formatTime,
+  formatSeconds,
   getTimeOfDay,
   type TimeOfDay,
 } from '../utils/date';
@@ -124,9 +125,8 @@ function TimerClock() {
       setRunning(active.status === 'running');
 
       if (active.status === 'running' && active.startedAt) {
-        const elapsed = active.elapsedSeconds + Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
-        setElapsedSeconds(elapsed);
-        setStartTime(Date.now() - (elapsed - active.elapsedSeconds) * 1000);
+        setElapsedSeconds(active.elapsedSeconds);
+        setStartTime(active.startedAt.getTime());
       } else {
         setElapsedSeconds(active.elapsedSeconds);
         setStartTime(null);
@@ -246,7 +246,15 @@ function TimerClock() {
 
 /* ─── PluseMiniTimer with server persistence ─── */
 
-function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void }) {
+function PluseMiniTimer({
+  pluse,
+  onClose,
+  onIntervalTodo,
+}: {
+  pluse: Pluse;
+  onClose: () => void;
+  onIntervalTodo?: (todoId: string | null) => void;
+}) {
   const expandedIntervals = expandIntervals(pluse.intervals, pluse.repeatCount);
   const totalItems = expandedIntervals.length;
 
@@ -256,10 +264,26 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
+  const [todos, setTodos] = useState<Todo[]>([]);
 
   const [, forceTick] = useState(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load todos for interval bindings
+  useEffect(() => {
+    getAllTodos().then(setTodos);
+  }, []);
+
+  // Auto-switch todo when interval changes
+  useEffect(() => {
+    if (pluse.intervals.length === 0) return;
+    const templateIndex = currentIndex % pluse.intervals.length;
+    const boundTodoId = pluse.intervalTodos?.[templateIndex];
+    if (boundTodoId && onIntervalTodo) {
+      onIntervalTodo(boundTodoId);
+    }
+  }, [currentIndex, pluse, onIntervalTodo]);
 
   // On mount: restore from server
   useEffect(() => {
@@ -273,27 +297,33 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
       setIsCompleted(active.status === 'completed');
 
       if (active.status === 'running' && active.startedAt) {
-        const elapsed = active.elapsedSeconds + Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
+        const runningElapsed = Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
+        const totalElapsed = active.elapsedSeconds + runningElapsed;
         // Catch up through completed intervals
         let idx = active.currentIndex;
-        let e = elapsed;
+        let e = totalElapsed;
         while (idx < totalItems) {
-          const dur = expandedIntervals[idx] * 60;
+          const dur = expandedIntervals[idx];
           if (e < dur) break;
           e -= dur;
           idx++;
         }
         if (idx >= totalItems) {
           setCurrentIndex(totalItems - 1);
-          setElapsedSeconds(expandedIntervals[totalItems - 1] * 60);
+          setElapsedSeconds(expandedIntervals[totalItems - 1]);
           setIsRunning(false);
           setIsCompleted(true);
           setStartTime(null);
           updateTimerSession(active.id, { status: 'completed', completedAt: new Date() });
         } else {
           setCurrentIndex(idx);
-          setElapsedSeconds(e);
-          setStartTime(Date.now() - e * 1000);
+          if (idx === active.currentIndex) {
+            setElapsedSeconds(active.elapsedSeconds);
+            setStartTime(active.startedAt.getTime());
+          } else {
+            setElapsedSeconds(0);
+            setStartTime(Date.now() - e * 1000);
+          }
         }
       } else {
         setElapsedSeconds(active.elapsedSeconds);
@@ -308,7 +338,7 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
   }, [isRunning, elapsedSeconds, startTime]);
 
   const currentDuration = expandedIntervals[currentIndex] || 0;
-  const itemDurationSeconds = currentDuration * 60;
+  const itemDurationSeconds = currentDuration;
   const elapsed = getElapsed();
   const remainingSeconds = Math.max(0, itemDurationSeconds - elapsed);
 
@@ -324,9 +354,28 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
     };
   }, [isRunning, isCompleted]);
 
+  // Clear pending auto-advance timeout when user explicitly starts running
+  useEffect(() => {
+    if (isRunning && timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, [isRunning]);
+
+  // Unmount: clear any pending timeout
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Check completion / auto-advance
   useEffect(() => {
     if (isCompleted || !isRunning) return;
+    const shouldAutoAdvance = pluse.autoAdvance !== false;
     if (elapsed >= itemDurationSeconds) {
       if (currentIndex < totalItems - 1) {
         const nextIndex = currentIndex + 1;
@@ -342,16 +391,19 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
           });
         }
 
-        timeoutRef.current = setTimeout(() => {
-          setIsRunning(true);
-          setStartTime(Date.now());
-          if (sessionId) {
-            updateTimerSession(sessionId, {
-              status: 'running',
-              startedAt: new Date(),
-            });
-          }
-        }, 2000);
+        if (shouldAutoAdvance) {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => {
+            setIsRunning(true);
+            setStartTime(Date.now());
+            if (sessionId) {
+              updateTimerSession(sessionId, {
+                status: 'running',
+                startedAt: new Date(),
+              });
+            }
+          }, 2000);
+        }
       } else {
         setIsRunning(false);
         setIsCompleted(true);
@@ -364,15 +416,13 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
         }
       }
     }
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
-  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId]);
+  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse]);
 
   const toggleRunning = useCallback(async () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     if (isCompleted) {
       // Restart
       const newSession = await createTimerSession({
@@ -431,6 +481,10 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
   }, [isRunning, isCompleted, sessionId, elapsedSeconds, startTime, pluse]);
 
   const skipToNext = useCallback(async () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     if (currentIndex >= totalItems - 1) return;
     const nextIndex = currentIndex + 1;
     setIsRunning(false);
@@ -447,6 +501,10 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
   }, [currentIndex, totalItems, sessionId]);
 
   const restart = useCallback(async () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     if (sessionId) {
       await deleteTimerSession(sessionId);
     }
@@ -500,14 +558,23 @@ function PluseMiniTimer({ pluse, onClose }: { pluse: Pluse; onClose: () => void 
     );
   }
 
+  const templateIndex = pluse.intervals.length > 0 ? currentIndex % pluse.intervals.length : 0;
+  const boundTodoId = pluse.intervalTodos?.[templateIndex];
+  const boundTodo = boundTodoId ? todos.find((t) => t.id === boundTodoId) : undefined;
+
   return (
     <div className="px-4 pt-5 pb-3 text-center">
       <div className="text-4xl font-mono font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
         {formatCountdown(remainingSeconds)}
       </div>
       <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-        Interval {currentIndex + 1} of {totalItems} · {currentDuration}m
+        Interval {currentIndex + 1} of {totalItems} · {formatSeconds(currentDuration)}
       </div>
+      {boundTodo && (
+        <div className="mt-1.5 text-[11px] text-indigo-600 dark:text-indigo-400 truncate px-2">
+          {boundTodo.title}
+        </div>
+      )}
       <div className="flex items-center justify-center gap-2 mt-3">
         <button
           onClick={toggleRunning}
@@ -587,7 +654,7 @@ function PluseSelector({
         <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"
         >
           {pluses.map((pluse) => {
-            const totalMinutes = pluse.intervals.reduce((s, d) => s + d, 0) * pluse.repeatCount;
+            const totalSeconds = pluse.intervals.reduce((s, d) => s + d, 0) * pluse.repeatCount;
             const isActive = pluse.id === activeId;
             return (
               <button
@@ -603,7 +670,7 @@ function PluseSelector({
                 }`}
               >
                 <span className="flex-1 truncate">{pluse.name}</span>
-                <span className="text-slate-400 dark:text-slate-500 shrink-0">{totalMinutes}m</span>
+                <span className="text-slate-400 dark:text-slate-500 shrink-0">{formatSeconds(totalSeconds)}</span>
               </button>
             );
           })}
@@ -670,17 +737,15 @@ function CompactTodoRow({
       </button>
 
       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(todo.id)}>
-        <Link
-          to={`/todo/${todo.id}`}
-          onClick={(e) => e.stopPropagation()}
-          className={`text-sm font-medium truncate block w-full hover:underline ${
+        <span
+          className={`text-sm font-medium truncate block w-full ${
             isDone
               ? 'text-slate-400 dark:text-slate-500 line-through'
               : 'text-slate-900 dark:text-slate-100'
           }`}
         >
           {todo.title}
-        </Link>
+        </span>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {todo.scheduledDate && (
             <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
@@ -1004,7 +1069,13 @@ export function Today() {
         <div className="shrink-0 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
           {/* Timer Clock or Active Pluse */}
           {activePluse ? (
-            <PluseMiniTimer pluse={activePluse} onClose={() => setActivePluse(null)} />
+            <PluseMiniTimer
+              pluse={activePluse}
+              onClose={() => setActivePluse(null)}
+              onIntervalTodo={(todoId) => {
+                if (todoId) setSelectedTodoId(todoId);
+              }}
+            />
           ) : (
             <TimerClock />
           )}

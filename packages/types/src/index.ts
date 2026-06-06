@@ -96,6 +96,8 @@ export interface Pluse {
   description: string;
   intervals: number[];
   repeatCount: number;
+  intervalTodos?: Record<number, string>;
+  autoAdvance?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -179,4 +181,63 @@ export interface SyncResult {
     timerSessions: number;
   };
   error?: string;
+}
+
+export type DevicePlatform = 'ios' | 'watchos' | 'desktop';
+
+export interface Device {
+  id: string;
+  deviceId: string;
+  platform: DevicePlatform;
+  name?: string;
+  pushToken?: string;
+  appVersion?: string;
+  lastSeenAt: Date;
+  createdAt: Date;
+}
+
+export interface MobileTodo {
+  id: string;
+  title: string;
+  status: TodoStatus;
+  priority: Priority;
+  estimatedMinutes: number;
+  projectId?: string;
+  projectTitle?: string;
+  projectColor?: string;
+  scheduledDate?: Date;
+  dueDate?: Date;
+  order: number;
+}
+
+export interface WatchTodo {
+  id: string;
+  title: string;
+  status: TodoStatus;
+  projectColor: string;
+  estimatedMinutes: number;
+}
+
+export interface MobileTodayResponse {
+  todos: MobileTodo[];
+  projects: Project[];
+}
+
+export interface WatchTodayResponse {
+  todos: WatchTodo[];
+}
+
+export interface ApnsPayload {
+  aps: {
+    'content-available'?: number;
+    alert?: {
+      title?: string;
+      body?: string;
+    };
+    badge?: number;
+    sound?: string;
+  };
+  table?: string;
+  operation?: string;
+  recordId?: string;
 }

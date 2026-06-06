@@ -1,5 +1,12 @@
 import { useMemo } from 'react';
 
+function fmt(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m${s}s` : `${m}m`;
+}
+
 interface PulseEKGProps {
   intervals: number[];
   currentIndex: number;
@@ -45,7 +52,7 @@ export function PulseEKG({
   const currentSegment = segments[currentIndex];
   const isCompleted = currentIndex >= intervals.length;
   const currentDurationSeconds = currentSegment
-    ? currentSegment.duration * 60
+    ? currentSegment.duration
     : 0;
   const progressInInterval = currentDurationSeconds
     ? Math.min(1, elapsedSeconds / currentDurationSeconds)
@@ -400,7 +407,7 @@ export function PulseEKG({
                         : 'fill-slate-400 dark:fill-slate-500'
                   }
                 >
-                  {seg.duration}m
+                  {fmt(seg.duration)}
                 </text>
               </g>
             );
@@ -425,7 +432,7 @@ export function PulseEKG({
           fontSize="9"
           className="fill-slate-300 dark:text-slate-600"
         >
-          0m
+          0
         </text>
         <text
           x={paddingLeft + contentWidth}
@@ -434,7 +441,7 @@ export function PulseEKG({
           fontSize="9"
           className="fill-slate-300 dark:text-slate-600"
         >
-          {totalDuration}m
+          {fmt(totalDuration)}
         </text>
       </svg>
     </div>

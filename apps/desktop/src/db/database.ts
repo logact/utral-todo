@@ -277,6 +277,62 @@ db.version(21).stores({
   }
 });
 
+db.version(22).stores({
+  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+});
+
+db.version(23).stores({
+  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+}).upgrade(async (tx) => {
+  // Migrate pluse intervals from minutes to seconds
+  const pluses = await tx.table('pluses').toArray();
+  for (const pluse of pluses) {
+    if (Array.isArray(pluse.intervals)) {
+      const newIntervals = pluse.intervals.map((d: number) => d * 60);
+      await tx.table('pluses').update(pluse.id, { intervals: newIntervals });
+    }
+  }
+});
+
+db.version(24).stores({
+  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+}).upgrade(async (tx) => {
+  // Backfill autoAdvance to true for existing pluses
+  const pluses = await tx.table('pluses').toArray();
+  for (const pluse of pluses) {
+    if (pluse.autoAdvance === undefined) {
+      await tx.table('pluses').update(pluse.id, { autoAdvance: true });
+    }
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();

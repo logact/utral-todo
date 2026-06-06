@@ -220,7 +220,7 @@ async function handlePluses(action: string, args: Record<string, unknown>) {
     case 'create': {
       const pluse = await plusesDb.createPluse(
         String(args.name ?? 'Untitled'),
-        args.intervals ? (Array.isArray(args.intervals) ? (args.intervals as number[]) : JSON.parse(String(args.intervals))) : [25, 5],
+        args.intervals ? (Array.isArray(args.intervals) ? (args.intervals as number[]) : JSON.parse(String(args.intervals))) : [1500, 300],
         args.repeatCount ? Number(args.repeatCount) : 1,
         String(args.description ?? '')
       );

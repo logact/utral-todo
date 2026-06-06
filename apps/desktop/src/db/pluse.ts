@@ -6,7 +6,9 @@ export async function createPluse(
   name: string,
   intervals: number[],
   repeatCount: number,
-  description?: string
+  description?: string,
+  intervalTodos?: Record<number, string>,
+  autoAdvance?: boolean
 ): Promise<Pluse> {
   const now = new Date();
   const pluse: Pluse = {
@@ -15,6 +17,8 @@ export async function createPluse(
     description: description ?? '',
     intervals,
     repeatCount,
+    intervalTodos,
+    autoAdvance: autoAdvance ?? true,
     createdAt: now,
     updatedAt: now,
   };
@@ -33,7 +37,7 @@ export async function getPluse(id: string): Promise<Pluse | undefined> {
 
 export async function updatePluse(
   id: string,
-  updates: Partial<Pick<Pluse, 'name' | 'description' | 'intervals' | 'repeatCount'>>
+  updates: Partial<Pick<Pluse, 'name' | 'description' | 'intervals' | 'repeatCount' | 'intervalTodos' | 'autoAdvance'>>
 ): Promise<void> {
   await db.pluses.update(id, { ...updates, updatedAt: new Date() });
   onLocalChange('pluses', 'update', id).catch(() => {});

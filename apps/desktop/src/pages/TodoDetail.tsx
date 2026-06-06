@@ -380,14 +380,24 @@ export function TodoDetail() {
             {todo.title}
           </h1>
           {todo.description && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-              {todo.description}
-            </p>
+            <div className="mt-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                Description
+              </p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                {todo.description}
+              </p>
+            </div>
           )}
           {todo.instructions && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed whitespace-pre-line">
-              {todo.instructions}
-            </p>
+            <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
+                How to do this
+              </p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
+                {todo.instructions}
+              </p>
+            </div>
           )}
 
           <div className="flex items-center gap-3 mt-3 flex-wrap">

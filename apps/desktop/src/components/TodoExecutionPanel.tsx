@@ -402,21 +402,6 @@ export function TodoExecutionPanel({
             >
               {todo.title}
             </h1>
-            {todo.description && (
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                {todo.description}
-              </p>
-            )}
-            {todo.instructions && (
-              <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
-                  How to do this
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
-                  {todo.instructions}
-                </p>
-              </div>
-            )}
 
             <div className="flex items-center gap-3 mt-3 flex-wrap">
               <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -476,6 +461,25 @@ export function TodoExecutionPanel({
               <Target className="w-3.5 h-3.5" />
               {todo.isGoal ? 'Goal' : 'Set Goal'}
             </button>
+
+            <div className="mt-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+                Description
+              </p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                {todo.description || <span className="text-slate-400 dark:text-slate-500 italic">No description set</span>}
+              </p>
+            </div>
+            {todo.instructions && (
+              <div className="mt-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1.5">
+                  How to do this
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
+                  {todo.instructions}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

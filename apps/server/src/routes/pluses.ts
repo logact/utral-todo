@@ -16,13 +16,15 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { name, intervals, repeatCount, description } = req.body;
+  const { name, intervals, repeatCount, description, intervalTodos, autoAdvance } = req.body;
   const pluse = await prisma.pluse.create({
     data: {
       name,
       description: description ?? '',
-      intervals: intervals ?? [25],
+      intervals: intervals ?? [1500],
       repeatCount: repeatCount ?? 1,
+      intervalTodos: intervalTodos ?? undefined,
+      autoAdvance: autoAdvance ?? true,
     },
   });
   await logChange(req, 'pluse', 'create', pluse.id, pluse);

@@ -24,6 +24,7 @@ import { getPluse } from '../db/pluse';
 import { getAllTodos, updateTodoStatus } from '../db/todos';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import { PulseEKG } from '../components/PulseEKG';
+import { formatSeconds } from '../utils/date';
 
 /* ---------- Helpers ---------- */
 function expandIntervals(intervals: number[], repeatCount: number): number[] {
@@ -34,7 +35,7 @@ function expandIntervals(intervals: number[], repeatCount: number): number[] {
   return result;
 }
 
-function calcTotalMinutes(intervals: number[], repeatCount: number): number {
+function calcTotalSeconds(intervals: number[], repeatCount: number): number {
   return intervals.reduce((s, d) => s + d, 0) * repeatCount;
 }
 
@@ -310,10 +311,21 @@ export function PluseRun() {
     };
   }, [isRunning, elapsedSeconds]);
 
+  // Auto-switch anchored todo when interval changes
+  useEffect(() => {
+    if (!pluse || pluse.intervals.length === 0) return;
+    const templateIndex = currentIndex % pluse.intervals.length;
+    const boundTodoId = pluse.intervalTodos?.[templateIndex];
+    if (boundTodoId) {
+      setAnchoredTodoId(boundTodoId);
+    }
+  }, [currentIndex, pluse]);
+
   // Check for item completion
   useEffect(() => {
     if (!pluse || isCompleted) return;
-    const itemDurationSeconds = currentDuration * 60;
+    const itemDurationSeconds = currentDuration;
+    const shouldAutoAdvance = pluse.autoAdvance !== false;
 
     if (elapsedSeconds >= itemDurationSeconds) {
       if (soundEnabled && !completedRef.current) playBeep();
@@ -323,22 +335,30 @@ export function PluseRun() {
         setIsRunning(false);
         setCurrentIndex((prev) => prev + 1);
         setElapsedSeconds(0);
-        setTimeout(() => {
-          setIsRunning(true);
-          if (soundEnabled) playBeep(660, 150);
-        }, 2000);
+        if (shouldAutoAdvance) {
+          setTimeout(() => {
+            setIsRunning(true);
+            if (soundEnabled) playBeep(660, 150);
+          }, 2000);
+        }
       } else {
-        // Last interval finished — auto-restart the whole pulse after a brief pause
+        // Last interval finished
         if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
-        setCurrentIndex(0);
-        setElapsedSeconds(0);
-        setSmoothElapsed(0);
-        completedRef.current = false;
-        setTimeout(() => {
-          setIsRunning(true);
-          if (soundEnabled) playBeep(660, 150);
-        }, 2000);
+        if (shouldAutoAdvance) {
+          // Auto-restart the whole pulse after a brief pause
+          setCurrentIndex(0);
+          setElapsedSeconds(0);
+          setSmoothElapsed(0);
+          completedRef.current = false;
+          setTimeout(() => {
+            setIsRunning(true);
+            if (soundEnabled) playBeep(660, 150);
+          }, 2000);
+        } else {
+          // Stop — user must manually restart
+          setIsCompleted(true);
+        }
       }
     }
   }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length, soundEnabled, playBeep, playFinish]);
@@ -399,7 +419,7 @@ export function PluseRun() {
   }
 
   if (isCompleted) {
-    const totalMinutes = calcTotalMinutes(pluse.intervals, pluse.repeatCount);
+    const totalSeconds = calcTotalSeconds(pluse.intervals, pluse.repeatCount);
 
     return (
       <div className="max-w-lg mx-auto text-center space-y-6 py-12">
@@ -411,7 +431,7 @@ export function PluseRun() {
             Pluse Complete!
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            You completed <span className="font-medium text-slate-700 dark:text-slate-300">{pluse.name}</span> in {totalMinutes} minutes.
+            You completed <span className="font-medium text-slate-700 dark:text-slate-300">{pluse.name}</span> in {formatSeconds(totalSeconds)}.
           </p>
         </div>
 
@@ -469,7 +489,7 @@ export function PluseRun() {
   }
 
   const totalItems = expandedIntervals.length;
-  const itemDurationSeconds = currentDuration * 60;
+  const itemDurationSeconds = currentDuration;
   const remainingSeconds = Math.max(0, itemDurationSeconds - elapsedSeconds);
   const progress = itemDurationSeconds > 0 ? elapsedSeconds / itemDurationSeconds : 0;
 
@@ -548,7 +568,7 @@ export function PluseRun() {
                     {formatTime(remainingSeconds)}
                   </div>
                   <div className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                    {currentDuration} minutes
+                    {formatSeconds(currentDuration)}
                   </div>
                 </div>
               </TimerRing>
@@ -632,8 +652,8 @@ export function PluseRun() {
                         {totalItems > 0 ? Math.round(((currentIndex + progress) / totalItems) * 100) : 0}% done
                       </span>
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                        {expandedIntervals.reduce((s, d, idx) => s + (idx < currentIndex ? d : 0), 0)} /{' '}
-                        {calcTotalMinutes(pluse.intervals, pluse.repeatCount)} min
+                        {formatSeconds(expandedIntervals.reduce((s, d, idx) => s + (idx < currentIndex ? d : 0), 0))} /{' '}
+                        {formatSeconds(calcTotalSeconds(pluse.intervals, pluse.repeatCount))}
                       </span>
                     </div>
                   </div>

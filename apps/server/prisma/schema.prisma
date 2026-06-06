@@ -111,13 +111,15 @@ model ActionEdge {
 }
 
 model Pluse {
-  id           String   @id @default(uuid())
-  name         String
-  description  String   @default("")
-  intervals    Json     // number[]
-  repeatCount  Int      @default(1)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(uuid())
+  name          String
+  description   String   @default("")
+  intervals     Json     // number[]
+  repeatCount   Int      @default(1)
+  intervalTodos Json?    // Record<number, string>
+  autoAdvance   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model SyncEvent {
@@ -131,4 +133,18 @@ model SyncEvent {
 
   @@index([createdAt])
   @@index([recordId])
+}
+
+model Device {
+  id         String   @id @default(uuid())
+  deviceId   String   @unique
+  platform   String   // 'ios' | 'watchos' | 'desktop'
+  name       String?
+  pushToken  String?
+  appVersion String?
+  lastSeenAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@index([platform])
+  @@index([pushToken])
 }

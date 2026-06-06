@@ -1,4 +1,11 @@
 import { PrismaClient } from '@prisma/client';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env.local'), override: true });
 
 const prisma = new PrismaClient();
 
@@ -109,19 +116,25 @@ async function getTodo(id: string) {
 }
 
 async function createTodo(args: Record<string, string | boolean>) {
-  const row = await prisma.todo.create({
-    data: {
-      title: String(args.title ?? 'Untitled'),
-      description: String(args.description ?? ''),
-      instructions: String(args.instructions ?? ''),
-      status: String(args.status ?? 'pending'),
-      priority: String(args.priority ?? 'medium'),
-      projectId: args.projectId ? String(args.projectId) : undefined,
-      parentId: args.parentId ? String(args.parentId) : undefined,
-      dueDate: args.dueDate ? new Date(String(args.dueDate)) : undefined,
-      estimatedMinutes: args.estimatedMinutes ? Number(args.estimatedMinutes) : 60,
-    },
-  });
+  const data: Record<string, unknown> = {
+    title: String(args.title ?? 'Untitled'),
+    description: String(args.description ?? ''),
+    instructions: String(args.instructions ?? ''),
+    status: String(args.status ?? 'pending'),
+    priority: String(args.priority ?? 'medium'),
+    projectId: args.projectId ? String(args.projectId) : null,
+    parentId: args.parentId ? String(args.parentId) : null,
+    dueDate: args.dueDate ? new Date(String(args.dueDate)) : null,
+    estimatedMinutes: args.estimatedMinutes ? Number(args.estimatedMinutes) : 60,
+    order: args.order ? Number(args.order) : 0,
+  };
+  if (args.tags) {
+    data.tags = JSON.parse(String(args.tags));
+  }
+  if (args.repeatRule) {
+    data.repeatRule = JSON.parse(String(args.repeatRule));
+  }
+  const row = await prisma.todo.create({ data: data as never });
   console.log('Created:', row.id);
 }
 
@@ -160,7 +173,7 @@ async function createPluse(args: Record<string, string | boolean>) {
     data: {
       name: String(args.name ?? 'Untitled'),
       description: String(args.description ?? ''),
-      intervals: args.intervals ? JSON.parse(String(args.intervals)) : [25, 5],
+      intervals: args.intervals ? JSON.parse(String(args.intervals)) : [1500, 300],
       repeatCount: args.repeatCount ? Number(args.repeatCount) : 1,
     },
   });

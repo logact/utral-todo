@@ -1,10 +1,11 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env.local'), override: true });
 
 import express from 'express';
 import cors from 'cors';
@@ -18,6 +19,9 @@ import actionEdgesRouter from './routes/actionEdges.js';
 import plusesRouter from './routes/pluses.js';
 import timerSessionsRouter from './routes/timerSessions.js';
 import syncRouter from './routes/sync.js';
+import devicesRouter from './routes/devices.js';
+import mobileRouter from './routes/mobile.js';
+import watchRouter from './routes/watch.js';
 
 export const prisma = new PrismaClient();
 
@@ -51,6 +55,9 @@ app.use('/api/action-edges', actionEdgesRouter);
 app.use('/api/pluses', plusesRouter);
 app.use('/api/timer-sessions', timerSessionsRouter);
 app.use('/api/sync', syncRouter);
+app.use('/api/devices', devicesRouter);
+app.use('/api/mobile', mobileRouter);
+app.use('/api/watch', watchRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
@@ -68,7 +75,35 @@ app.delete('/api/all-data', async (_req, res) => {
   res.status(204).send();
 });
 
+/* ---------- Data migrations ---------- */
+
+async function runDataMigrations(): Promise<void> {
+  const markerPath = path.resolve(__dirname, '../.migration-v1-pluse-seconds');
+  if (fs.existsSync(markerPath)) return;
+
+  // Migrate pluse intervals from minutes to seconds
+  const pluses = await prisma.pluse.findMany();
+  for (const pluse of pluses) {
+    const intervals = Array.isArray(pluse.intervals) ? (pluse.intervals as number[]) : [];
+    if (intervals.length > 0) {
+      const newIntervals = intervals.map((d: number) => d * 60);
+      await prisma.pluse.update({
+        where: { id: pluse.id },
+        data: { intervals: newIntervals },
+      });
+    }
+  }
+
+  fs.writeFileSync(markerPath, new Date().toISOString());
+  console.log(`Migrated ${pluses.length} pluses to seconds`);
+}
+
+/* ---------- Start ---------- */
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+
+runDataMigrations().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 });

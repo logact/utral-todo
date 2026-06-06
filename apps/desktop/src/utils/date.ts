@@ -45,6 +45,14 @@ export function formatDuration(minutes: number): string {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
+/** Format a duration given in seconds as a human-readable string. */
+export function formatSeconds(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
 export function isSameDay(a: Date, b: Date): boolean {
   const da = new Date(a);
   const db = new Date(b);

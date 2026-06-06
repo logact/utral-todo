@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { Moon, Sun, Trash2, AlertTriangle, Cloud } from 'lucide-react';
+import { Moon, Sun, Trash2, AlertTriangle, Cloud, Dumbbell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { clearAllData } from '../db/database';
+import { seedFitnessPlan } from '../db/seedFitness';
 
 export function Settings() {
   const [saved, setSaved] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [cleared, setCleared] = useState(false);
+  const [fitnessSeeded, setFitnessSeeded] = useState(false);
+  const [fitnessError, setFitnessError] = useState('');
   const { theme, toggleTheme } = useTheme();
 
   function handleSave() {
@@ -24,6 +27,17 @@ export function Settings() {
     setConfirmClear(false);
     setCleared(true);
     setTimeout(() => setCleared(false), 2000);
+  }
+
+  async function handleSeedFitness() {
+    try {
+      await seedFitnessPlan();
+      setFitnessSeeded(true);
+      setFitnessError('');
+      setTimeout(() => setFitnessSeeded(false), 3000);
+    } catch (err) {
+      setFitnessError(err instanceof Error ? err.message : 'Failed to add fitness plan');
+    }
   }
 
   return (
@@ -98,6 +112,38 @@ export function Settings() {
           <Cloud className="w-4 h-4" />
           Open Sync Settings
         </Link>
+      </div>
+
+      {/* Templates */}
+      <div className="mt-6 space-y-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+        <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-700">
+          <div className="w-9 h-9 rounded-lg bg-green-50 dark:bg-green-950/30 flex items-center justify-center">
+            <Dumbbell className="w-5 h-5 text-green-600 dark:text-green-400" />
+          </div>
+          <div>
+            <h2 className="font-medium text-slate-900 dark:text-slate-100">Templates</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Quick-start plan presets</p>
+          </div>
+        </div>
+
+        {fitnessError && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
+            {fitnessError}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSeedFitness}
+            className="inline-flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+          >
+            <Dumbbell className="w-4 h-4" />
+            {fitnessSeeded ? 'Added!' : 'Add Fitness Plan'}
+          </button>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Creates a "Fitness" project with 7 weekly recurring workouts.
+          </p>
+        </div>
       </div>
 
       {/* Data Management */}

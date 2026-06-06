@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../index.js';
+import { broadcastToDevices } from '../apns/broadcast.js';
 
 interface SyncEvent {
   id: string;
@@ -40,6 +41,12 @@ export function broadcast(event: SyncEvent, excludeDeviceId?: string): void {
     if (excludeDeviceId && conn.deviceId === excludeDeviceId) continue;
     conn.res.write(data);
   }
+
+  // Also send APNS silent push to iOS/watchOS devices
+  broadcastToDevices(
+    { table: event.table, operation: event.operation, recordId: event.recordId },
+    excludeDeviceId
+  ).catch(() => {});
 }
 
 export async function getEventsSince(since: Date): Promise<SyncEvent[]> {

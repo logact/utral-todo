@@ -290,7 +290,7 @@ router.post('/', async (req, res) => {
             id,
             name: item.name as string,
             description: (item.description as string) || '',
-            intervals: JSON.stringify(item.intervals ?? [25]),
+            intervals: JSON.stringify(item.intervals ?? [1500]),
             repeatCount: (item.repeatCount as number) ?? 1,
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
