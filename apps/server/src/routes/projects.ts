@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index.js';
+import { logChange } from '../sync/log.js';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.post('/', async (req, res) => {
       deadline: deadline ? new Date(deadline) : null,
     },
   });
+  await logChange(req, 'project', 'create', project.id, project);
   res.status(201).json(project);
 });
 
@@ -33,11 +35,14 @@ router.patch('/:id', async (req, res) => {
     where: { id: req.params.id },
     data: req.body,
   });
+  await logChange(req, 'project', 'update', project.id, project);
   res.json(project);
 });
 
 router.delete('/:id', async (req, res) => {
-  await prisma.project.delete({ where: { id: req.params.id } });
+  const id = req.params.id;
+  await prisma.project.delete({ where: { id } });
+  await logChange(req, 'project', 'delete', id);
   res.status(204).send();
 });
 

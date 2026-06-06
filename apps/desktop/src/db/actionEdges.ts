@@ -1,4 +1,5 @@
 import { db } from './database';
+import { onLocalChange } from './syncEngine';
 import type { ActionEdge, ActionEdgeType } from '../types';
 
 export async function createActionEdge(
@@ -6,14 +7,17 @@ export async function createActionEdge(
   toTodoId: string,
   type: ActionEdgeType
 ): Promise<ActionEdge> {
+  const now = new Date();
   const edge: ActionEdge = {
     id: crypto.randomUUID(),
     fromTodoId,
     toTodoId,
     type,
-    createdAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   };
   await db.actionEdges.add(edge);
+  onLocalChange('actionEdges', 'create', edge.id).catch(() => {});
   return edge;
 }
 
@@ -55,6 +59,7 @@ export async function getAllActionEdgesForTodo(todoId: string): Promise<ActionEd
 
 export async function deleteActionEdge(id: string): Promise<void> {
   await db.actionEdges.delete(id);
+  onLocalChange('actionEdges', 'delete', id).catch(() => {});
 }
 
 export async function deleteActionEdgesForTodo(todoId: string): Promise<void> {

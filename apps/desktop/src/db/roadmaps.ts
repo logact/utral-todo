@@ -1,4 +1,5 @@
 import { db } from './database';
+import { onLocalChange } from './syncEngine';
 import type { Roadmap, RoadmapPhase } from '../types';
 
 export async function getRoadmapForTodo(goalTodoId: string): Promise<Roadmap | undefined> {
@@ -29,14 +30,17 @@ export async function updateRoadmap(
   updates: Partial<Omit<Roadmap, 'id' | 'createdAt'>>
 ): Promise<void> {
   await db.roadmaps.update(id, { ...updates, updatedAt: new Date() });
+  onLocalChange('roadmaps', 'update', id).catch(() => {});
 }
 
 export async function updateRoadmapPhases(id: string, phases: RoadmapPhase[]): Promise<void> {
   await db.roadmaps.update(id, { phases, updatedAt: new Date() });
+  onLocalChange('roadmaps', 'update', id).catch(() => {});
 }
 
 export async function deleteRoadmap(id: string): Promise<void> {
   await db.roadmaps.delete(id);
+  onLocalChange('roadmaps', 'delete', id).catch(() => {});
 }
 
 export async function getAllRoadmaps(): Promise<Roadmap[]> {

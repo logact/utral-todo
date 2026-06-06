@@ -1,4 +1,5 @@
 import { db } from './database';
+import { onLocalChange } from './syncEngine';
 import type { TimerSession } from '../types';
 
 export async function getTimerSessions(filters?: { status?: string; type?: string }): Promise<TimerSession[]> {
@@ -46,6 +47,7 @@ export async function createTimerSession(data: {
     updatedAt: now,
   };
   await db.timerSessions.add(session);
+  onLocalChange('timerSessions', 'create', session.id).catch(() => {});
   return session;
 }
 
@@ -79,6 +81,7 @@ export async function updateTimerSession(
   if (data.status !== undefined) body.status = data.status;
 
   await db.timerSessions.update(id, body);
+  onLocalChange('timerSessions', 'update', id).catch(() => {});
   const session = await db.timerSessions.get(id);
   if (!session) throw new Error('Timer session not found');
   return session;
@@ -86,4 +89,5 @@ export async function updateTimerSession(
 
 export async function deleteTimerSession(id: string): Promise<void> {
   await db.timerSessions.delete(id);
+  onLocalChange('timerSessions', 'delete', id).catch(() => {});
 }

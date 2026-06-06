@@ -305,9 +305,7 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
       const toNode = graphNodes.find(n => n.todo.id === edge.toTodoId);
       if (!fromNode || !toNode) continue;
 
-      const fromW = edge.fromTodoId === goalTodo.id ? GOAL_W : NODE_W;
       const fromH = edge.fromTodoId === goalTodo.id ? GOAL_H : NODE_H;
-      const toW = edge.toTodoId === goalTodo.id ? GOAL_W : NODE_W;
       const toH = edge.toTodoId === goalTodo.id ? GOAL_H : NODE_H;
 
       positions.push({

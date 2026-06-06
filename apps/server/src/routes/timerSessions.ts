@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index.js';
+import { logChange } from '../sync/log.js';
 
 const router = Router();
 
@@ -53,6 +54,7 @@ router.post('/', async (req, res) => {
       elapsedSeconds: elapsedSeconds ?? 0,
     },
   });
+  await logChange(req, 'timerSession', 'create', session.id, session);
   res.status(201).json(session);
 });
 
@@ -87,11 +89,14 @@ router.patch('/:id', async (req, res) => {
       ...(status !== undefined ? { status } : {}),
     },
   });
+  await logChange(req, 'timerSession', 'update', session.id, session);
   res.json(session);
 });
 
 router.delete('/:id', async (req, res) => {
-  await prisma.timerSession.delete({ where: { id: req.params.id } });
+  const id = req.params.id;
+  await prisma.timerSession.delete({ where: { id } });
+  await logChange(req, 'timerSession', 'delete', id);
   res.status(204).send();
 });
 

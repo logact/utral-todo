@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Cloud, CheckCircle, AlertCircle, Loader2, Download, Upload } from 'lucide-react';
-import { syncAll, getSyncConfig, saveSyncConfig, getLastSyncAt, validateServerUrl, type SyncResult } from '../db/sync';
+import { Cloud, AlertCircle, Loader2, Download, Upload, Wifi, WifiOff, Zap } from 'lucide-react';
+import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
 import { db } from '../db/database';
+import { processQueue } from '../db/syncEngine';
 
 export function SyncSettings() {
   const [serverUrl, setServerUrl] = useState('');
   const [apiToken, setApiToken] = useState('');
-  const [remoteOpsEnabled, setRemoteOpsEnabled] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'offline' | 'error'>('idle');
+  const [pendingCount, setPendingCount] = useState(0);
   const [lastSync, setLastSync] = useState<Date | undefined>(undefined);
-  const [lastResult, setLastResult] = useState<SyncResult | undefined>(undefined);
   const [error, setError] = useState('');
   const [urlError, setUrlError] = useState('');
 
@@ -19,11 +19,25 @@ export function SyncSettings() {
     if (config) {
       setServerUrl(config.serverUrl);
       setApiToken(config.apiToken || '');
-      setRemoteOpsEnabled(config.remoteOpsEnabled ?? false);
     } else {
       setServerUrl('http://localhost:3001');
     }
-    setLastSync(getLastSyncAt());
+
+    // Load last sync time
+    db.syncState.get('lastSyncAt').then((state) => {
+      if (state?.value) setLastSync(new Date(state.value));
+    }).catch(() => {});
+
+    // Poll sync status
+    const interval = setInterval(() => {
+      db.syncQueue.count().then((count) => {
+        setPendingCount(count);
+        // Simple heuristic: if pending and no error, we're syncing
+        // Actual SSE status is tracked by syncEngine internally
+      }).catch(() => {});
+    }, 2000);
+
+    return () => clearInterval(interval);
   }, []);
 
   function handleSave() {
@@ -33,33 +47,28 @@ export function SyncSettings() {
       return;
     }
     setUrlError('');
-    saveSyncConfig({ serverUrl, apiToken: apiToken || undefined, remoteOpsEnabled });
+    saveSyncConfig({ serverUrl, apiToken: apiToken || undefined });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
-  async function handleSync() {
-    const validation = validateServerUrl(serverUrl);
-    if (!validation.valid) {
-      setError(validation.error || 'Please configure a valid server URL');
-      return;
-    }
+  async function handleForceSync() {
+    setSyncStatus('syncing');
     setError('');
-    setSyncing(true);
-    setLastResult(undefined);
-
     try {
-      const result = await syncAll({ serverUrl, apiToken: apiToken || undefined, remoteOpsEnabled });
-      setLastResult(result);
-      if (!result.success) {
-        setError(result.error || 'Sync failed');
-      } else {
+      await processQueue();
+      const count = await db.syncQueue.count();
+      setPendingCount(count);
+      if (count === 0) {
+        setSyncStatus('idle');
         setLastSync(new Date());
+      } else {
+        setSyncStatus('offline');
+        setError('Some changes could not be synced. Check your connection.');
       }
     } catch (err) {
+      setSyncStatus('error');
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncing(false);
     }
   }
 
@@ -97,7 +106,6 @@ export function SyncSettings() {
       if (data.actionEdges) await db.actionEdges.bulkPut(data.actionEdges);
       if (data.pluses) await db.pluses.bulkPut(data.pluses);
       if (data.timerSessions) await db.timerSessions.bulkPut(data.timerSessions);
-      setLastResult(undefined);
       setError('');
       alert('Import successful');
     } catch (err) {
@@ -106,10 +114,20 @@ export function SyncSettings() {
     e.target.value = '';
   }
 
+  const statusConfig = {
+    idle: { icon: Wifi, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30', label: 'Connected' },
+    syncing: { icon: Loader2, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/30', label: 'Syncing...' },
+    offline: { icon: WifiOff, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30', label: 'Offline' },
+    error: { icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/30', label: 'Error' },
+  };
+
+  const currentStatus = statusConfig[syncStatus];
+  const StatusIcon = currentStatus.icon;
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Sync & Backup</h1>
-      <p className="text-slate-500 dark:text-slate-400 mt-1">Sync with remote server or manage backups</p>
+      <p className="text-slate-500 dark:text-slate-400 mt-1">Real-time sync with remote server</p>
 
       {/* Server Configuration */}
       <div className="mt-8 space-y-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
@@ -163,18 +181,6 @@ export function SyncSettings() {
               className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={remoteOpsEnabled}
-              onChange={(e) => setRemoteOpsEnabled(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Send todo changes to server automatically
-            </span>
-          </label>
         </div>
 
         <button
@@ -185,18 +191,14 @@ export function SyncSettings() {
         </button>
       </div>
 
-      {/* Sync Action */}
+      {/* Sync Status */}
       <div className="mt-6 space-y-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
         <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-700">
-          <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
-            {syncing ? (
-              <Loader2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-spin" />
-            ) : (
-              <Cloud className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            )}
+          <div className={`w-9 h-9 rounded-lg ${currentStatus.bg} flex items-center justify-center`}>
+            <StatusIcon className={`w-5 h-5 ${currentStatus.color} ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
           </div>
           <div>
-            <h2 className="font-medium text-slate-900 dark:text-slate-100">Sync</h2>
+            <h2 className="font-medium text-slate-900 dark:text-slate-100">Sync Status</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {lastSync
                 ? `Last synced: ${lastSync.toLocaleString()}`
@@ -205,20 +207,31 @@ export function SyncSettings() {
           </div>
         </div>
 
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-600 dark:text-slate-400">Status</span>
+            <span className={`text-sm font-medium ${currentStatus.color}`}>{currentStatus.label}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-600 dark:text-slate-400">Pending changes</span>
+            <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{pendingCount}</span>
+          </div>
+        </div>
+
         <button
-          onClick={handleSync}
-          disabled={syncing || !serverUrl}
+          onClick={handleForceSync}
+          disabled={syncStatus === 'syncing'}
           className="inline-flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {syncing ? (
+          {syncStatus === 'syncing' ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
               Syncing...
             </>
           ) : (
             <>
-              <Cloud className="w-4 h-4" />
-              Sync Now
+              <Zap className="w-4 h-4" />
+              Force Sync Now
             </>
           )}
         </button>
@@ -227,23 +240,6 @@ export function SyncSettings() {
           <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
             <p>{error}</p>
-          </div>
-        )}
-
-        {lastResult?.success && (
-          <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 text-sm text-emerald-700 dark:text-emerald-400">
-            <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <div>
-              <p className="font-medium">Sync completed successfully</p>
-              <p className="mt-1 text-xs">
-                Pulled: {lastResult.pulled.todos} todos, {lastResult.pulled.projects} projects,{' '}
-                {lastResult.pulled.relations} relations
-              </p>
-              <p className="text-xs">
-                Pushed: {lastResult.pushed.todos} todos, {lastResult.pushed.projects} projects,{' '}
-                {lastResult.pushed.relations} relations
-              </p>
-            </div>
           </div>
         )}
       </div>

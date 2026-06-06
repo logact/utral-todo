@@ -1,6 +1,21 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Todo, TodoRelation, TodoLog, Roadmap, ActionEdge, Pluse, Project, TimerSession } from '../types';
 
+export interface SyncQueueItem {
+  id: string;
+  table: string;
+  operation: 'create' | 'update' | 'delete';
+  recordId: string;
+  createdAt: Date;
+  retryCount: number;
+  lastError?: string;
+}
+
+export interface SyncState {
+  key: string;
+  value: string;
+}
+
 const db = new Dexie('TodoScheduleDB') as Dexie & {
   todos: EntityTable<Todo, 'id'>;
   relations: EntityTable<TodoRelation, 'id'>;
@@ -10,6 +25,8 @@ const db = new Dexie('TodoScheduleDB') as Dexie & {
   pluses: EntityTable<Pluse, 'id'>;
   projects: EntityTable<Project, 'id'>;
   timerSessions: EntityTable<TimerSession, 'id'>;
+  syncQueue: EntityTable<SyncQueueItem, 'id'>;
+  syncState: EntityTable<SyncState, 'key'>;
 };
 
 db.version(1).stores({
@@ -236,6 +253,30 @@ db.version(20).stores({
   timerSessions: 'id, type, status, createdAt, updatedAt',
 });
 
+db.version(21).stores({
+  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+}).upgrade(async (tx) => {
+  // Backfill updatedAt from createdAt for all existing records
+  const tables = ['todos', 'relations', 'todoLogs', 'actionEdges', 'pluses', 'projects'];
+  for (const tableName of tables) {
+    const items = await tx.table(tableName).toArray();
+    for (const item of items) {
+      if (!item.updatedAt) {
+        await tx.table(tableName).update(item.id, { updatedAt: item.createdAt || new Date() });
+      }
+    }
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();
@@ -245,6 +286,8 @@ export async function clearAllData(): Promise<void> {
   await db.pluses.clear();
   await db.projects.clear();
   await db.timerSessions.clear();
+  await db.syncQueue.clear();
+  await db.syncState.clear();
 }
 
 export { db };

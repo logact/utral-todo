@@ -1,6 +1,6 @@
 import { db } from './database';
 import { createRelation } from './relations';
-import { createRemoteTodo, updateRemoteTodo, deleteRemoteTodo } from './remote';
+import { onLocalChange } from './syncEngine';
 import type { Todo, TodoStatus, Priority, RepeatRule } from '../types';
 
 export async function createTodo(
@@ -31,6 +31,7 @@ export async function createTodo(
     estimatedMinutes: options?.estimatedMinutes ?? 60,
     tags: options?.tags ?? [],
     createdAt: now,
+    updatedAt: now,
     projectId: options?.projectId,
     parentId: options?.parentId,
     dueDate: options?.dueDate,
@@ -40,7 +41,7 @@ export async function createTodo(
     isGoal: options?.isGoal,
   };
   await db.todos.add(todo);
-  createRemoteTodo(todo).catch(() => {});
+  onLocalChange('todos', 'create', todo.id).catch(() => {});
   return todo;
 }
 
@@ -108,15 +109,15 @@ export async function getTodoDescendants(todoId: string): Promise<Todo[]> {
 
 export async function reorderSubTodos(_parentId: string, orderedIds: string[]): Promise<void> {
   for (let i = 0; i < orderedIds.length; i++) {
-    await db.todos.update(orderedIds[i], { order: i });
-    updateRemoteTodo(orderedIds[i], { order: i }).catch(() => {});
+    await db.todos.update(orderedIds[i], { order: i, updatedAt: new Date() });
+    onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
 export async function reorderTodos(orderedIds: string[]): Promise<void> {
   for (let i = 0; i < orderedIds.length; i++) {
-    await db.todos.update(orderedIds[i], { order: i });
-    updateRemoteTodo(orderedIds[i], { order: i }).catch(() => {});
+    await db.todos.update(orderedIds[i], { order: i, updatedAt: new Date() });
+    onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -125,8 +126,8 @@ export async function getTodo(id: string): Promise<Todo | undefined> {
 }
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
-  await db.todos.update(id, updates);
-  updateRemoteTodo(id, updates).catch(() => {});
+  await db.todos.update(id, { ...updates, updatedAt: new Date() });
+  onLocalChange('todos', 'update', id).catch(() => {});
 }
 
 export async function bulkUpdateTodoProject(
@@ -134,31 +135,31 @@ export async function bulkUpdateTodoProject(
   projectId: string | undefined
 ): Promise<void> {
   for (const id of todoIds) {
-    await db.todos.update(id, { projectId });
-    updateRemoteTodo(id, { projectId }).catch(() => {});
+    await db.todos.update(id, { projectId, updatedAt: new Date() });
+    onLocalChange('todos', 'update', id).catch(() => {});
   }
 }
 
 export async function deleteTodo(id: string): Promise<void> {
   await db.todos.delete(id);
-  deleteRemoteTodo(id).catch(() => {});
+  onLocalChange('todos', 'delete', id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
-  const updates: Partial<Todo> = { status };
+  const updates: Partial<Todo> = { status, updatedAt: new Date() };
   if (status === 'in_progress') updates.startedAt = new Date();
   if (status === 'pending') updates.startedAt = undefined;
   if (status === 'done') updates.completedAt = new Date();
   await db.todos.update(id, updates);
-  updateRemoteTodo(id, updates).catch(() => {});
+  onLocalChange('todos', 'update', id).catch(() => {});
 }
 
 export async function updateTodoSchedule(
   id: string,
   scheduledDate: Date | undefined
 ): Promise<void> {
-  await db.todos.update(id, { scheduledDate });
-  updateRemoteTodo(id, { scheduledDate }).catch(() => {});
+  await db.todos.update(id, { scheduledDate, updatedAt: new Date() });
+  onLocalChange('todos', 'update', id).catch(() => {});
 }
 
 export async function getTodaysTodos(): Promise<Todo[]> {
@@ -309,6 +310,6 @@ export async function updateRepeatRule(
   id: string,
   rule: RepeatRule | undefined
 ): Promise<void> {
-  await db.todos.update(id, { repeatRule: rule });
-  updateRemoteTodo(id, { repeatRule: rule }).catch(() => {});
+  await db.todos.update(id, { repeatRule: rule, updatedAt: new Date() });
+  onLocalChange('todos', 'update', id).catch(() => {});
 }

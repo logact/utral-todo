@@ -19,7 +19,7 @@ interface CliRequestEvent {
   args: Record<string, unknown>;
 }
 
-function serializeForJson<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+function serializeForJson(obj: unknown): unknown {
   return JSON.parse(JSON.stringify(obj));
 }
 
@@ -55,16 +55,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       return { success: true, data: serializeForJson(todo) };
     }
     case 'update': {
-      const updates: Partial<{
-        title: string;
-        description: string;
-        instructions: string;
-        status: string;
-        priority: string;
-        projectId: string;
-        dueDate: Date;
-        estimatedMinutes: number;
-      }> = {};
+      const updates: Record<string, unknown> = {};
       if (args.title !== undefined) updates.title = String(args.title);
       if (args.description !== undefined) updates.description = String(args.description);
       if (args.instructions !== undefined) updates.instructions = String(args.instructions);
@@ -73,7 +64,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       if (args.projectId !== undefined) updates.projectId = String(args.projectId);
       if (args.dueDate !== undefined) updates.dueDate = new Date(String(args.dueDate));
       if (args.estimatedMinutes !== undefined) updates.estimatedMinutes = Number(args.estimatedMinutes);
-      await todosDb.updateTodo(String(args.id), updates);
+      await todosDb.updateTodo(String(args.id), updates as never);
       return { success: true };
     }
     case 'delete': {
@@ -132,7 +123,7 @@ async function handleRelations(action: string, args: Record<string, unknown>) {
       const relation = await relationsDb.createRelation(
         String(args.fromTodoId),
         String(args.toTodoId),
-        (args.type as 'blocks' | 'source_from' | 'assign_from' | 'relates_to') ?? 'relates_to'
+        (args.type as 'depends_on' | 'blocked_by' | 'parent_of' | 'source_from' | 'assign_from') ?? 'depends_on'
       );
       return { success: true, data: serializeForJson(relation) };
     }

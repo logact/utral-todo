@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../index.js';
 import type { Todo } from '@prisma/client';
+import { logChange } from '../sync/log.js';
 
 function startOfDay(date: Date): Date {
   const result = new Date(date);
@@ -155,12 +156,14 @@ router.post('/', async (req, res) => {
   if (isGoal === true) {
     const existing = await prisma.roadmap.findUnique({ where: { goalTodoId: todo.id } });
     if (!existing) {
-      await prisma.roadmap.create({
+      const roadmap = await prisma.roadmap.create({
         data: { goalTodoId: todo.id, phases: [] },
       });
+      await logChange(req, 'roadmap', 'create', roadmap.id, roadmap);
     }
   }
 
+  await logChange(req, 'todo', 'create', todo.id, todo);
   res.status(201).json(todo);
 });
 
@@ -269,14 +272,17 @@ router.patch('/:id', async (req, res) => {
   if (isGoal === true) {
     const existing = await prisma.roadmap.findUnique({ where: { goalTodoId: req.params.id } });
     if (!existing) {
-      await prisma.roadmap.create({
+      const roadmap = await prisma.roadmap.create({
         data: { goalTodoId: req.params.id, phases: [] },
       });
+      await logChange(req, 'roadmap', 'create', roadmap.id, roadmap);
     }
   } else if (isGoal === false) {
     await prisma.roadmap.deleteMany({ where: { goalTodoId: req.params.id } });
+    await logChange(req, 'roadmap', 'delete', req.params.id);
   }
 
+  await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
 
@@ -294,6 +300,7 @@ router.patch('/:id/status', async (req, res) => {
     where: { id: req.params.id },
     data,
   });
+  await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
 
@@ -303,6 +310,7 @@ router.patch('/:id/schedule', async (req, res) => {
     where: { id: req.params.id },
     data: { scheduledDate: scheduledDate ? new Date(scheduledDate) : null },
   });
+  await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
 
@@ -315,10 +323,12 @@ router.delete('/:id', async (req, res) => {
   });
   for (const rel of assignedRelations) {
     await prisma.todo.delete({ where: { id: rel.toTodoId } }).catch(() => {});
+    await logChange(req, 'todo', 'delete', rel.toTodoId);
   }
 
   // Delete the todo (cascade handles children, relations, logs)
   await prisma.todo.delete({ where: { id } }).catch(() => {});
+  await logChange(req, 'todo', 'delete', id);
   res.status(204).send();
 });
 
@@ -394,13 +404,15 @@ router.post('/sync-repeats', async (req, res) => {
             order: 0,
           },
         });
-        await prisma.todoRelation.create({
+        await logChange(req, 'todo', 'create', instance.id, instance);
+        const relation = await prisma.todoRelation.create({
           data: {
             fromTodoId: template.id,
             toTodoId: instance.id,
             type: 'assign_from',
           },
         });
+        await logChange(req, 'todoRelation', 'create', relation.id, relation);
         createdCount++;
       }
     }
@@ -415,6 +427,7 @@ router.patch('/:id/reorder', async (req, res) => {
     where: { id: req.params.id },
     data: { order: order ?? 0 },
   });
+  await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
 
@@ -433,6 +446,10 @@ router.post('/reorder', async (req, res) => {
     )
   );
 
+  for (const id of orderedIds) {
+    await logChange(req, 'todo', 'update', id);
+  }
+
   res.json({ updated: true });
 });
 
@@ -441,10 +458,11 @@ router.patch('/:id/repeat-rule', async (req, res) => {
   const template = await prisma.todo.findUnique({ where: { id: req.params.id } });
   if (!template) return res.status(404).json({ error: 'Todo not found' });
 
-  await prisma.todo.update({
+  const updatedTodo = await prisma.todo.update({
     where: { id: req.params.id },
     data: { repeatRule: rule ?? null },
   });
+  await logChange(req, 'todo', 'update', updatedTodo.id, updatedTodo);
 
   if (!rule) return res.json({ updated: true });
 
@@ -488,6 +506,7 @@ router.patch('/:id/repeat-rule', async (req, res) => {
       });
       await prisma.todoLog.deleteMany({ where: { todoId: instance.id } });
       await prisma.todo.delete({ where: { id: instance.id } }).catch(() => {});
+      await logChange(req, 'todo', 'delete', instance.id);
     }
   }
 

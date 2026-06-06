@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
-import type { SyncPayload } from '@utral/types';
+import type { SyncPayload, SyncEvent } from '@utral/types';
 import { prisma } from '../index.js';
+import { broadcast, createSyncEvent, applyChange, getEventsSince } from '../sync/broadcaster.js';
 
 const router = Router();
 
@@ -11,6 +12,101 @@ function toDate(value: unknown): Date | undefined {
   if (typeof value === 'string') return new Date(value);
   return undefined;
 }
+
+// POST /api/sync/push — unified push endpoint for sync engine
+router.post('/push', async (req, res) => {
+  const { deviceId, changes } = req.body as { deviceId: string; changes: SyncEvent[] };
+  const accepted: string[] = [];
+  const rejected: Array<{ recordId: string; reason: string }> = [];
+
+  if (!deviceId || !Array.isArray(changes)) {
+    return res.status(400).json({ error: 'Invalid request: deviceId and changes array required' });
+  }
+
+  try {
+    for (const event of changes) {
+      try {
+        await applyChange(event);
+        const logged = await createSyncEvent(
+          event.table,
+          event.operation,
+          event.recordId,
+          event.payload,
+          deviceId
+        );
+        broadcast(logged, deviceId);
+        accepted.push(event.recordId);
+      } catch (err) {
+        console.error(`[sync] Failed to apply change for ${event.table}/${event.recordId}:`, err);
+        rejected.push({ recordId: event.recordId, reason: String(err) });
+      }
+    }
+
+    res.json({ accepted: accepted.length, rejected });
+  } catch (err) {
+    console.error('Sync push error:', err);
+    res.status(500).json({ error: 'Sync push failed', details: String(err) });
+  }
+});
+
+// GET /api/sync/stream — SSE endpoint for real-time push
+router.get('/stream', async (req, res) => {
+  const token = req.query.token as string | undefined;
+  const deviceId = req.query.deviceId as string | undefined;
+  const since = req.query.since as string | undefined;
+
+  const API_TOKEN = process.env.API_TOKEN;
+  if (API_TOKEN) {
+    if (!token || token !== API_TOKEN) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'deviceId is required' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  // Send initial delta
+  try {
+    if (since) {
+      const sinceDate = new Date(since);
+      const events = await getEventsSince(sinceDate);
+      if (events.length > 0) {
+        res.write(`data: ${JSON.stringify({ type: 'delta', events })}\n\n`);
+      }
+    }
+  } catch (err) {
+    console.error('[sync] Failed to send initial delta:', err);
+  }
+
+  // Register for broadcasts
+  const { subscribe } = await import('../sync/broadcaster.js');
+  subscribe(deviceId, res);
+});
+
+// POST /api/sync/events — fallback poll endpoint
+router.post('/events', async (req, res) => {
+  const { since } = req.body as { since?: string };
+  if (!since) {
+    return res.status(400).json({ error: 'since is required' });
+  }
+
+  try {
+    const events = await getEventsSince(new Date(since));
+    res.json({ events });
+  } catch (err) {
+    console.error('Sync events error:', err);
+    res.status(500).json({ error: 'Failed to fetch events', details: String(err) });
+  }
+});
+
+// Legacy endpoints — kept for backward compatibility
 
 // POST /api/sync — receive data from client, merge into database
 router.post('/', async (req, res) => {
@@ -34,6 +130,7 @@ router.post('/', async (req, res) => {
             estimatedMinutes: (item.estimatedMinutes as number) ?? 60,
             tags: JSON.stringify(item.tags ?? []),
             createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
             dueDate: toDate(item.dueDate),
             scheduledDate: toDate(item.scheduledDate),
             startedAt: toDate(item.startedAt),
@@ -68,6 +165,7 @@ router.post('/', async (req, res) => {
             status: (item.status as string) || 'active',
             color: (item.color as string) || '#6366f1',
             createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
             deadline: toDate(item.deadline),
           };
 
@@ -93,6 +191,7 @@ router.post('/', async (req, res) => {
             toTodoId: item.toTodoId as string,
             type: item.type as string,
             createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
           const existing = await tx.todoRelation.findUnique({ where: { id } });
@@ -119,6 +218,7 @@ router.post('/', async (req, res) => {
             minutesSpent: (item.minutesSpent as number) || null,
             metadata: item.metadata ? JSON.stringify(item.metadata) : Prisma.DbNull,
             createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
           const existing = await tx.todoLog.findUnique({ where: { id } });
@@ -167,6 +267,7 @@ router.post('/', async (req, res) => {
             toTodoId: item.toTodoId as string,
             type: item.type as string,
             createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
           const existing = await tx.actionEdge.findUnique({ where: { id } });
@@ -192,6 +293,7 @@ router.post('/', async (req, res) => {
             intervals: JSON.stringify(item.intervals ?? [25]),
             repeatCount: (item.repeatCount as number) ?? 1,
             createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
           const existing = await tx.pluse.findUnique({ where: { id } });

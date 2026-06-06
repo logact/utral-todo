@@ -1,4 +1,5 @@
 import { db } from './database';
+import { onLocalChange } from './syncEngine';
 import type { Project, Todo } from '../types';
 
 export async function createProject(
@@ -9,16 +10,19 @@ export async function createProject(
     deadline?: Date;
   }
 ): Promise<Project> {
+  const now = new Date();
   const project: Project = {
     id: crypto.randomUUID(),
     title,
     description: options?.description ?? '',
     color: options?.color ?? '#6366f1',
     status: 'active',
-    createdAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
     deadline: options?.deadline,
   };
   await db.projects.add(project);
+  onLocalChange('projects', 'create', project.id).catch(() => {});
   return project;
 }
 
@@ -34,17 +38,19 @@ export async function updateProject(
   id: string,
   updates: Partial<Project>
 ): Promise<void> {
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = { updatedAt: new Date() };
   if (updates.title !== undefined) body.title = updates.title;
   if (updates.description !== undefined) body.description = updates.description;
   if (updates.color !== undefined) body.color = updates.color;
   if (updates.status !== undefined) body.status = updates.status;
   if (updates.deadline !== undefined) body.deadline = updates.deadline;
   await db.projects.update(id, body);
+  onLocalChange('projects', 'update', id).catch(() => {});
 }
 
 export async function deleteProject(id: string): Promise<void> {
   await db.projects.delete(id);
+  onLocalChange('projects', 'delete', id).catch(() => {});
 }
 
 export async function getProjectTodos(projectId: string): Promise<Todo[]> {

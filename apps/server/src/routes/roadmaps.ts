@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index.js';
+import { logChange } from '../sync/log.js';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.post('/', async (req, res) => {
       phases: phases ?? [],
     },
   });
+  await logChange(req, 'roadmap', 'create', roadmap.id, roadmap);
   res.status(201).json(roadmap);
 });
 
@@ -31,11 +33,14 @@ router.patch('/:id', async (req, res) => {
     where: { id: req.params.id },
     data: { phases: phases ?? undefined },
   });
+  await logChange(req, 'roadmap', 'update', roadmap.id, roadmap);
   res.json(roadmap);
 });
 
 router.delete('/:id', async (req, res) => {
-  await prisma.roadmap.delete({ where: { id: req.params.id } });
+  const id = req.params.id;
+  await prisma.roadmap.delete({ where: { id } });
+  await logChange(req, 'roadmap', 'delete', id);
   res.status(204).send();
 });
 

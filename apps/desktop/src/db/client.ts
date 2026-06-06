@@ -32,6 +32,7 @@ export function parseTodo(data: unknown): Todo {
     estimatedMinutes: t.estimatedMinutes as number,
     tags: t.tags as string[],
     createdAt: parseDate(t.createdAt)!,
+    updatedAt: parseDate(t.updatedAt) ?? parseDate(t.createdAt)!,
     dueDate: parseDate(t.dueDate),
     scheduledDate: parseDate(t.scheduledDate),
     startedAt: parseDate(t.startedAt),
@@ -50,6 +51,7 @@ export function parseRelation(data: unknown): TodoRelation {
     toTodoId: r.toTodoId as string,
     type: r.type as TodoRelation['type'],
     createdAt: parseDate(r.createdAt)!,
+    updatedAt: parseDate(r.updatedAt) ?? parseDate(r.createdAt)!,
   };
 }
 
@@ -63,6 +65,7 @@ export function parseLog(data: unknown): TodoLog {
     minutesSpent: (l.minutesSpent as number | undefined) ?? undefined,
     metadata: (l.metadata as Record<string, unknown> | undefined) ?? undefined,
     createdAt: parseDate(l.createdAt)!,
+    updatedAt: parseDate(l.updatedAt) ?? parseDate(l.createdAt)!,
   };
 }
 
@@ -76,6 +79,7 @@ export function parseProject(data: unknown): Project {
     status: p.status as Project['status'],
     deadline: parseDate(p.deadline),
     createdAt: parseDate(p.createdAt)!,
+    updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
   };
 }
 
@@ -98,6 +102,7 @@ export function parseActionEdge(data: unknown): ActionEdge {
     toTodoId: e.toTodoId as string,
     type: e.type as ActionEdge['type'],
     createdAt: parseDate(e.createdAt)!,
+    updatedAt: parseDate(e.updatedAt) ?? parseDate(e.createdAt)!,
   };
 }
 
@@ -110,6 +115,7 @@ export function parsePluse(data: unknown): Pluse {
     intervals: p.intervals as number[],
     repeatCount: (p.repeatCount as number) ?? 1,
     createdAt: parseDate(p.createdAt)!,
+    updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
   };
 }
 

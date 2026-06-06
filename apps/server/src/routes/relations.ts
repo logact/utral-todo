@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index.js';
+import { logChange } from '../sync/log.js';
 
 const router = Router();
 
@@ -22,11 +23,14 @@ router.post('/', async (req, res) => {
   const relation = await prisma.todoRelation.create({
     data: { fromTodoId, toTodoId, type },
   });
+  await logChange(req, 'todoRelation', 'create', relation.id, relation);
   res.status(201).json(relation);
 });
 
 router.delete('/:id', async (req, res) => {
-  await prisma.todoRelation.delete({ where: { id: req.params.id } });
+  const id = req.params.id;
+  await prisma.todoRelation.delete({ where: { id } });
+  await logChange(req, 'todoRelation', 'delete', id);
   res.status(204).send();
 });
 

@@ -1,4 +1,5 @@
 import { db } from './database';
+import { onLocalChange } from './syncEngine';
 import type { Todo, TodoRelation, TodoRelationType } from '../types';
 
 export async function createRelation(
@@ -6,14 +7,17 @@ export async function createRelation(
   toTodoId: string,
   type: TodoRelationType
 ): Promise<TodoRelation> {
+  const now = new Date();
   const relation: TodoRelation = {
     id: crypto.randomUUID(),
     fromTodoId,
     toTodoId,
     type,
-    createdAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   };
   await db.relations.add(relation);
+  onLocalChange('relations', 'create', relation.id).catch(() => {});
   return relation;
 }
 
@@ -42,6 +46,7 @@ export async function getRelationsForTodo(todoId: string): Promise<{
 
 export async function deleteRelation(id: string): Promise<void> {
   await db.relations.delete(id);
+  onLocalChange('relations', 'delete', id).catch(() => {});
 }
 
 export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void> {

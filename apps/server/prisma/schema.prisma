@@ -14,6 +14,7 @@ model Project {
   status      String   // 'active' | 'archived'
   color       String
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   deadline    DateTime?
   todos       Todo[]
 }
@@ -30,6 +31,7 @@ model Todo {
   estimatedMinutes Int            @default(60)
   tags             Json           @default("[]")
   createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   dueDate          DateTime?
   scheduledDate    DateTime?
   startedAt        DateTime?
@@ -54,6 +56,7 @@ model TodoRelation {
   toTodoId   String
   type       String
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   fromTodo   Todo     @relation("FromTodo", fields: [fromTodoId], references: [id], onDelete: Cascade)
   toTodo     Todo     @relation("ToTodo", fields: [toTodoId], references: [id], onDelete: Cascade)
@@ -67,6 +70,7 @@ model TodoLog {
   minutesSpent Int?
   metadata     Json?
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   todo         Todo     @relation(fields: [todoId], references: [id], onDelete: Cascade)
 }
@@ -98,11 +102,12 @@ model Roadmap {
 }
 
 model ActionEdge {
-  id        String   @id @default(uuid())
+  id         String   @id @default(uuid())
   fromTodoId String
-  toTodoId  String
-  type      String   // 'insight' | 'try' | 'pre_do'
-  createdAt DateTime @default(now())
+  toTodoId   String
+  type       String   // 'insight' | 'try' | 'pre_do'
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Pluse {
@@ -112,4 +117,18 @@ model Pluse {
   intervals    Json     // number[]
   repeatCount  Int      @default(1)
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model SyncEvent {
+  id        String   @id @default(uuid())
+  table     String
+  operation String   // 'create' | 'update' | 'delete'
+  recordId  String
+  payload   Json?
+  deviceId  String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([recordId])
 }

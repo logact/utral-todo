@@ -10,6 +10,7 @@ export interface ActionEdge {
   toTodoId: string;
   type: ActionEdgeType;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export type TodoRelationType = 'depends_on' | 'blocked_by' | 'parent_of' | 'source_from' | 'assign_from';
@@ -20,6 +21,7 @@ export interface TodoRelation {
   toTodoId: string;
   type: TodoRelationType;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface RepeatRule {
@@ -41,6 +43,7 @@ export interface Todo {
   estimatedMinutes: number;
   tags: string[];
   createdAt: Date;
+  updatedAt: Date;
   dueDate?: Date;
   scheduledDate?: Date;
   startedAt?: Date;
@@ -58,6 +61,7 @@ export interface TodoLog {
   minutesSpent?: number;
   metadata?: Record<string, unknown>;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface RoadmapStep {
@@ -93,6 +97,7 @@ export interface Pluse {
   intervals: number[];
   repeatCount: number;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface TimerSession {
@@ -121,6 +126,7 @@ export interface Project {
   status: 'active' | 'archived';
   deadline?: Date;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface SyncPayload {
@@ -132,6 +138,16 @@ export interface SyncPayload {
   actionEdges?: ActionEdge[];
   pluses?: Pluse[];
   timerSessions?: TimerSession[];
+}
+
+export interface SyncEvent {
+  id: string;
+  table: string;
+  operation: 'create' | 'update' | 'delete';
+  recordId: string;
+  payload?: unknown;
+  deviceId: string;
+  createdAt: Date;
 }
 
 export interface SyncConfig {
