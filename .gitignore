@@ -53,3 +53,5 @@ lerna-debug.log*
 *.sqlite3
 prisma/server/
 apps/server/prisma/server/
+data/
+apps/server/data/

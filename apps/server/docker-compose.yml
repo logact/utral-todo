@@ -8,11 +8,11 @@ services:
     ports:
       - "8080:3001"
     volumes:
-      - ./data:/app/data
+      - /var/lib/utral-todo/data:/var/lib/utral-todo/data
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - DATABASE_URL=file:./data/utraltodo.sqlite
+      - DATABASE_URL=${DATABASE_URL}
       - API_TOKEN=${API_TOKEN:-}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/health"]
