@@ -7,7 +7,7 @@ public final class Todo {
     public var projectId: String?
     public var parentId: String?
     public var title: String
-    public var description: String
+    public var desc: String
     public var instructions: String
     public var status: String
     public var priority: String
@@ -38,7 +38,7 @@ public final class Todo {
         projectId: String? = nil,
         parentId: String? = nil,
         title: String,
-        description: String = "",
+        desc: String = "",
         instructions: String = "",
         status: String = "pending",
         priority: String = "medium",
@@ -57,7 +57,7 @@ public final class Todo {
         self.projectId = projectId
         self.parentId = parentId
         self.title = title
-        self.description = description
+        self.desc = desc
         self.instructions = instructions
         self.status = status
         self.priority = priority

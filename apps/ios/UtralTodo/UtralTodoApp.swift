@@ -1,6 +1,4 @@
 import SwiftUI
-import SwiftData
-import UtralTodoKit
 
 @main
 struct UtralTodoApp: App {
@@ -9,8 +7,7 @@ struct UtralTodoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .modelContainer(sharedModelContainer)
+            WebShellView()
         }
     }
 }
@@ -44,25 +41,3 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 extension Notification.Name {
     static let apnsTokenReceived = Notification.Name("apnsTokenReceived")
 }
-
-@MainActor
-let sharedModelContainer: ModelContainer = {
-    let schema = Schema([
-        Todo.self,
-        Project.self,
-        TodoLog.self,
-        TodoRelation.self,
-        TimerSession.self,
-        Roadmap.self,
-        ActionEdge.self,
-        Pluse.self,
-        SyncEvent.self,
-        DeviceRegistration.self,
-    ])
-    let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-    do {
-        return try ModelContainer(for: schema, configurations: [config])
-    } catch {
-        fatalError("Failed to create ModelContainer: \(error)")
-    }
-}()

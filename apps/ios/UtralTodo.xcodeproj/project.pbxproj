@@ -1,0 +1,486 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0BF984AC5962E8985D27D1FA /* NotificationModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = E03684DA61ED93A4C9207A09 /* NotificationModule.swift */; };
+		0E2CB69805BCA43789FDB17F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB39167164E8924E9758F5D6 /* ContentView.swift */; };
+		225FEA0E154424C6EE8242C1 /* WebShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD668E6975967C384F78BA88 /* WebShellView.swift */; };
+		59D1F6FCB07D83BC2FD2FFBC /* UtralTodoWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5B851173E5D8686ADBF4F49 /* UtralTodoWatchApp.swift */; };
+		668FA453F3726256C0918518 /* TimerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3ECF47550EBE23440BCF1A /* TimerView.swift */; };
+		6E08FA5F3AB8D100DCBC8D39 /* UtralTodoKit in Frameworks */ = {isa = PBXBuildFile; productRef = 44CD9760A9E1E08914BD5D4A /* UtralTodoKit */; };
+		99C3B40DC4A44073B699EB37 /* BridgeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5882C828E3B2B9519D54C8 /* BridgeTypes.swift */; };
+		99FA030D16CC2D384441A27F /* CameraModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A42F5255CFADA11105E9DB5 /* CameraModule.swift */; };
+		9B4E09311ECACC3FA9DABAC6 /* BridgeModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E5089D42C8015FF5D4B43E /* BridgeModule.swift */; };
+		A938DCA7B216233B579A7B54 /* StorageModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC31CE3DD5A4789D835358A /* StorageModule.swift */; };
+		AACBF0FA81C333EBF1F04F67 /* TodoDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE711F480922FCFB163AA4A1 /* TodoDetailView.swift */; };
+		D812C68C1A87F2B00672EE7D /* DeviceModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 911495CC6EC4FA74FDAD8236 /* DeviceModule.swift */; };
+		D9CA3B710032C855B2DB8AE5 /* BridgeMessageHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5037EB04CC1B7C289DB0408 /* BridgeMessageHandler.swift */; };
+		DB467F054F35C7670FC6F936 /* HapticModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */; };
+		EDAD9CCBE282B34A054FB7A1 /* BridgeModuleError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DED0B62F9DC46415593765D /* BridgeModuleError.swift */; };
+		EF0FD73EBF62DE5BA92FC325 /* BridgeWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 916DB30A97B21B0F00F9ED98 /* BridgeWebView.swift */; };
+		F1BC9AC2EFFDE852E8D3B0EB /* UtralTodoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA58CE26ECEA19174CC1112 /* UtralTodoApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2C3ECF47550EBE23440BCF1A /* TimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerView.swift; sourceTree = "<group>"; };
+		3A42F5255CFADA11105E9DB5 /* CameraModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModule.swift; sourceTree = "<group>"; };
+		4650C39295C46F7BD720DDBA /* UtralTodoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UtralTodoKit; path = UtralTodoKit; sourceTree = SOURCE_ROOT; };
+		4C85C76B6D2CDE82D5F7CF9A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5DED0B62F9DC46415593765D /* BridgeModuleError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeModuleError.swift; sourceTree = "<group>"; };
+		64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticModule.swift; sourceTree = "<group>"; };
+		6FC31CE3DD5A4789D835358A /* StorageModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageModule.swift; sourceTree = "<group>"; };
+		83E5089D42C8015FF5D4B43E /* BridgeModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeModule.swift; sourceTree = "<group>"; };
+		911495CC6EC4FA74FDAD8236 /* DeviceModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceModule.swift; sourceTree = "<group>"; };
+		916DB30A97B21B0F00F9ED98 /* BridgeWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeWebView.swift; sourceTree = "<group>"; };
+		9406D50C1B6C77BE4FD502C8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A32FFE75563B58D201E3AB9B /* UtralTodo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = UtralTodo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AD668E6975967C384F78BA88 /* WebShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebShellView.swift; sourceTree = "<group>"; };
+		B98C33993F4D2970D8010920 /* UtralTodoWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UtralTodoWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C5037EB04CC1B7C289DB0408 /* BridgeMessageHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeMessageHandler.swift; sourceTree = "<group>"; };
+		D5B851173E5D8686ADBF4F49 /* UtralTodoWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtralTodoWatchApp.swift; sourceTree = "<group>"; };
+		DB39167164E8924E9758F5D6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E03684DA61ED93A4C9207A09 /* NotificationModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationModule.swift; sourceTree = "<group>"; };
+		EE711F480922FCFB163AA4A1 /* TodoDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoDetailView.swift; sourceTree = "<group>"; };
+		EF5882C828E3B2B9519D54C8 /* BridgeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeTypes.swift; sourceTree = "<group>"; };
+		FAA58CE26ECEA19174CC1112 /* UtralTodoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtralTodoApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		04810EBC4CC330EBA8C9F6E8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E08FA5F3AB8D100DCBC8D39 /* UtralTodoKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		02EACAB41CFB7E50DD95FEC9 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AD668E6975967C384F78BA88 /* WebShellView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		0C8D296CEA3F278D9E9AEC49 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				DB39167164E8924E9758F5D6 /* ContentView.swift */,
+				2C3ECF47550EBE23440BCF1A /* TimerView.swift */,
+				EE711F480922FCFB163AA4A1 /* TodoDetailView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		29502618C6750011BF5F8429 /* UtralTodoWatch */ = {
+			isa = PBXGroup;
+			children = (
+				9406D50C1B6C77BE4FD502C8 /* Info.plist */,
+				D5B851173E5D8686ADBF4F49 /* UtralTodoWatchApp.swift */,
+				0C8D296CEA3F278D9E9AEC49 /* Views */,
+			);
+			name = UtralTodoWatch;
+			path = ../iwatch/UtralTodoWatch;
+			sourceTree = "<group>";
+		};
+		2EE2E3F7999049179679BA5A /* NativeModules */ = {
+			isa = PBXGroup;
+			children = (
+				5DED0B62F9DC46415593765D /* BridgeModuleError.swift */,
+				3A42F5255CFADA11105E9DB5 /* CameraModule.swift */,
+				911495CC6EC4FA74FDAD8236 /* DeviceModule.swift */,
+				64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */,
+				E03684DA61ED93A4C9207A09 /* NotificationModule.swift */,
+				6FC31CE3DD5A4789D835358A /* StorageModule.swift */,
+			);
+			path = NativeModules;
+			sourceTree = "<group>";
+		};
+		374587B3E4E379A97B50D530 = {
+			isa = PBXGroup;
+			children = (
+				B9E4AAD89C6CC2079F904016 /* Packages */,
+				C2348E82F1504D8DEAB50316 /* UtralTodo */,
+				29502618C6750011BF5F8429 /* UtralTodoWatch */,
+				52AA9C8D5BDF3706BE3124BA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		52AA9C8D5BDF3706BE3124BA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A32FFE75563B58D201E3AB9B /* UtralTodo.app */,
+				B98C33993F4D2970D8010920 /* UtralTodoWatch.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9F3DC0FC6BC559481542FD46 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				C5037EB04CC1B7C289DB0408 /* BridgeMessageHandler.swift */,
+				83E5089D42C8015FF5D4B43E /* BridgeModule.swift */,
+				EF5882C828E3B2B9519D54C8 /* BridgeTypes.swift */,
+				916DB30A97B21B0F00F9ED98 /* BridgeWebView.swift */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+		B9E4AAD89C6CC2079F904016 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				4650C39295C46F7BD720DDBA /* UtralTodoKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		C2348E82F1504D8DEAB50316 /* UtralTodo */ = {
+			isa = PBXGroup;
+			children = (
+				4C85C76B6D2CDE82D5F7CF9A /* Info.plist */,
+				FAA58CE26ECEA19174CC1112 /* UtralTodoApp.swift */,
+				9F3DC0FC6BC559481542FD46 /* Bridge */,
+				2EE2E3F7999049179679BA5A /* NativeModules */,
+				02EACAB41CFB7E50DD95FEC9 /* Views */,
+			);
+			path = UtralTodo;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		29CA267AAA63262B33C2B9EB /* UtralTodoWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A7F862CEB02AB9EB279B0BC /* Build configuration list for PBXNativeTarget "UtralTodoWatch" */;
+			buildPhases = (
+				68A07C0805826EA18397057F /* Sources */,
+				04810EBC4CC330EBA8C9F6E8 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = UtralTodoWatch;
+			packageProductDependencies = (
+				44CD9760A9E1E08914BD5D4A /* UtralTodoKit */,
+			);
+			productName = UtralTodoWatch;
+			productReference = B98C33993F4D2970D8010920 /* UtralTodoWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6034054F4289F8C154B27D74 /* UtralTodo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB11A8D498284B0999AC463A /* Build configuration list for PBXNativeTarget "UtralTodo" */;
+			buildPhases = (
+				B3CF1B0FD1849902A8588DB1 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = UtralTodo;
+			packageProductDependencies = (
+			);
+			productName = UtralTodo;
+			productReference = A32FFE75563B58D201E3AB9B /* UtralTodo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1276E1B7B95BB0A0321BE48A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 9BEAF49AC8B1B441702F7BF7 /* Build configuration list for PBXProject "UtralTodo" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 374587B3E4E379A97B50D530;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FCA0E369096FFAA31B6AE34F /* XCLocalSwiftPackageReference "UtralTodoKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 52AA9C8D5BDF3706BE3124BA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6034054F4289F8C154B27D74 /* UtralTodo */,
+				29CA267AAA63262B33C2B9EB /* UtralTodoWatch */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		68A07C0805826EA18397057F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E2CB69805BCA43789FDB17F /* ContentView.swift in Sources */,
+				668FA453F3726256C0918518 /* TimerView.swift in Sources */,
+				AACBF0FA81C333EBF1F04F67 /* TodoDetailView.swift in Sources */,
+				59D1F6FCB07D83BC2FD2FFBC /* UtralTodoWatchApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B3CF1B0FD1849902A8588DB1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D9CA3B710032C855B2DB8AE5 /* BridgeMessageHandler.swift in Sources */,
+				9B4E09311ECACC3FA9DABAC6 /* BridgeModule.swift in Sources */,
+				EDAD9CCBE282B34A054FB7A1 /* BridgeModuleError.swift in Sources */,
+				99C3B40DC4A44073B699EB37 /* BridgeTypes.swift in Sources */,
+				EF0FD73EBF62DE5BA92FC325 /* BridgeWebView.swift in Sources */,
+				99FA030D16CC2D384441A27F /* CameraModule.swift in Sources */,
+				D812C68C1A87F2B00672EE7D /* DeviceModule.swift in Sources */,
+				DB467F054F35C7670FC6F936 /* HapticModule.swift in Sources */,
+				0BF984AC5962E8985D27D1FA /* NotificationModule.swift in Sources */,
+				A938DCA7B216233B579A7B54 /* StorageModule.swift in Sources */,
+				F1BC9AC2EFFDE852E8D3B0EB /* UtralTodoApp.swift in Sources */,
+				225FEA0E154424C6EE8242C1 /* WebShellView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1C2FE4B5FABB3109677AFB9F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2150AEC272302C750E7CF351 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = ../iwatch/UtralTodoWatch/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.utral.UtralTodoWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		61A6EB3E2494D0E6A6CDACBD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = ../iwatch/UtralTodoWatch/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.utral.UtralTodoWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
+		73C4453977E6F33280884E78 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = UtralTodo/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.utral.UtralTodo;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7EECC48F674632C3EAFA29D3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = UtralTodo/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.utral.UtralTodo;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		8AF53EDEA54D6CC0DD3EEC93 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4A7F862CEB02AB9EB279B0BC /* Build configuration list for PBXNativeTarget "UtralTodoWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2150AEC272302C750E7CF351 /* Debug */,
+				61A6EB3E2494D0E6A6CDACBD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9BEAF49AC8B1B441702F7BF7 /* Build configuration list for PBXProject "UtralTodo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C2FE4B5FABB3109677AFB9F /* Debug */,
+				8AF53EDEA54D6CC0DD3EEC93 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AB11A8D498284B0999AC463A /* Build configuration list for PBXNativeTarget "UtralTodo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				73C4453977E6F33280884E78 /* Debug */,
+				7EECC48F674632C3EAFA29D3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		FCA0E369096FFAA31B6AE34F /* XCLocalSwiftPackageReference "UtralTodoKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = UtralTodoKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		44CD9760A9E1E08914BD5D4A /* UtralTodoKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UtralTodoKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1276E1B7B95BB0A0321BE48A /* Project object */;
+}

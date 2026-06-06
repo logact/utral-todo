@@ -1,0 +1,43 @@
+name: UtralTodo
+options:
+  bundleIdPrefix: com.utral
+
+targets:
+  UtralTodo:
+    type: application
+    platform: iOS
+    sources:
+      - UtralTodo
+    info:
+      path: UtralTodo/Info.plist
+      properties:
+        UILaunchScreen:
+          UILaunchScreen: {}
+        UIBackgroundModes:
+          - fetch
+          - remote-notification
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.utral.UtralTodo
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.10"
+
+  UtralTodoWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: ../iwatch/UtralTodoWatch
+    dependencies:
+      - package: UtralTodoKit
+    info:
+      path: ../iwatch/UtralTodoWatch/Info.plist
+      properties:
+        WKCompanionAppBundleIdentifier: com.utral.UtralTodo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.utral.UtralTodoWatch
+        SWIFT_VERSION: "5.10"
+
+packages:
+  UtralTodoKit:
+    path: UtralTodoKit

@@ -1,150 +1,255 @@
-# Utral Todo — iOS & watchOS
+# Utral Todo — iOS
 
-Native iOS and watchOS apps for Utral Todo. Both apps are **standalone** and sync directly with your Express server.
+Native iOS app shell for Utral Todo. Runs the web app inside a WKWebView with a native bridge for platform features.
+
+The watchOS companion lives in [`apps/iwatch/`](../iwatch/).
+
+## Architecture
+
+The iOS app is now a **thin native shell** around the web app:
+
+```
+┌─────────────────────────────────────────────┐
+│  iOS App (Swift)                            │
+│  ┌───────────────────────────────────────┐  │
+│  │  WKWebView                            │  │
+│  │  ┌───────────────────────────────┐    │  │
+│  │  │  Web App (React/Vite)         │    │  │
+│  │  │  ┌─────┐ ┌─────┐ ┌─────────┐ │    │  │
+│  │  │  │ UI  │ │DB   │ │  Sync   │ │    │  │
+│  │  │  │(CSS)│ │(Dexie)│ │(SSE+API)│ │    │  │
+│  │  │  └─────┘ └─────┘ └─────────┘ │    │  │
+│  │  └───────────────────────────────┘    │  │
+│  └───────────────────────────────────────┘  │
+│              │                              │
+│              ▼                              │
+│  ┌───────────────────────────────────────┐  │
+│  │  JS ↔ Swift Bridge                    │  │
+│  │  • Haptics                            │  │
+│  │  • Push Notifications                 │  │
+│  │  • Camera (bridge to native picker)   │  │
+│  │  • Device info / push token           │  │
+│  │  • Keychain storage                   │  │
+│  └───────────────────────────────────────┘  │
+└─────────────────────────────────────────────┘
+                        │
+                        ▼
+             ┌──────────────────┐
+             │  Express Server  │
+             │  (/api/sync/*)   │
+             └──────────────────┘
+```
+
+**Why a WebView shell?**
+- Single codebase: the web app (`apps/desktop/src/`) runs on desktop (Tauri) and iOS
+- Fast iteration: develop in the browser with Vite HMR, changes reflect instantly in the simulator
+- TypeScript everywhere: no context-switching between Swift and JS
+- Native features bridged only where needed (haptics, push, camera)
 
 ## Project Structure
 
 ```
 apps/ios/
-├── UtralTodoKit/              # Shared Swift Package (models + services)
-│   ├── Package.swift
+├── UtralTodo.xcodeproj/       # Generated Xcode project (run `xcodegen generate` to rebuild)
+├── project.yml                # XcodeGen spec — edit this to change project settings
+├── UtralTodoKit/              # Shared Swift Package (kept for watchOS companion)
 │   └── Sources/
 │       ├── Models/            # SwiftData models
 │       └── Services/          # API client, sync engine
-│
-├── UtralTodo/                 # iOS app source files
-│   ├── UtralTodoApp.swift     # @main entry point
-│   ├── Views/                 # SwiftUI views
-│   └── ViewModels/            # Observable objects
-│
-└── UtralTodoWatch/            # watchOS app source files
-    ├── UtralTodoWatchApp.swift
-    └── Views/
+└── UtralTodo/                 # iOS app source files
+    ├── UtralTodoApp.swift     # @main entry point + AppDelegate
+    ├── Views/
+    │   └── WebShellView.swift # Full-screen WKWebView container
+    ├── Bridge/
+    │   ├── BridgeTypes.swift      # Message/response types
+    │   ├── BridgeModule.swift     # Module protocol
+    │   ├── BridgeMessageHandler.swift  # Routes JS → Swift calls
+    │   └── BridgeWebView.swift    # UIViewRepresentable WKWebView
+    └── NativeModules/
+        ├── HapticModule.swift       # UIImpactFeedbackGenerator
+        ├── NotificationModule.swift # UNUserNotificationCenter
+        ├── CameraModule.swift       # Camera permission bridge
+        ├── DeviceModule.swift       # Device info + push token
+        ├── StorageModule.swift      # UserDefaults bridge
+        └── BridgeModuleError.swift  # Error types
 ```
+
+## Quick Start
+
+```bash
+cd apps/ios
+
+# If you don't have xcodegen installed:
+brew install xcodegen
+
+# Generate the Xcode project (only needed if project.yml changes)
+xcodegen generate
+
+# Open in Xcode
+open UtralTodo.xcodeproj
+```
+
+Then select the **UtralTodo** scheme and run on a simulator or device.
+
+### Development mode
+
+The shell loads the web app from `http://localhost:1420` (the Vite dev server) when built in Debug. Start the desktop dev server first:
+
+```bash
+pnpm dev:desktop
+```
+
+Then run the iOS app in Xcode. Hot reload works — save a file in `apps/desktop/src/` and the iOS app updates automatically.
+
+### Production mode
+
+In Release builds, the shell loads bundled web assets from `www/index.html` in the app bundle. To bundle:
+
+```bash
+# Build the web app
+pnpm build:desktop
+
+# Copy into the iOS bundle
+cp -r apps/desktop/dist/* apps/ios/UtralTodo/www/
+```
+
+(You can automate this in a build phase script in Xcode.)
+
+## Bridge Protocol
+
+The web app communicates with native iOS via a JSON message bridge:
+
+**Web → Native:**
+```javascript
+window.webkit.messageHandlers.bridge.postMessage({
+  id: "bridge_1",
+  module: "haptic",
+  action: "impact",
+  params: { style: "medium" }
+});
+```
+
+**Native → Web (response):**
+```javascript
+window.__bridge__.resolve("bridge_1", {
+  id: "bridge_1",
+  result: true,
+  error: null
+});
+```
+
+The bridge is auto-injected into every page load at `documentStart`.
+
+## Using the Bridge from TypeScript
+
+Import from the bridge client in `apps/desktop/src/bridge/native.ts`:
+
+```typescript
+import { isNativeShell, nativeHaptic, nativeDevice, nativeNotification } from '@/bridge/native';
+
+// Check if running inside the iOS shell
+if (isNativeShell()) {
+  // Trigger haptic feedback
+  await nativeHaptic.impact('medium');
+
+  // Get device info
+  const info = await nativeDevice.getInfo();
+  console.log(info.deviceId, info.pushToken);
+
+  // Request push notification permission
+  const granted = await nativeNotification.requestPermission();
+
+  // Schedule a local notification
+  await nativeNotification.schedule({
+    id: 'todo-123',
+    title: 'Task due',
+    body: 'Review the project plan',
+    date: Date.now() + 3600000
+  });
+}
+```
+
+## Available Bridge Modules
+
+| Module | Actions | Description |
+|--------|---------|-------------|
+| `haptic` | `impact`, `notification`, `selection` | Taptic Engine feedback |
+| `notification` | `requestPermission`, `schedule`, `cancel`, `cancelAll` | Local push notifications |
+| `camera` | `checkPermission`, `capture`, `pickFromLibrary` | Camera access (delegates to web APIs) |
+| `device` | `getInfo`, `getPushToken` | Device metadata + APNS token |
+| `storage` | `getItem`, `setItem`, `removeItem`, `getAll` | UserDefaults key-value store |
+
+## Adding a New Native Module
+
+1. Create `UtralTodo/NativeModules/MyModule.swift`:
+
+```swift
+import Foundation
+
+struct MyModule: BridgeModule {
+    let name = "myModule"
+
+    func handle(action: String, params: [String: BridgeValue]) async throws -> BridgeValue {
+        switch action {
+        case "doSomething":
+            return .string("done")
+        default:
+            throw BridgeModuleError.unknownAction(action)
+        }
+    }
+}
+```
+
+2. Register it in `BridgeMessageHandler.registerDefaultModules()`.
+
+3. Add the TypeScript wrapper in `apps/desktop/src/bridge/native.ts`.
 
 ## Setup Instructions
 
-### 1. Create the Xcode Project
+### 1. Generate the Xcode project
 
-Open Xcode and create a new project:
+The project is generated from `project.yml` using [XcodeGen](https://github.com/yonaskolb/XcodeGen):
 
-1. **iOS App**: File > New > Project > App
-   - Name: `UtralTodo`
-   - Interface: SwiftUI
-   - Language: Swift
-   - Target: iOS 17+
-   - Include tests: optional
-
-2. **watchOS App**: File > New > Target > watchOS > App
-   - Name: `UtralTodoWatch`
-   - Interface: SwiftUI
-   - Target: watchOS 10+
-
-### 2. Add the Shared Package
-
-1. In Xcode, drag `apps/ios/UtralTodoKit/` into the project navigator
-2. Select "Create groups" and add to both targets (UtralTodo and UtralTodoWatch)
-3. Or use **File > Add Package Dependencies > Add Local Package** and select `UtralTodoKit/`
-
-### 3. Add Source Files to Targets
-
-**For iOS target (`UtralTodo`):**
-- Select all files in `UtralTodo/Views/` → check "UtralTodo" target
-- Select all files in `UtralTodo/ViewModels/` → check "UtralTodo" target
-- Select `UtralTodo/UtralTodoApp.swift` → check "UtralTodo" target
-
-**For watchOS target (`UtralTodoWatch`):**
-- Select all files in `UtralTodoWatch/Views/` → check "UtralTodoWatch" target
-- Select `UtralTodoWatch/UtralTodoWatchApp.swift` → check "UtralTodoWatch" target
-
-### 4. Configure Info.plist (iOS)
-
-Add to `UtralTodo/Info.plist`:
-
-```xml
-<key>UIBackgroundModes</key>
-<array>
-    <string>fetch</string>
-    <string>remote-notification</string>
-</array>
+```bash
+cd apps/ios
+xcodegen generate
 ```
 
-### 5. Enable Push Notifications
+If you modify `project.yml` (e.g., add targets, change bundle IDs), regenerate with the same command.
+
+### 2. Enable Push Notifications (optional)
 
 1. Go to [Apple Developer Portal](https://developer.apple.com/account/resources/identifiers/list)
 2. Create an App ID with "Push Notifications" capability
 3. Create an APNs Auth Key (Keys > Create Key > Apple Push Notifications service)
 4. Download the `.p8` file and note the Key ID and Team ID
 
-### 6. Configure the Server
+### 3. Configure the Server
 
 Add to `apps/server/.env`:
 
 ```
 APNS_KEY_ID=your_key_id
 APNS_TEAM_ID=your_team_id
-APNS_BUNDLE_ID=com.yourcompany.utraltodo
+APNS_BUNDLE_ID=com.utral.UtralTodo
 APNS_KEY_PATH=/path/to/AuthKey_XXX.p8
 APNS_SANDBOX=true
 ```
 
 Restart the server after updating `.env`.
 
-## Features
+## Web App Routing Note
 
-### iOS App
-- **Today view**: See scheduled todos with project colors and priorities
-- **Inbox**: Quick triage of unscheduled tasks
-- **Projects**: Browse and manage project tasks
-- **Quick create**: Fast todo entry
-- **Settings**: Server URL, API token, device registration, sync toggle
-- **Real-time sync**: SSE stream for live updates
-- **APNS**: Background sync via push notifications
-
-### watchOS App
-- **Today list**: Minimal view optimized for small screens
-- **Quick complete**: Mark tasks done from the watch face
-- **Timer**: Built-in timer for Pomodoro/time tracking
-- **Standalone**: Syncs directly with server, no iPhone required
-
-## Architecture
-
-```
-┌─────────────────┐     ┌─────────────────┐
-│   iOS App       │     │  watchOS App    │
-│  (SwiftUI)      │     │   (SwiftUI)     │
-└────────┬────────┘     └────────┬────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────────────────────────────┐
-│         UtralTodoKit (shared)           │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐ │
-│  │ SwiftData│  │ APIService│ │SyncEngine│ │
-│  │ Models  │  │  (REST) │  │(SSE+Push)│ │
-│  └─────────┘  └─────────┘  └─────────┘ │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-         ┌──────────────────┐
-         │  Express Server  │
-         │  (/api/mobile/*) │
-         │  (/api/watch/*)  │
-         │  (/api/sync/*)   │
-         └──────────────────┘
-```
-
-## Sync Strategy
-
-Same as the desktop app:
-1. **Local source of truth**: SwiftData models stored on device
-2. **Outbound changes**: Queued locally, pushed via `POST /api/sync/push`
-3. **Inbound changes**: Received via SSE stream (`GET /api/sync/stream`)
-4. **Background**: Silent APNS push triggers sync when app is backgrounded
-5. **Conflict resolution**: Last-write-wins by `updatedAt` timestamp
+The web app uses `BrowserRouter` by default. In production (loading `file://` URLs), switch to `HashRouter` or ensure your build outputs a single-page app that handles all routes at `index.html`.
 
 ## Customization
 
-To change the app bundle ID, update:
-- Xcode project settings for both targets
-- `APNS_BUNDLE_ID` in server `.env`
-- The `UtralTodoKit/Package.swift` platform requirements if needed
+To change app settings, edit `apps/ios/project.yml` and regenerate:
+
+| Setting | YAML key |
+|---------|----------|
+| Bundle ID prefix | `options.bundleIdPrefix` |
+| iOS deployment target | `targets.UtralTodo.deploymentTarget` |
+| Background modes | `targets.UtralTodo.info.properties.UIBackgroundModes` |
+
+After editing, run `xcodegen generate` in `apps/ios/` to rebuild `UtralTodo.xcodeproj`.

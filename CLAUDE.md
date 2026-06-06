@@ -1,10 +1,12 @@
 # Utral Todo — pnpm Monorepo
 
-This repo contains two apps and a shared types package:
+This repo contains four apps and a shared types package:
 
 ```
 ├── apps/
 │   ├── desktop/    # Tauri + Vite + React + Dexie
+│   ├── ios/        # SwiftUI iOS app
+│   ├── iwatch/     # SwiftUI watchOS companion
 │   └── server/     # Express + Prisma + SQLite
 └── packages/
     └── types/      # Shared TypeScript interfaces

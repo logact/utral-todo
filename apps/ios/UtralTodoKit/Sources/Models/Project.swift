@@ -5,7 +5,7 @@ import SwiftData
 public final class Project {
     @Attribute(.unique) public var id: String
     public var title: String
-    public var description: String
+    public var desc: String
     public var status: String
     public var color: String
     public var createdAt: Date
@@ -15,7 +15,7 @@ public final class Project {
     public init(
         id: String = UUID().uuidString,
         title: String,
-        description: String = "",
+        desc: String = "",
         status: String = "active",
         color: String = "#6366f1",
         createdAt: Date = Date(),
@@ -24,7 +24,7 @@ public final class Project {
     ) {
         self.id = id
         self.title = title
-        self.description = description
+        self.desc = desc
         self.status = status
         self.color = color
         self.createdAt = createdAt

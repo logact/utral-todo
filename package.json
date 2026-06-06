@@ -6,8 +6,10 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev:desktop": "pnpm --filter desktop dev",
+    "dev:mobile": "pnpm --filter mobile dev",
     "dev:server": "pnpm --filter server dev",
     "dev:all": "concurrently \"pnpm dev:server\" \"pnpm dev:desktop\" --names server,vite --prefix-colors cyan,green",
+    "dev:ios": "concurrently \"pnpm dev:server\" \"pnpm dev:mobile\" --names server,mobile --prefix-colors cyan,green",
     "tauri:dev": "pnpm --filter desktop tauri:dev",
     "tauri:build": "pnpm --filter desktop tauri:build",
     "build": "pnpm -r build",
