@@ -20,6 +20,9 @@ COPY apps/server ./apps/server
 # Re-link workspace dependencies now that source is present
 RUN pnpm install
 
+# Clean stale tsbuildinfo that may have been copied from host
+RUN find . -name "*.tsbuildinfo" -delete
+
 RUN pnpm --filter @utral/types build
 RUN pnpm --filter server db:generate
 RUN pnpm --filter server build
