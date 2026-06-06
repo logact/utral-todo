@@ -17,6 +17,9 @@ RUN pnpm install --frozen-lockfile
 COPY packages/types ./packages/types
 COPY apps/server ./apps/server
 
+# Re-link workspace dependencies now that source is present
+RUN pnpm install
+
 RUN pnpm --filter @utral/types build
 RUN pnpm --filter server db:generate
 RUN pnpm --filter server build
