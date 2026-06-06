@@ -340,6 +340,33 @@ router.post('/', async (req, res) => {
         }
         accepted.timerSessions = count;
       }
+
+      // Merge repeatOccurrences
+      if (payload.repeatOccurrences?.length) {
+        let count = 0;
+        for (const item of payload.repeatOccurrences) {
+          const id = item.id as string;
+          const data = {
+            id,
+            templateId: item.templateId as string,
+            date: toDate(item.date) ?? new Date(),
+            status: item.status as string,
+            completedAt: toDate(item.completedAt),
+            materializedTodoId: (item.materializedTodoId as string) || null,
+            createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
+          };
+
+          const existing = await tx.repeatOccurrence.findUnique({ where: { id } });
+          if (existing) {
+            await tx.repeatOccurrence.update({ where: { id }, data });
+          } else {
+            await tx.repeatOccurrence.create({ data });
+          }
+          count++;
+        }
+        accepted.repeatOccurrences = count;
+      }
     });
 
     res.json({ accepted });
@@ -360,6 +387,7 @@ router.get('/', async (_req, res) => {
     const actionEdges = await prisma.actionEdge.findMany();
     const pluses = await prisma.pluse.findMany();
     const timerSessions = await prisma.timerSession.findMany();
+    const repeatOccurrences = await prisma.repeatOccurrence.findMany();
 
     res.json({
       todos: todos.map((t) => ({
@@ -386,6 +414,7 @@ router.get('/', async (_req, res) => {
         ...s,
         intervals: typeof s.intervals === 'string' ? JSON.parse(s.intervals) : s.intervals,
       })),
+      repeatOccurrences,
     });
   } catch (err) {
     console.error('Sync pull error:', err);

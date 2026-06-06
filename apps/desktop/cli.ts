@@ -7,6 +7,9 @@ interface CliResponse {
   error?: string;
 }
 
+let outputFormat: 'json' | 'table' = 'table';
+let quietMode = false;
+
 async function callCli(entity: string, action: string, args: Record<string, unknown>): Promise<CliResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
@@ -30,6 +33,34 @@ async function callCli(entity: string, action: string, args: Record<string, unkn
       return { error: 'Desktop app is not running. Start it first, then try again.' };
     }
     return { error: msg };
+  }
+}
+
+function setOutputFormat(format: string) {
+  if (format === 'json' || format === 'table') {
+    outputFormat = format;
+  }
+}
+
+function printOutput(data: unknown) {
+  if (outputFormat === 'json') {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      console.log('(no results)');
+      return;
+    }
+    if (typeof data[0] === 'object') {
+      printTable(data as Record<string, unknown>[]);
+    } else {
+      for (const item of data) console.log(String(item));
+    }
+  } else if (typeof data === 'object' && data !== null) {
+    console.log(JSON.stringify(data, null, 2));
+  } else {
+    console.log(String(data));
   }
 }
 
@@ -61,275 +92,660 @@ function parseArgs(argv: string[]) {
   const out: Record<string, string | boolean> = {};
   for (const arg of argv) {
     if (arg.startsWith('--')) {
-      const [k, v] = arg.slice(2).split('=', 2);
-      out[k] = v ?? true;
+      const eq = arg.indexOf('=');
+      if (eq > 2) {
+        const k = arg.slice(2, eq);
+        let v = arg.slice(eq + 1);
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        out[k] = v;
+      } else {
+        out[arg.slice(2)] = true;
+      }
     }
   }
   return out;
 }
 
+function extractGlobalFlags(args: Record<string, string | boolean>) {
+  if (args.format) setOutputFormat(String(args.format));
+  if (args.quiet) quietMode = true;
+}
+
+function removeGlobalFlags(args: Record<string, string | boolean>) {
+  const { format, quiet, ...rest } = args;
+  return rest;
+}
+
+function fail(message: string): never {
+  console.error('Error:', message);
+  process.exit(1);
+}
+
+// ─── Projects ───────────────────────────────────────────────────────────────
+
 async function listProjects(args: Record<string, string | boolean>) {
   const res = await callCli('projects', 'list', args);
   if (res.error) { console.error(res.error); return; }
   const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'title', 'status', 'color', 'createdAt'])));
+  printOutput(rows.map((r) => pick(r, ['id', 'title', 'status', 'color', 'deadline', 'createdAt'])));
 }
 
 async function getProject(id: string) {
   const res = await callCli('projects', 'get', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log(JSON.stringify(res.data, null, 2));
+  printOutput(res.data);
 }
 
 async function createProject(args: Record<string, string | boolean>) {
   const res = await callCli('projects', 'create', args);
   if (res.error) { console.error(res.error); return; }
-  console.log('Created:', (res.data as Record<string, unknown>)?.id);
+  if (!quietMode) console.log('Created project:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
 }
 
 async function updateProject(id: string, args: Record<string, string | boolean>) {
   const res = await callCli('projects', 'update', { ...args, id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Updated:', id);
+  if (!quietMode) console.log('Updated project:', id);
+  printOutput(res.data);
 }
 
 async function deleteProject(id: string) {
   const res = await callCli('projects', 'delete', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  if (!quietMode) console.log('Deleted project:', id);
 }
+
+// ─── Todos ──────────────────────────────────────────────────────────────────
 
 async function listTodos(args: Record<string, string | boolean>) {
   const res = await callCli('todos', 'list', args);
   if (res.error) { console.error(res.error); return; }
   const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
+  printOutput(rows.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate'])));
 }
 
 async function getTodo(id: string) {
   const res = await callCli('todos', 'get', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log(JSON.stringify(res.data, null, 2));
+  printOutput(res.data);
 }
 
 async function createTodo(args: Record<string, string | boolean>) {
   const res = await callCli('todos', 'create', args);
   if (res.error) { console.error(res.error); return; }
-  console.log('Created:', (res.data as Record<string, unknown>)?.id);
+  if (!quietMode) console.log('Created todo:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
 }
 
 async function updateTodo(id: string, args: Record<string, string | boolean>) {
   const res = await callCli('todos', 'update', { ...args, id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Updated:', id);
+  if (!quietMode) console.log('Updated todo:', id);
+  printOutput(res.data);
 }
 
 async function deleteTodo(id: string) {
   const res = await callCli('todos', 'delete', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  if (!quietMode) console.log('Deleted todo:', id);
 }
 
-async function listPluses() {
-  const res = await callCli('pluses', 'list', {});
+async function setTodoStatus(id: string, args: Record<string, string | boolean>) {
+  const status = String(args.status ?? args._positional ?? '');
+  const res = await callCli('todos', 'status', { id, status });
   if (res.error) { console.error(res.error); return; }
-  const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'name', 'description', 'intervals', 'repeatCount', 'createdAt'])));
+  if (!quietMode) console.log(`Status updated to ${status}:`, id);
+  printOutput(res.data);
 }
 
-async function getPluse(id: string) {
-  const res = await callCli('pluses', 'get', { id });
+async function scheduleTodo(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('todos', 'schedule', { id, date: args.date });
   if (res.error) { console.error(res.error); return; }
-  console.log(JSON.stringify(res.data, null, 2));
+  if (!quietMode) console.log(args.date ? 'Scheduled:' : 'Unscheduled:', id);
+  printOutput(res.data);
 }
 
-async function createPluse(args: Record<string, string | boolean>) {
-  const res = await callCli('pluses', 'create', args);
+async function unscheduleTodo(id: string) {
+  const res = await callCli('todos', 'unschedule', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Created:', (res.data as Record<string, unknown>)?.id);
+  if (!quietMode) console.log('Unscheduled:', id);
+  printOutput(res.data);
 }
 
-async function updatePluse(id: string, args: Record<string, string | boolean>) {
-  const res = await callCli('pluses', 'update', { ...args, id });
+async function todosToday() {
+  const res = await callCli('todos', 'today', {});
   if (res.error) { console.error(res.error); return; }
-  console.log('Updated:', id);
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
 }
 
-async function deletePluse(id: string) {
-  const res = await callCli('pluses', 'delete', { id });
+async function todosUnscheduled() {
+  const res = await callCli('todos', 'unscheduled', {});
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
 }
 
-async function listTimerSessions() {
-  const res = await callCli('timer-sessions', 'list', {});
+async function todosOverdue() {
+  const res = await callCli('todos', 'overdue', {});
   if (res.error) { console.error(res.error); return; }
-  const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'name', 'type', 'status', 'elapsedSeconds', 'createdAt'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
 }
 
-async function getTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'get', { id });
+async function todosInbox() {
+  const res = await callCli('todos', 'inbox', {});
   if (res.error) { console.error(res.error); return; }
-  console.log(JSON.stringify(res.data, null, 2));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate'])));
 }
 
-async function deleteTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'delete', { id });
+async function searchTodos(query: string) {
+  const res = await callCli('todos', 'search', { query });
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate'])));
 }
 
-async function listRoadmaps() {
-  const res = await callCli('roadmaps', 'list', {});
+async function reorderTodo(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('todos', 'reorder', { id, order: args.order ?? args._positional });
   if (res.error) { console.error(res.error); return; }
-  const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'goalTodoId', 'createdAt', 'updatedAt'])));
+  if (!quietMode) console.log('Reordered todo:', id);
 }
 
-async function getRoadmap(id: string) {
-  const res = await callCli('roadmaps', 'get', { id });
+async function bulkReorderTodos(args: Record<string, string | boolean>) {
+  const res = await callCli('todos', 'reorder-bulk', { ids: args.ids });
   if (res.error) { console.error(res.error); return; }
-  console.log(JSON.stringify(res.data, null, 2));
+  if (!quietMode) console.log('Reordered todos');
 }
 
-async function deleteRoadmap(id: string) {
-  const res = await callCli('roadmaps', 'delete', { id });
+async function assignTodos(args: Record<string, string | boolean>) {
+  const res = await callCli('todos', 'assign', { ids: args.ids, projectId: args.projectId });
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  if (!quietMode) console.log('Assigned todos');
 }
 
-async function listActionEdges() {
-  const res = await callCli('action-edges', 'list', {});
+async function getSpawnedTodos(id: string) {
+  const res = await callCli('todos', 'spawned', { id });
   if (res.error) { console.error(res.error); return; }
-  const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'fromTodoId', 'toTodoId', 'type', 'createdAt'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority'])));
 }
 
-async function deleteActionEdge(id: string) {
-  const res = await callCli('action-edges', 'delete', { id });
+async function getTodoInstances(id: string) {
+  const res = await callCli('todos', 'instances', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'scheduledDate'])));
 }
+
+async function setRepeatRule(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('todos', 'repeat-rule', { id, rule: args.rule });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Repeat rule updated:', id);
+}
+
+async function syncRepeatTodos(args: Record<string, string | boolean>) {
+  const res = await callCli('todos', 'sync-repeats', { startDate: args.startDate, endDate: args.endDate });
+  if (res.error) { console.error(res.error); return; }
+  printOutput(res.data);
+}
+
+// ─── Relations ──────────────────────────────────────────────────────────────
+
+async function listRelations(args: Record<string, string | boolean>) {
+  const res = await callCli('relations', 'list', args);
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'fromTodoId', 'toTodoId', 'type', 'createdAt'])));
+}
+
+async function createRelation(args: Record<string, string | boolean>) {
+  const res = await callCli('relations', 'create', args);
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Created relation:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
+}
+
+async function deleteRelation(id: string) {
+  const res = await callCli('relations', 'delete', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Deleted relation:', id);
+}
+
+async function sourceChain(id: string) {
+  const res = await callCli('relations', 'source-chain', { id });
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority'])));
+}
+
+// ─── Todo Logs ──────────────────────────────────────────────────────────────
 
 async function listTodoLogs(args: Record<string, string | boolean>) {
   const res = await callCli('todo-logs', 'list', args);
   if (res.error) { console.error(res.error); return; }
-  const rows = (res.data as Record<string, unknown>[]) || [];
-  printTable(rows.map((r) => pick(r, ['id', 'todoId', 'type', 'content', 'minutesSpent', 'createdAt'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'todoId', 'type', 'content', 'minutesSpent', 'createdAt'])));
+}
+
+async function createTodoLog(args: Record<string, string | boolean>) {
+  const res = await callCli('todo-logs', 'create', args);
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Created todo log:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
 }
 
 async function deleteTodoLog(id: string) {
   const res = await callCli('todo-logs', 'delete', { id });
   if (res.error) { console.error(res.error); return; }
-  console.log('Deleted:', id);
+  if (!quietMode) console.log('Deleted todo log:', id);
 }
+
+// ─── Roadmaps ───────────────────────────────────────────────────────────────
+
+async function listRoadmaps() {
+  const res = await callCli('roadmaps', 'list', {});
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'goalTodoId', 'createdAt', 'updatedAt'])));
+}
+
+async function getRoadmap(id: string) {
+  const res = await callCli('roadmaps', 'get', { id });
+  if (res.error) { console.error(res.error); return; }
+  printOutput(res.data);
+}
+
+async function createRoadmap(args: Record<string, string | boolean>) {
+  const res = await callCli('roadmaps', 'create', args);
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Created roadmap:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
+}
+
+async function updateRoadmap(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('roadmaps', 'update', { ...args, id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Updated roadmap:', id);
+  printOutput(res.data);
+}
+
+async function setRoadmapPhases(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('roadmaps', 'set-phases', { id, phases: args.phases });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Updated roadmap phases:', id);
+  printOutput(res.data);
+}
+
+async function deleteRoadmap(id: string) {
+  const res = await callCli('roadmaps', 'delete', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Deleted roadmap:', id);
+}
+
+// ─── Action Edges ───────────────────────────────────────────────────────────
+
+async function listActionEdges() {
+  const res = await callCli('action-edges', 'list', {});
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'fromTodoId', 'toTodoId', 'type', 'createdAt'])));
+}
+
+async function createActionEdge(args: Record<string, string | boolean>) {
+  const res = await callCli('action-edges', 'create', args);
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Created action edge:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
+}
+
+async function deleteActionEdge(id: string) {
+  const res = await callCli('action-edges', 'delete', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Deleted action edge:', id);
+}
+
+async function actionEdgesForTodo(todoId: string) {
+  const res = await callCli('action-edges', 'for-todo', { id: todoId });
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'fromTodoId', 'toTodoId', 'type'])));
+}
+
+// ─── Pluses ─────────────────────────────────────────────────────────────────
+
+async function listPluses() {
+  const res = await callCli('pluses', 'list', {});
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'name', 'description', 'intervals', 'repeatCount', 'createdAt'])));
+}
+
+async function getPluse(id: string) {
+  const res = await callCli('pluses', 'get', { id });
+  if (res.error) { console.error(res.error); return; }
+  printOutput(res.data);
+}
+
+async function createPluse(args: Record<string, string | boolean>) {
+  const res = await callCli('pluses', 'create', args);
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Created pluse:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
+}
+
+async function updatePluse(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('pluses', 'update', { ...args, id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Updated pluse:', id);
+  printOutput(res.data);
+}
+
+async function deletePluse(id: string) {
+  const res = await callCli('pluses', 'delete', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Deleted pluse:', id);
+}
+
+// ─── Timer Sessions ─────────────────────────────────────────────────────────
+
+async function listTimerSessions(args: Record<string, string | boolean>) {
+  const res = await callCli('timer-sessions', 'list', args);
+  if (res.error) { console.error(res.error); return; }
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'name', 'type', 'status', 'elapsedSeconds', 'todoId', 'createdAt'])));
+}
+
+async function getTimerSession(id: string) {
+  const res = await callCli('timer-sessions', 'get', { id });
+  if (res.error) { console.error(res.error); return; }
+  printOutput(res.data);
+}
+
+async function createTimerSession(args: Record<string, string | boolean>) {
+  const res = await callCli('timer-sessions', 'create', args);
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Created timer session:', (res.data as Record<string, unknown>)?.id);
+  printOutput(res.data);
+}
+
+async function updateTimerSession(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('timer-sessions', 'update', { ...args, id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Updated timer session:', id);
+  printOutput(res.data);
+}
+
+async function startTimerSession(id: string) {
+  const res = await callCli('timer-sessions', 'start', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Started timer session:', id);
+  printOutput(res.data);
+}
+
+async function pauseTimerSession(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('timer-sessions', 'pause', { id, elapsedSeconds: args.elapsedSeconds });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Paused timer session:', id);
+  printOutput(res.data);
+}
+
+async function resumeTimerSession(id: string) {
+  const res = await callCli('timer-sessions', 'resume', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Resumed timer session:', id);
+  printOutput(res.data);
+}
+
+async function stopTimerSession(id: string) {
+  const res = await callCli('timer-sessions', 'stop', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Stopped timer session:', id);
+  printOutput(res.data);
+}
+
+async function deleteTimerSession(id: string) {
+  const res = await callCli('timer-sessions', 'delete', { id });
+  if (res.error) { console.error(res.error); return; }
+  if (!quietMode) console.log('Deleted timer session:', id);
+}
+
+// ─── All Data ───────────────────────────────────────────────────────────────
 
 async function wipeAll() {
   const res = await callCli('all-data', 'wipe', {});
   if (res.error) { console.error(res.error); return; }
-  console.log('All data wiped.');
+  if (!quietMode) console.log('All data wiped.');
 }
 
-const usage = `Usage:
-  pnpm cli <entity> <action> [options]
+// ─── Stats ──────────────────────────────────────────────────────────────────
 
-Entities:
-  projects, todos, pluses, timer-sessions, roadmaps, action-edges, todo-logs, all-data
+async function showStats() {
+  const res = await callCli('stats', '', {});
+  if (res.error) { console.error(res.error); return; }
+  printOutput(res.data);
+}
 
-Actions:
-  list, get, create, update, delete
+// ─── Usage ──────────────────────────────────────────────────────────────────
+
+const usage = `Utral Todo Desktop CLI
+
+Usage: pnpm cli <entity> <action> [id] [options]
+
+Global Flags:
+  --format=json|table       Output format (default: table)
+  --quiet                   Suppress status messages
+
+Entities & Actions:
+
+  projects
+    list [--status=active|archived]
+    get <id>
+    create --title="..." [--description=...] [--color=#3b82f6]
+    update <id> [--title=...] [--status=...] [--color=...]
+    delete <id>
+
+  todos
+    list [--status=...] [--priority=...] [--projectId=...] [--tag=...]
+    get <id>
+    create --title="..." [--priority=low|medium|high] [--projectId=...]
+    update <id> [--title=...] [--status=...] [--priority=...]
+    delete <id>
+    status <id> pending|in_progress|done
+    schedule <id> --date=YYYY-MM-DD
+    unschedule <id>
+    today
+    unscheduled
+    overdue
+    inbox
+    search <query>
+    reorder <id> --order=N
+    reorder-bulk --ids=id1,id2,id3
+    assign --ids=id1,id2 --projectId=...
+    spawned <id>
+    instances <id>
+    repeat-rule <id> --rule='{"type":"daily"}'
+    sync-repeats [--startDate=YYYY-MM-DD] [--endDate=YYYY-MM-DD]
+
+  relations
+    list [--fromTodoId=...] [--toTodoId=...] [--type=...]
+    create --fromTodoId=... --toTodoId=... --type=...
+    delete <id>
+    source-chain <id>
+
+  todo-logs
+    list [--todoId=...] [--type=...]
+    create --todoId=... --type=... --content="..."
+    delete <id>
+
+  roadmaps
+    list
+    get <id>
+    create --goalTodoId=... [--phases='[...]']
+    update <id> [--phases=...]
+    set-phases <id> --phases='[...]'
+    delete <id>
+
+  action-edges
+    list
+    create --fromTodoId=... --toTodoId=... --type=insight|try|pre_do
+    delete <id>
+    for-todo <todoId>
+
+  pluses
+    list
+    get <id>
+    create --name="..." [--intervals='[1500,300]'] [--repeatCount=N]
+    update <id> [--name=...] [--intervals=...]
+    delete <id>
+
+  timer-sessions
+    list [--status=...] [--type=...]
+    get <id>
+    create --type=stopwatch|pluse [--name=...] [--pluseId=...]
+    update <id> [--name=...] [--status=...]
+    start <id>
+    pause <id> [--elapsedSeconds=N]
+    resume <id>
+    stop <id>
+    delete <id>
+
+  stats
+    Show overview statistics
+
+  all-data
+    wipe
 
 Examples:
-  pnpm cli projects list
-  pnpm cli projects list --status=active
-  pnpm cli projects get <id>
-  pnpm cli projects create --title="My Project" --color="#ff0000"
-  pnpm cli projects update <id> --status=archived
-  pnpm cli projects delete <id>
+  pnpm cli todos today --format=json
+  pnpm cli todos search "fix bug" --format=json
+  pnpm cli todos create --title="New feature" --priority=high
+  pnpm cli timer-sessions start <id>
+  pnpm cli stats --format=json
+`;
 
-  pnpm cli todos list --status=pending --priority=high
-  pnpm cli todos create --title="Fix bug" --projectId=<id> --dueDate=2026-06-10
-  pnpm cli todos update <id> --status=done
-
-  pnpm cli all-data wipe`;
+// ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
   const [, , entity, action, ...rest] = process.argv;
-  const args = parseArgs(rest);
+  const allArgs = parseArgs(rest);
+  extractGlobalFlags(allArgs);
+  const args = removeGlobalFlags(allArgs);
+
   const id = rest.find((a) => !a.startsWith('--'));
+  if (id) args._positional = id;
 
   try {
     switch (entity) {
       case 'projects':
         switch (action) {
           case 'list': await listProjects(args); break;
-          case 'get': if (!id) throw new Error('ID required'); await getProject(id); break;
+          case 'get': if (!id) fail('ID required'); await getProject(id); break;
           case 'create': await createProject(args); break;
-          case 'update': if (!id) throw new Error('ID required'); await updateProject(id, args); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deleteProject(id); break;
-          default: console.log(usage);
+          case 'update': if (!id) fail('ID required'); await updateProject(id, args); break;
+          case 'delete': if (!id) fail('ID required'); await deleteProject(id); break;
+          default: console.log(usage); process.exit(2);
         }
         break;
+
       case 'todos':
         switch (action) {
           case 'list': await listTodos(args); break;
-          case 'get': if (!id) throw new Error('ID required'); await getTodo(id); break;
+          case 'get': if (!id) fail('ID required'); await getTodo(id); break;
           case 'create': await createTodo(args); break;
-          case 'update': if (!id) throw new Error('ID required'); await updateTodo(id, args); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deleteTodo(id); break;
-          default: console.log(usage);
+          case 'update': if (!id) fail('ID required'); await updateTodo(id, args); break;
+          case 'delete': if (!id) fail('ID required'); await deleteTodo(id); break;
+          case 'status': if (!id) fail('ID required'); await setTodoStatus(id, args); break;
+          case 'schedule': if (!id) fail('ID required'); await scheduleTodo(id, args); break;
+          case 'unschedule': if (!id) fail('ID required'); await unscheduleTodo(id); break;
+          case 'today': await todosToday(); break;
+          case 'unscheduled': await todosUnscheduled(); break;
+          case 'overdue': await todosOverdue(); break;
+          case 'inbox': await todosInbox(); break;
+          case 'search': if (!id) fail('Search query required'); await searchTodos(id); break;
+          case 'reorder': if (!id) fail('ID required'); await reorderTodo(id, args); break;
+          case 'reorder-bulk': await bulkReorderTodos(args); break;
+          case 'assign': await assignTodos(args); break;
+          case 'spawned': if (!id) fail('ID required'); await getSpawnedTodos(id); break;
+          case 'instances': if (!id) fail('ID required'); await getTodoInstances(id); break;
+          case 'repeat-rule': if (!id) fail('ID required'); await setRepeatRule(id, args); break;
+          case 'sync-repeats': await syncRepeatTodos(args); break;
+          default: console.log(usage); process.exit(2);
         }
         break;
-      case 'pluses':
+
+      case 'relations':
         switch (action) {
-          case 'list': await listPluses(); break;
-          case 'get': if (!id) throw new Error('ID required'); await getPluse(id); break;
-          case 'create': await createPluse(args); break;
-          case 'update': if (!id) throw new Error('ID required'); await updatePluse(id, args); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deletePluse(id); break;
-          default: console.log(usage);
+          case 'list': await listRelations(args); break;
+          case 'create': await createRelation(args); break;
+          case 'delete': if (!id) fail('ID required'); await deleteRelation(id); break;
+          case 'source-chain': if (!id) fail('ID required'); await sourceChain(id); break;
+          default: console.log(usage); process.exit(2);
         }
         break;
-      case 'timer-sessions':
-        switch (action) {
-          case 'list': await listTimerSessions(); break;
-          case 'get': if (!id) throw new Error('ID required'); await getTimerSession(id); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deleteTimerSession(id); break;
-          default: console.log(usage);
-        }
-        break;
-      case 'roadmaps':
-        switch (action) {
-          case 'list': await listRoadmaps(); break;
-          case 'get': if (!id) throw new Error('ID required'); await getRoadmap(id); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deleteRoadmap(id); break;
-          default: console.log(usage);
-        }
-        break;
-      case 'action-edges':
-        switch (action) {
-          case 'list': await listActionEdges(); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deleteActionEdge(id); break;
-          default: console.log(usage);
-        }
-        break;
+
       case 'todo-logs':
         switch (action) {
           case 'list': await listTodoLogs(args); break;
-          case 'delete': if (!id) throw new Error('ID required'); await deleteTodoLog(id); break;
-          default: console.log(usage);
+          case 'create': await createTodoLog(args); break;
+          case 'delete': if (!id) fail('ID required'); await deleteTodoLog(id); break;
+          default: console.log(usage); process.exit(2);
         }
         break;
+
+      case 'roadmaps':
+        switch (action) {
+          case 'list': await listRoadmaps(); break;
+          case 'get': if (!id) fail('ID required'); await getRoadmap(id); break;
+          case 'create': await createRoadmap(args); break;
+          case 'update': if (!id) fail('ID required'); await updateRoadmap(id, args); break;
+          case 'set-phases': if (!id) fail('ID required'); await setRoadmapPhases(id, args); break;
+          case 'delete': if (!id) fail('ID required'); await deleteRoadmap(id); break;
+          default: console.log(usage); process.exit(2);
+        }
+        break;
+
+      case 'action-edges':
+        switch (action) {
+          case 'list': await listActionEdges(); break;
+          case 'create': await createActionEdge(args); break;
+          case 'delete': if (!id) fail('ID required'); await deleteActionEdge(id); break;
+          case 'for-todo': if (!id) fail('todoId required'); await actionEdgesForTodo(id); break;
+          default: console.log(usage); process.exit(2);
+        }
+        break;
+
+      case 'pluses':
+        switch (action) {
+          case 'list': await listPluses(); break;
+          case 'get': if (!id) fail('ID required'); await getPluse(id); break;
+          case 'create': await createPluse(args); break;
+          case 'update': if (!id) fail('ID required'); await updatePluse(id, args); break;
+          case 'delete': if (!id) fail('ID required'); await deletePluse(id); break;
+          default: console.log(usage); process.exit(2);
+        }
+        break;
+
+      case 'timer-sessions':
+        switch (action) {
+          case 'list': await listTimerSessions(args); break;
+          case 'get': if (!id) fail('ID required'); await getTimerSession(id); break;
+          case 'create': await createTimerSession(args); break;
+          case 'update': if (!id) fail('ID required'); await updateTimerSession(id, args); break;
+          case 'start': if (!id) fail('ID required'); await startTimerSession(id); break;
+          case 'pause': if (!id) fail('ID required'); await pauseTimerSession(id, args); break;
+          case 'resume': if (!id) fail('ID required'); await resumeTimerSession(id); break;
+          case 'stop': if (!id) fail('ID required'); await stopTimerSession(id); break;
+          case 'delete': if (!id) fail('ID required'); await deleteTimerSession(id); break;
+          default: console.log(usage); process.exit(2);
+        }
+        break;
+
+      case 'stats':
+        if (!action || String(action).startsWith('--')) { await showStats(); break; }
+        console.log(usage); process.exit(2);
+        break;
+
       case 'all-data':
         if (action === 'wipe') await wipeAll();
-        else console.log(usage);
+        else { console.log(usage); process.exit(2); }
         break;
+
       default:
         console.log(usage);
+        process.exit(2);
     }
   } catch (err) {
-    console.error(err instanceof Error ? err.message : err);
+    console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 }

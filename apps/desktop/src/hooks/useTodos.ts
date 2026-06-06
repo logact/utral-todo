@@ -1,36 +1,37 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   getTodaysTodos,
   getAllTodos,
+  getUnscheduledTodos,
   createTodo,
   updateTodo,
   deleteTodo,
   updateTodoStatus,
   updateTodoSchedule,
-  syncRepeatInstances,
   getOverdueTodos,
   getInProgressTodos,
   getUnscheduledHighPriorityTodos,
   reorderTodos,
+  getRepeatTemplates,
 } from '../db/todos';
-import { getAllRelations } from '../db/relations';
-import type { Todo, TodoStatus, Priority } from '../types';
+import { setOccurrenceStatus } from '../db/repeatOccurrences';
+import { db } from '../db/database';
+import {
+  isVirtualTodoId,
+  parseVirtualTodoId,
+  dateMatchesRule,
+  computeVirtualTodo,
+} from '../types';
+import type { Todo, TodoStatus, Priority, RepeatOccurrence } from '../types';
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [repeatInstanceIds, setRepeatInstanceIds] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const [all, relations] = await Promise.all([getAllTodos(), getAllRelations()]);
-    const instanceIds = new Set(
-      relations
-        .filter((r) => r.type === 'assign_from')
-        .map((r) => r.toTodoId)
-    );
+    const all = await getAllTodos();
     setTodos(all);
-    setRepeatInstanceIds(instanceIds);
     setIsLoading(false);
   }, []);
 
@@ -93,6 +94,12 @@ export function useTodos() {
   }, []);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
+    if (isVirtualTodoId(id)) {
+      const parsed = parseVirtualTodoId(id);
+      if (!parsed) return;
+      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      return;
+    }
     await updateTodoStatus(id, status);
     setTodos((prev) =>
       prev.map((t) =>
@@ -113,15 +120,7 @@ export function useTodos() {
     });
   }, []);
 
-  const syncRepeats = useCallback(async (start: Date, end: Date) => {
-    const count = await syncRepeatInstances(start, end);
-    if (count > 0) {
-      const all = await getAllTodos();
-      setTodos(all);
-    }
-  }, []);
-
-  return { todos, isLoading, refresh, add, addSubTodo, update, remove, setStatus, reorder, syncRepeats, repeatInstanceIds };
+  return { todos, isLoading, refresh, add, addSubTodo, update, remove, setStatus, reorder };
 }
 
 function isDescendant(todo: Todo, ancestorId: string, allTodos: Todo[]): boolean {
@@ -148,6 +147,19 @@ export function useTodaysTodos() {
   }, [refresh]);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
+    if (isVirtualTodoId(id)) {
+      const parsed = parseVirtualTodoId(id);
+      if (!parsed) return;
+      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      setTodos((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? { ...t, status, completedAt: status === 'done' ? new Date() : undefined }
+            : t
+        )
+      );
+      return;
+    }
     await updateTodoStatus(id, status);
     setTodos((prev) =>
       prev.map((t) =>
@@ -189,13 +201,23 @@ export function useTodayData() {
   }, [refresh]);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
-    await updateTodoStatus(id, status);
     const updateTodoFn = (t: Todo) => ({
       ...t,
       status,
       completedAt: status === 'done' ? new Date() : undefined,
       startedAt: status === 'in_progress' ? new Date() : status === 'pending' ? undefined : t.startedAt,
     });
+
+    if (isVirtualTodoId(id)) {
+      const parsed = parseVirtualTodoId(id);
+      if (!parsed) return;
+      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      setTodos((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
+      setOverdue((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
+      return;
+    }
+
+    await updateTodoStatus(id, status);
     setTodos((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
     setOverdue((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
     setInProgress((prev) => {
@@ -204,20 +226,19 @@ export function useTodayData() {
         if (exists) {
           return prev.map((t) => (t.id === id ? updateTodoFn(t) : t));
         }
-        // Find the todo from other lists so we can add it to inProgress
         const todo = [...todos, ...overdue, ...suggested].find((t) => t.id === id);
         if (todo) {
           return [...prev, updateTodoFn(todo)];
         }
         return prev;
       }
-      // Remove from inProgress if no longer in_progress
       return prev.filter((t) => t.id !== id);
     });
     setSuggested((prev) => prev.filter((t) => t.id !== id));
   }, [todos, overdue, suggested]);
 
   const schedule = useCallback(async (id: string, date: Date) => {
+    if (isVirtualTodoId(id)) return;
     await updateTodoSchedule(id, date);
     // Refresh everything since a scheduled todo may now appear in today's list
     const [todayTodos, overdueTodos, progressTodos, suggestTodos] =
@@ -245,21 +266,29 @@ export function useTodayData() {
   };
 }
 
+function dateKey(date: Date): string {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split('T')[0];
+}
+
 export function useScheduleTodos() {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const [realTodos, setRealTodos] = useState<Todo[]>([]);
+  const [templates, setTemplates] = useState<Todo[]>([]);
+  const [occurrences, setOccurrences] = useState<RepeatOccurrence[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(start.getDate() - 30);
-    const end = new Date(today);
-    end.setDate(end.getDate() + 60);
-    await syncRepeatInstances(start, end);
-
-    const all = await getAllTodos();
-    setTodos(all);
+    const [allScheduled, unscheduled, allTemplates, allOccurrences] = await Promise.all([
+      db.todos.where('scheduledDate').above(new Date(0)).and((t) => t.status !== 'done').toArray(),
+      getUnscheduledTodos(),
+      getRepeatTemplates(),
+      db.repeatOccurrences.toArray(),
+    ]);
+    setRealTodos([...allScheduled, ...unscheduled]);
+    setTemplates(allTemplates);
+    setOccurrences(allOccurrences);
     setIsLoading(false);
   }, []);
 
@@ -267,42 +296,92 @@ export function useScheduleTodos() {
     refresh();
   }, [refresh]);
 
+  const todoMapByDate = useMemo(() => {
+    const map = new Map<string, Todo[]>();
+
+    for (const todo of realTodos) {
+      if (!todo.scheduledDate || todo.status === 'done') continue;
+      const key = dateKey(todo.scheduledDate);
+      const list = map.get(key);
+      if (list) list.push(todo);
+      else map.set(key, [todo]);
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - 30);
+    const windowEnd = new Date(today);
+    windowEnd.setDate(windowEnd.getDate() + 90);
+
+    const occurrencesByKey = new Map<string, RepeatOccurrence>();
+    for (const o of occurrences) {
+      occurrencesByKey.set(`${o.templateId}:${dateKey(o.date)}`, o);
+    }
+
+    for (const template of templates) {
+      if (!template.repeatRule) continue;
+      const current = new Date(windowStart);
+      const ruleEnd = template.repeatRule.endDate
+        ? new Date(template.repeatRule.endDate).setHours(0, 0, 0, 0)
+        : undefined;
+
+      while (current.getTime() <= windowEnd.getTime()) {
+        if (ruleEnd && current.getTime() > ruleEnd) break;
+        if (dateMatchesRule(current, template.repeatRule)) {
+          const key = dateKey(current);
+          const occurrence = occurrencesByKey.get(`${template.id}:${key}`);
+          if (!occurrence?.materializedTodoId) {
+            const virtual = computeVirtualTodo(template, new Date(current), occurrence);
+            const list = map.get(key);
+            if (list) list.push(virtual);
+            else map.set(key, [virtual]);
+          }
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    }
+
+    return map;
+  }, [realTodos, templates, occurrences]);
+
   const schedule = useCallback(async (id: string, date: Date | undefined) => {
+    if (isVirtualTodoId(id)) return;
     await updateTodoSchedule(id, date);
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, scheduledDate: date } : t))
-    );
+    setRealTodos((prev) => prev.map((t) => (t.id === id ? { ...t, scheduledDate: date } : t)));
   }, []);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
+    if (isVirtualTodoId(id)) {
+      const parsed = parseVirtualTodoId(id);
+      if (!parsed) return;
+      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      setOccurrences((prev) => {
+        const existing = prev.find((o) => o.id === id);
+        if (existing) {
+          return prev.map((o) =>
+            o.id === id
+              ? { ...o, status, completedAt: status === 'done' ? new Date() : undefined, updatedAt: new Date() }
+              : o
+          );
+        }
+        return [...prev, { id, templateId: parsed.templateId, date: new Date(parsed.dateKey), status, completedAt: status === 'done' ? new Date() : undefined, createdAt: new Date(), updatedAt: new Date() }];
+      });
+      return;
+    }
     await updateTodoStatus(id, status);
-    setTodos((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? { ...t, status, completedAt: status === 'done' ? new Date() : undefined }
-          : t
-      )
-    );
+    setRealTodos((prev) => prev.map((t) => (t.id === id ? { ...t, status, completedAt: status === 'done' ? new Date() : undefined } : t)));
   }, []);
 
   const getForDate = useCallback(
-    (date: Date) => {
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 1);
-      return todos.filter((t) => {
-        if (!t.scheduledDate) return false;
-        const d = new Date(t.scheduledDate);
-        return d >= start && d < end;
-      });
-    },
-    [todos]
+    (date: Date) => todoMapByDate.get(dateKey(date)) ?? [],
+    [todoMapByDate]
   );
 
-  const unscheduled = useCallback(() => {
-    return todos.filter((t) => !t.scheduledDate && t.status !== 'done');
-  }, [todos]);
+  const unscheduledTodos = useMemo(
+    () => realTodos.filter((t) => !t.scheduledDate && t.status !== 'done'),
+    [realTodos]
+  );
 
-  return { todos, isLoading, refresh, schedule, setStatus, getForDate, unscheduled };
+  return { todos: realTodos, isLoading, refresh, schedule, setStatus, getForDate, unscheduled: unscheduledTodos };
 }

@@ -1,6 +1,6 @@
 import { db } from './database';
-import { createRelation } from './relations';
 import { onLocalChange } from './syncEngine';
+import { dateMatchesRule, computeVirtualTodo } from '../types';
 import type { Todo, TodoStatus, Priority, RepeatRule } from '../types';
 
 export async function createTodo(
@@ -18,6 +18,7 @@ export async function createTodo(
     repeatRule?: RepeatRule;
     order?: number;
     isGoal?: boolean;
+    status?: TodoStatus;
   }
 ): Promise<Todo> {
   const now = new Date();
@@ -26,7 +27,7 @@ export async function createTodo(
     title,
     description: options?.description ?? '',
     instructions: options?.instructions ?? '',
-    status: 'pending',
+    status: options?.status ?? 'pending',
     priority: options?.priority ?? 'medium',
     estimatedMinutes: options?.estimatedMinutes ?? 60,
     tags: options?.tags ?? [],
@@ -162,19 +163,131 @@ export async function updateTodoSchedule(
   onLocalChange('todos', 'update', id).catch(() => {});
 }
 
+// ─── Virtual Instance Computation ───
+
+export async function getVirtualTodosForDate(date: Date): Promise<Todo[]> {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+
+  const templates = await getRepeatTemplates();
+  if (templates.length === 0) return [];
+
+  // Get all occurrences for these templates on this date in one query
+  const templateIds = templates.map((t) => t.id);
+  const allOccurrences = await db.repeatOccurrences.toArray();
+  const dateKey = d.toISOString().split('T')[0];
+  const occurrencesByTemplate = new Map<string, typeof allOccurrences[0]>();
+  for (const o of allOccurrences) {
+    if (!templateIds.includes(o.templateId)) continue;
+    const oDateKey = new Date(o.date).toISOString().split('T')[0];
+    if (oDateKey === dateKey) {
+      occurrencesByTemplate.set(o.templateId, o);
+    }
+  }
+
+  // Get materialized todo IDs for this date
+  const materializedIds = new Set<string>();
+  for (const o of allOccurrences) {
+    const oDateKey = new Date(o.date).toISOString().split('T')[0];
+    if (oDateKey === dateKey && o.materializedTodoId) {
+      materializedIds.add(o.materializedTodoId);
+    }
+  }
+
+  const virtualTodos: Todo[] = [];
+  for (const template of templates) {
+    if (!template.repeatRule) continue;
+    if (!dateMatchesRule(d, template.repeatRule)) continue;
+
+    // Check if there's already a materialized todo for this date
+    const occurrence = occurrencesByTemplate.get(template.id);
+    if (occurrence?.materializedTodoId) {
+      // The materialized todo will be fetched separately
+      continue;
+    }
+
+    virtualTodos.push(computeVirtualTodo(template, d, occurrence));
+  }
+
+  return virtualTodos;
+}
+
+export async function getVirtualTodosForDateRange(
+  start: Date,
+  end: Date
+): Promise<Todo[]> {
+  const templates = await getRepeatTemplates();
+  if (templates.length === 0) return [];
+
+  const virtualTodos: Todo[] = [];
+  const endTime = new Date(end).setHours(0, 0, 0, 0);
+
+  // Pre-load all occurrences in range
+  const allOccurrences = await db.repeatOccurrences.toArray();
+  const occurrencesByKey = new Map<string, typeof allOccurrences[0]>();
+  for (const o of allOccurrences) {
+    const key = `${o.templateId}:${new Date(o.date).toISOString().split('T')[0]}`;
+    occurrencesByKey.set(key, o);
+  }
+
+  for (const template of templates) {
+    if (!template.repeatRule) continue;
+
+    const current = new Date(start);
+    current.setHours(0, 0, 0, 0);
+    const ruleEnd = template.repeatRule.endDate
+      ? new Date(template.repeatRule.endDate).setHours(0, 0, 0, 0)
+      : undefined;
+
+    while (current.getTime() <= endTime) {
+      if (ruleEnd && current.getTime() > ruleEnd) break;
+
+      if (dateMatchesRule(current, template.repeatRule)) {
+        const dateKey = current.toISOString().split('T')[0];
+        const occurrence = occurrencesByKey.get(`${template.id}:${dateKey}`);
+
+        if (!occurrence?.materializedTodoId) {
+          virtualTodos.push(computeVirtualTodo(template, new Date(current), occurrence));
+        }
+      }
+
+      current.setDate(current.getDate() + 1);
+    }
+  }
+
+  return virtualTodos;
+}
+
+// ─── Query Functions (merge real + virtual) ───
+
 export async function getTodaysTodos(): Promise<Todo[]> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const all = await db.todos.toArray();
-  return all.filter((t) => {
-    if (t.status === 'done') return false;
-    if (!t.scheduledDate) return false;
-    const d = new Date(t.scheduledDate);
-    return d >= today && d < tomorrow;
-  });
+  const realTodos = await db.todos
+    .where('scheduledDate')
+    .between(today, tomorrow)
+    .and((t) => t.status !== 'done')
+    .toArray();
+
+  const virtualTodos = await getVirtualTodosForDate(today);
+
+  // Filter out virtual todos whose template is already represented by a materialized todo
+  const materializedIds = new Set(
+    (await db.repeatOccurrences.toArray())
+      .filter((o) => {
+        const d = new Date(o.date);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime() === today.getTime() && o.materializedTodoId;
+      })
+      .map((o) => o.materializedTodoId!)
+  );
+
+  const filteredReal = realTodos.filter((t) => !materializedIds.has(t.id));
+
+  return [...filteredReal, ...virtualTodos];
 }
 
 export async function getTodosForDate(date: Date): Promise<Todo[]> {
@@ -183,27 +296,27 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const all = await db.todos.toArray();
-  return all.filter((t) => {
-    if (!t.scheduledDate) return false;
-    const d = new Date(t.scheduledDate);
-    return d >= start && d < end;
-  });
+  const realTodos = await db.todos.where('scheduledDate').between(start, end).toArray();
+  const virtualTodos = await getVirtualTodosForDate(date);
+
+  // Filter out materialized todos from real results (they're already there)
+  return [...realTodos, ...virtualTodos];
 }
 
 export async function getUnscheduledTodos(): Promise<Todo[]> {
-  const all = await db.todos.toArray();
-  return all.filter((t) => !t.scheduledDate && t.status !== 'done');
+  return db.todos
+    .filter((t) => !t.scheduledDate && t.status !== 'done')
+    .toArray();
 }
 
 export async function getOverdueTodos(): Promise<Todo[]> {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const all = await db.todos.toArray();
-  return all.filter((t) => {
-    if (t.status === 'done' || !t.dueDate) return false;
-    return new Date(t.dueDate) < now;
-  });
+  return db.todos
+    .where('dueDate')
+    .below(now)
+    .and((t) => t.status !== 'done')
+    .toArray();
 }
 
 export async function getInProgressTodos(): Promise<Todo[]> {
@@ -211,99 +324,17 @@ export async function getInProgressTodos(): Promise<Todo[]> {
 }
 
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
-  const all = await db.todos.toArray();
-  return all.filter(
-    (t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high'
-  );
+  return db.todos
+    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high')
+    .toArray();
 }
 
 export async function getTodosByTag(tag: string): Promise<Todo[]> {
-  const all = await db.todos.toArray();
-  return all.filter((t) => t.tags.includes(tag));
+  return db.todos.filter((t) => t.tags.includes(tag)).toArray();
 }
 
 export async function getRepeatTemplates(): Promise<Todo[]> {
-  const all = await db.todos.toArray();
-  return all.filter((t) => t.repeatRule !== undefined);
-}
-
-export async function createRepeatInstance(
-  template: Todo,
-  scheduledDate: Date
-): Promise<Todo> {
-  const instance = await createTodo(template.title, {
-    description: template.description,
-    instructions: template.instructions,
-    priority: template.priority,
-    estimatedMinutes: template.estimatedMinutes,
-    projectId: template.projectId,
-    tags: [...template.tags],
-    scheduledDate,
-  });
-
-  await createRelation(template.id, instance.id, 'assign_from');
-  return instance;
-}
-
-export async function syncRepeatInstances(
-  _startDate: Date,
-  _endDate: Date
-): Promise<number> {
-  const templates = await getRepeatTemplates();
-  let createdCount = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  for (const template of templates) {
-    if (!template.repeatRule) continue;
-    const rule = template.repeatRule;
-    const endDate = rule.endDate ? new Date(rule.endDate) : new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
-
-    if (rule.type === 'daily') {
-      for (let d = new Date(today); d <= endDate; d.setDate(d.getDate() + 1)) {
-        const exists = await checkInstanceExists(template.id, new Date(d));
-        if (!exists) {
-          await createRepeatInstance(template, new Date(d));
-          createdCount++;
-        }
-      }
-    } else if (rule.type === 'weekly' && rule.weekDays) {
-      for (let d = new Date(today); d <= endDate; d.setDate(d.getDate() + 1)) {
-        if (rule.weekDays.includes(d.getDay())) {
-          const exists = await checkInstanceExists(template.id, new Date(d));
-          if (!exists) {
-            await createRepeatInstance(template, new Date(d));
-            createdCount++;
-          }
-        }
-      }
-    } else if (rule.type === 'every_n_days' && rule.interval) {
-      for (let d = new Date(today); d <= endDate; d.setDate(d.getDate() + rule.interval)) {
-        const exists = await checkInstanceExists(template.id, new Date(d));
-        if (!exists) {
-          await createRepeatInstance(template, new Date(d));
-          createdCount++;
-        }
-      }
-    }
-  }
-
-  return createdCount;
-}
-
-async function checkInstanceExists(templateId: string, date: Date): Promise<boolean> {
-  const relations = await db.relations.where('fromTodoId').equals(templateId).and((r) => r.type === 'assign_from').toArray();
-  for (const rel of relations) {
-    const instance = await db.todos.get(rel.toTodoId);
-    if (instance && instance.scheduledDate) {
-      const d = new Date(instance.scheduledDate);
-      d.setHours(0, 0, 0, 0);
-      const target = new Date(date);
-      target.setHours(0, 0, 0, 0);
-      if (d.getTime() === target.getTime()) return true;
-    }
-  }
-  return false;
+  return db.todos.filter((t) => t.repeatRule !== undefined).toArray();
 }
 
 export async function updateRepeatRule(

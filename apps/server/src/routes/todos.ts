@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../index.js';
 import type { Todo } from '@prisma/client';
 import { logChange } from '../sync/log.js';
+import { getVirtualTodosForDate } from '../lib/virtualTodos.js';
 
 function startOfDay(date: Date): Date {
   const result = new Date(date);
@@ -51,13 +52,16 @@ router.get('/', async (req, res) => {
     const start = startOfDay(d);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
-    const todos = await prisma.todo.findMany({
-      where: {
-        scheduledDate: { gte: start, lt: end },
-      },
-      orderBy: { order: 'asc' },
-    });
-    return res.json(todos);
+    const [realTodos, virtualTodos] = await Promise.all([
+      prisma.todo.findMany({
+        where: {
+          scheduledDate: { gte: start, lt: end },
+        },
+        orderBy: { order: 'asc' },
+      }),
+      getVirtualTodosForDate(d),
+    ]);
+    return res.json([...realTodos, ...virtualTodos]);
   }
 
   if (unscheduled === 'true') {

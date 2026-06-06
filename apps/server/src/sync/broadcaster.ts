@@ -202,5 +202,19 @@ export async function applyChange(
       }
       break;
     }
+    case 'repeatOccurrence': {
+      if (operation === 'delete') {
+        await prisma.repeatOccurrence.delete({ where: { id: recordId } }).catch(() => {});
+      } else {
+        const data = payload as Record<string, unknown>;
+        const existing = await prisma.repeatOccurrence.findUnique({ where: { id: recordId } });
+        if (existing) {
+          await prisma.repeatOccurrence.update({ where: { id: recordId }, data: data as never });
+        } else {
+          await prisma.repeatOccurrence.create({ data: data as never });
+        }
+      }
+      break;
+    }
   }
 }

@@ -1,4 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+
+function calcTotalMinutes(intervals: number[], repeatCount: number): number {
+  const totalSeconds = intervals.reduce((s, d) => s + d, 0) * repeatCount;
+  return Math.round(totalSeconds / 60);
+}
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Play,

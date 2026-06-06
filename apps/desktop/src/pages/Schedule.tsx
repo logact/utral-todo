@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import {
   Calendar,
   Clock,
@@ -9,6 +9,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { useScheduleTodos } from '../hooks/useTodos';
+import type { Todo, TodoStatus } from '../types';
 import {
   addDays,
   addMinutes,
@@ -161,14 +162,208 @@ function TimeEditor({
   );
 }
 
+const TodoItemRow = memo(function TodoItemRow({
+  todo,
+  schedule,
+  setStatus,
+  editingTimeTodoId,
+  setEditingTimeTodoId,
+}: {
+  todo: Todo;
+  schedule: (id: string, date: Date | undefined) => void;
+  setStatus: (id: string, status: TodoStatus) => void;
+  editingTimeTodoId: string | null;
+  setEditingTimeTodoId: (id: string | null) => void;
+}) {
+  const isDone = todo.status === 'done';
+  const isEditingTime = editingTimeTodoId === todo.id;
+  return (
+    <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+      <button
+        onClick={() => setStatus(todo.id, isDone ? 'pending' : 'done')}
+        className="shrink-0"
+      >
+        {isDone ? (
+          <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+        ) : (
+          <Circle className="w-5 h-5 text-slate-300 dark:text-slate-600 hover:text-indigo-400 transition-colors" />
+        )}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <p
+          className={`text-sm font-medium ${
+            isDone
+              ? 'text-slate-400 dark:text-slate-500 line-through'
+              : 'text-slate-900 dark:text-slate-100'
+          }`}
+        >
+          {todo.title}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          {todo.scheduledDate && (
+            <span className="relative inline-flex items-center">
+              <button
+                onClick={() => setEditingTimeTodoId(todo.id)}
+                className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+                title="Click to change time"
+              >
+                <Pencil className="w-2.5 h-2.5" />
+                {formatTime(todo.scheduledDate)}
+              </button>
+              {isEditingTime && (
+                <div className="absolute top-full left-0 mt-1">
+                  <TimeEditor
+                    date={new Date(todo.scheduledDate)}
+                    onChange={(newDate) => schedule(todo.id, newDate)}
+                    onClose={() => setEditingTimeTodoId(null)}
+                  />
+                </div>
+              )}
+            </span>
+          )}
+          {todo.scheduledDate && (
+            <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
+          )}
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            {formatDuration(todo.estimatedMinutes)}
+          </span>
+        </div>
+      </div>
+
+      <button
+        onClick={() => schedule(todo.id, undefined)}
+        className="text-xs text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors shrink-0"
+      >
+        Unschedule
+      </button>
+    </div>
+  );
+});
+
+const DayDetailPanel = memo(function DayDetailPanel({
+  date,
+  dayTodos,
+  todayStr,
+  schedule,
+  setStatus,
+  editingTimeTodoId,
+  setEditingTimeTodoId,
+}: {
+  date: Date;
+  dayTodos: Todo[];
+  todayStr: string;
+  schedule: (id: string, date: Date | undefined) => void;
+  setStatus: (id: string, status: TodoStatus) => void;
+  editingTimeTodoId: string | null;
+  setEditingTimeTodoId: (id: string | null) => void;
+}) {
+  const totalMinutes = dayTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
+
+  const periods: TimeOfDay[] = ['morning', 'afternoon', 'evening'];
+  const grouped = useMemo(() => {
+    const map = new Map<TimeOfDay, Todo[]>();
+    for (const p of periods) map.set(p, []);
+    for (const todo of dayTodos) {
+      const tod = getTimeOfDay(todo.scheduledDate);
+      map.get(tod)!.push(todo);
+    }
+    for (const p of periods) {
+      const list = map.get(p)!;
+      list.sort((a, b) => {
+        if (a.scheduledDate && b.scheduledDate) {
+          return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
+        }
+        return 0;
+      });
+    }
+    return map;
+  }, [dayTodos]);
+
+  return (
+    <div className="border-t border-slate-100 dark:border-slate-800 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+          <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            {date.toDateString() === todayStr ? 'Today' : formatDateShort(date)}
+          </h2>
+        </div>
+        {dayTodos.length > 0 && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {dayTodos.length} todo{dayTodos.length > 1 ? 's' : ''} · {formatDuration(totalMinutes)}
+          </span>
+        )}
+      </div>
+
+      {dayTodos.length === 0 ? (
+        <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">
+          No todos scheduled for this day
+        </p>
+      ) : (
+        <div className="space-y-5">
+          {periods.map((tod) => {
+            const list = grouped.get(tod)!;
+            if (list.length === 0) return null;
+            return (
+              <div key={tod}>
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                  {timeOfDayLabel(tod)}
+                </h3>
+                <div className="space-y-2">
+                  {list.map((todo) => (
+                    <TodoItemRow
+                      key={todo.id}
+                      todo={todo}
+                      schedule={schedule}
+                      setStatus={setStatus}
+                      editingTimeTodoId={editingTimeTodoId}
+                      setEditingTimeTodoId={setEditingTimeTodoId}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export function Schedule() {
-  const { todos, isLoading, schedule, setStatus, getForDate, unscheduled } =
+  const { todos, isLoading, schedule, setStatus, getForDate, unscheduled: unscheduledTodos } =
     useScheduleTodos();
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [viewDate, setViewDate] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [editingTimeTodoId, setEditingTimeTodoId] = useState<string | null>(null);
   const [customTime, setCustomTime] = useState<string>('09:00');
+
+  // Memoized computed values
+  const weekDates = useMemo(() => {
+    const ws = getWeekStart(viewDate);
+    return Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+  }, [viewDate]);
+
+  const monthGrid = useMemo(() => getMonthGrid(viewDate), [viewDate]);
+
+  const yearViewData = useMemo(() => {
+    const year = viewDate.getFullYear();
+    return Array.from({ length: 12 }, (_, m) => {
+      const monthDate = new Date(year, m, 1);
+      const grid = getMonthGrid(monthDate);
+      const monthTodos = todos.filter((t) => {
+        if (!t.scheduledDate) return false;
+        const d = new Date(t.scheduledDate);
+        return d.getFullYear() === year && d.getMonth() === m;
+      });
+      const totalMinutes = monthTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
+      return { monthDate, grid, monthTodos, totalMinutes };
+    });
+  }, [viewDate, todos]);
+
+  const selectedDateTodos = useMemo(() => getForDate(selectedDate), [getForDate, selectedDate]);
 
   // Navigation
   function goPrev() {
@@ -240,158 +435,25 @@ export function Schedule() {
 
   const todayStr = new Date().toDateString();
 
-  // Day detail panel (shared across day/week/month views)
-  function renderDayDetail(date: Date) {
-    const dayTodos = getForDate(date);
-    const totalMinutes = dayTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
-
-    const periods: TimeOfDay[] = ['morning', 'afternoon', 'evening'];
-    const grouped = new Map<TimeOfDay, typeof dayTodos>();
-    for (const p of periods) grouped.set(p, []);
-    for (const todo of dayTodos) {
-      const tod = getTimeOfDay(todo.scheduledDate);
-      grouped.get(tod)!.push(todo);
-    }
-
-    // Sort each group by time
-    for (const p of periods) {
-      const list = grouped.get(p)!;
-      list.sort((a, b) => {
-        if (a.scheduledDate && b.scheduledDate) {
-          return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
-        }
-        return 0;
-      });
-    }
-
-    function renderTodoItem(todo: (typeof dayTodos)[0]) {
-      const isDone = todo.status === 'done';
-      const isEditingTime = editingTimeTodoId === todo.id;
-      return (
-        <div
-          key={todo.id}
-          className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg"
-        >
-          <button
-            onClick={() => setStatus(todo.id, isDone ? 'pending' : 'done')}
-            className="shrink-0"
-          >
-            {isDone ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-            ) : (
-              <Circle className="w-5 h-5 text-slate-300 dark:text-slate-600 hover:text-indigo-400 transition-colors" />
-            )}
-          </button>
-
-          <div className="flex-1 min-w-0">
-            <p
-              className={`text-sm font-medium ${
-                isDone
-                  ? 'text-slate-400 dark:text-slate-500 line-through'
-                  : 'text-slate-900 dark:text-slate-100'
-              }`}
-            >
-              {todo.title}
-            </p>
-            <div className="flex items-center gap-2 mt-0.5">
-              {todo.scheduledDate && (
-                <span className="relative inline-flex items-center">
-                  <button
-                    onClick={() => setEditingTimeTodoId(todo.id)}
-                    className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-                    title="Click to change time"
-                  >
-                    <Pencil className="w-2.5 h-2.5" />
-                    {formatTime(todo.scheduledDate)}
-                  </button>
-                  {isEditingTime && (
-                    <div className="absolute top-full left-0 mt-1">
-                      <TimeEditor
-                        date={new Date(todo.scheduledDate!)}
-                        onChange={(newDate) => schedule(todo.id, newDate)}
-                        onClose={() => setEditingTimeTodoId(null)}
-                      />
-                    </div>
-                  )}
-                </span>
-              )}
-              {todo.scheduledDate && (
-                <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
-              )}
-              <span className="text-xs text-slate-400 dark:text-slate-500">
-                {formatDuration(todo.estimatedMinutes)}
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => schedule(todo.id, undefined)}
-            className="text-xs text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors shrink-0"
-          >
-            Unschedule
-          </button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="border-t border-slate-100 dark:border-slate-800 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            <h2 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              {date.toDateString() === todayStr
-                ? 'Today'
-                : formatDateShort(date)}
-            </h2>
-          </div>
-          {dayTodos.length > 0 && (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {dayTodos.length} todo{dayTodos.length > 1 ? 's' : ''} · {formatDuration(totalMinutes)}
-            </span>
-          )}
-        </div>
-
-        {dayTodos.length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">
-            No todos scheduled for this day
-          </p>
-        ) : (
-          <div className="space-y-5">
-            {periods.map((tod) => {
-              const list = grouped.get(tod)!;
-              if (list.length === 0) return null;
-              return (
-                <div key={tod}>
-                  <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    {timeOfDayLabel(tod)}
-                  </h3>
-                  <div className="space-y-2">
-                    {list.map(renderTodoItem)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   // Day view
   function renderDayView() {
     return (
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-        {renderDayDetail(viewDate)}
+        <DayDetailPanel
+          date={viewDate}
+          dayTodos={getForDate(viewDate)}
+          todayStr={todayStr}
+          schedule={schedule}
+          setStatus={setStatus}
+          editingTimeTodoId={editingTimeTodoId}
+          setEditingTimeTodoId={setEditingTimeTodoId}
+        />
       </div>
     );
   }
 
   // Week view
   function renderWeekView() {
-    const ws = getWeekStart(viewDate);
-    const weekDates = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
-
     return (
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="grid grid-cols-7 divide-x divide-slate-100 dark:divide-slate-800">
@@ -454,14 +516,21 @@ export function Schedule() {
             );
           })}
         </div>
-        {renderDayDetail(selectedDate)}
+        <DayDetailPanel
+          date={selectedDate}
+          dayTodos={selectedDateTodos}
+          todayStr={todayStr}
+          schedule={schedule}
+          setStatus={setStatus}
+          editingTimeTodoId={editingTimeTodoId}
+          setEditingTimeTodoId={setEditingTimeTodoId}
+        />
       </div>
     );
   }
 
   // Month view
   function renderMonthView() {
-    const grid = getMonthGrid(viewDate);
     const currentMonth = viewDate.getMonth();
 
     return (
@@ -479,7 +548,7 @@ export function Schedule() {
         </div>
         {/* Day grid */}
         <div className="grid grid-cols-7">
-          {grid.map((date, idx) => {
+          {monthGrid.map((date, idx) => {
             const inMonth = date.getMonth() === currentMonth;
             const isToday = date.toDateString() === todayStr;
             const isSelected = selectedDate.toDateString() === date.toDateString();
@@ -541,29 +610,24 @@ export function Schedule() {
             );
           })}
         </div>
-        {renderDayDetail(selectedDate)}
+        <DayDetailPanel
+          date={selectedDate}
+          dayTodos={selectedDateTodos}
+          todayStr={todayStr}
+          schedule={schedule}
+          setStatus={setStatus}
+          editingTimeTodoId={editingTimeTodoId}
+          setEditingTimeTodoId={setEditingTimeTodoId}
+        />
       </div>
     );
   }
 
   // Year view
   function renderYearView() {
-    const year = viewDate.getFullYear();
-    const months = Array.from({ length: 12 }, (_, m) => {
-      const monthDate = new Date(year, m, 1);
-      const grid = getMonthGrid(monthDate);
-      const monthTodos = todos.filter((t) => {
-        if (!t.scheduledDate) return false;
-        const d = new Date(t.scheduledDate);
-        return d.getFullYear() === year && d.getMonth() === m;
-      });
-      const totalMinutes = monthTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
-      return { monthDate, grid, monthTodos, totalMinutes };
-    });
-
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {months.map(({ monthDate, grid, monthTodos, totalMinutes }, mIdx) => (
+        {yearViewData.map(({ monthDate, grid, monthTodos, totalMinutes }, mIdx) => (
           <button
             key={mIdx}
             onClick={() => {
@@ -616,7 +680,6 @@ export function Schedule() {
 
   // Schedule / reschedule panel — all non-done todos
   function renderSchedulePanel() {
-    const unscheduledTodos = unscheduled();
     const scheduledElsewhere = todos.filter(
       (t) =>
         t.status !== 'done' &&

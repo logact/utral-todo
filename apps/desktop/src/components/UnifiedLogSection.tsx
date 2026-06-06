@@ -471,7 +471,7 @@ export function UnifiedLogSection({
   const grouped = groupLogsByDayAndSession(logs);
 
   const logList = (
-    <div ref={scrollRef} className={`flex-1 overflow-y-auto px-5 py-3 space-y-4 ${floatingInput ? 'pb-4 max-h-[calc(100vh-300px)]' : 'max-h-96'}`}>
+    <div ref={scrollRef} className={`flex-1 overflow-y-auto px-5 py-3 space-y-4 ${floatingInput ? 'max-h-[calc(100vh-300px)]' : 'max-h-96'}`}>
       {isLoading ? (
         <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">
           Loading...
@@ -514,6 +514,8 @@ export function UnifiedLogSection({
           </div>
         ))
       )}
+      {/* Spacer for WebKit scroll padding bug */}
+      {floatingInput && <div className="h-16" />}
     </div>
   );
 

@@ -31,6 +31,17 @@ export interface RepeatRule {
   endDate?: Date;
 }
 
+export interface RepeatOccurrence {
+  id: string;
+  templateId: string;
+  date: Date;
+  status: TodoStatus;
+  completedAt?: Date;
+  materializedTodoId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Todo {
   id: string;
   projectId?: string;
@@ -140,6 +151,7 @@ export interface SyncPayload {
   actionEdges?: ActionEdge[];
   pluses?: Pluse[];
   timerSessions?: TimerSession[];
+  repeatOccurrences?: RepeatOccurrence[];
 }
 
 export interface SyncEvent {
@@ -241,3 +253,13 @@ export interface ApnsPayload {
   operation?: string;
   recordId?: string;
 }
+
+export {
+  formatDateKey,
+  makeVirtualTodoId,
+  isVirtualTodoId,
+  parseVirtualTodoId,
+  dateMatchesRule,
+  getDatesForRule,
+  computeVirtualTodo,
+} from './repeat.js';

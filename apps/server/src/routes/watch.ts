@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../index.js';
 import { logChange } from '../sync/log.js';
+import { getVirtualTodosForDate } from '../lib/virtualTodos.js';
 import type { WatchTodo, WatchTodayResponse } from '@utral/types';
 
 const router = Router();
@@ -18,28 +19,33 @@ router.get('/today', async (_req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const todos = await prisma.todo.findMany({
-      where: {
-        scheduledDate: { gte: today, lt: tomorrow },
-      },
-      orderBy: { order: 'asc' },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        estimatedMinutes: true,
-        projectId: true,
-      },
-    });
+    const [realTodos, virtualTodos] = await Promise.all([
+      prisma.todo.findMany({
+        where: {
+          scheduledDate: { gte: today, lt: tomorrow },
+        },
+        orderBy: { order: 'asc' },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          estimatedMinutes: true,
+          projectId: true,
+        },
+      }),
+      getVirtualTodosForDate(today),
+    ]);
 
-    const projectIds = [...new Set(todos.map((t) => t.projectId).filter(Boolean))];
+    const allTodos = [...realTodos, ...virtualTodos];
+
+    const projectIds = [...new Set(allTodos.map((t) => t.projectId).filter(Boolean))];
     const projects = await prisma.project.findMany({
       where: { id: { in: projectIds as string[] } },
       select: { id: true, color: true },
     });
     const projectMap = new Map(projects.map((p) => [p.id, p.color]));
 
-    const watchTodos: WatchTodo[] = todos.map((t) => ({
+    const watchTodos: WatchTodo[] = allTodos.map((t) => ({
       id: t.id,
       title: t.title,
       status: t.status as WatchTodo['status'],

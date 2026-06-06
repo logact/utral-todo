@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Todo, TodoRelation, TodoLog, Roadmap, ActionEdge, Pluse, Project, TimerSession } from '../types';
+import type { Todo, TodoRelation, TodoLog, Roadmap, ActionEdge, Pluse, Project, TimerSession, RepeatOccurrence } from '../types';
 
 export interface SyncQueueItem {
   id: string;
@@ -25,6 +25,7 @@ const db = new Dexie('TodoScheduleDB') as Dexie & {
   pluses: EntityTable<Pluse, 'id'>;
   projects: EntityTable<Project, 'id'>;
   timerSessions: EntityTable<TimerSession, 'id'>;
+  repeatOccurrences: EntityTable<RepeatOccurrence, 'id'>;
   syncQueue: EntityTable<SyncQueueItem, 'id'>;
   syncState: EntityTable<SyncState, 'key'>;
 };
@@ -333,6 +334,70 @@ db.version(24).stores({
   }
 });
 
+db.version(25).stores({
+  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+}).upgrade(async (tx) => {
+  // Migrate existing assign_from recurring instances to RepeatOccurrence records
+  const relations = await tx.table('relations').toArray();
+  const assignFromRels = relations.filter((r) => r.type === 'assign_from');
+
+  for (const rel of assignFromRels) {
+    const template = await tx.table('todos').get(rel.fromTodoId);
+    const instance = await tx.table('todos').get(rel.toTodoId);
+
+    if (!template || !instance || !template.repeatRule) continue;
+
+    const date = instance.scheduledDate ? new Date(instance.scheduledDate) : new Date();
+    date.setHours(0, 0, 0, 0);
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    const hasLogs = (await tx.table('todoLogs').where('todoId').equals(instance.id).count()) > 0;
+    const isModified = instance.status !== 'pending' || hasLogs;
+
+    if (isModified) {
+      // Preserve as a materialized occurrence
+      await tx.table('repeatOccurrences').add({
+        id: `repeat:${template.id}:${dateKey}`,
+        templateId: template.id,
+        date: date,
+        status: instance.status,
+        completedAt: instance.completedAt ? new Date(instance.completedAt) : undefined,
+        materializedTodoId: instance.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } else {
+      // Delete unmodified instance and its relation
+      await tx.table('todos').delete(instance.id);
+      await tx.table('relations').delete(rel.id);
+    }
+  }
+});
+
+db.version(26).stores({
+  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();
@@ -342,6 +407,7 @@ export async function clearAllData(): Promise<void> {
   await db.pluses.clear();
   await db.projects.clear();
   await db.timerSessions.clear();
+  await db.repeatOccurrences.clear();
   await db.syncQueue.clear();
   await db.syncState.clear();
 }

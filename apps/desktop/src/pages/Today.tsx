@@ -1066,9 +1066,9 @@ export function Today() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] flex gap-4">
+    <div className="h-[calc(100vh-64px)] flex gap-4 overflow-hidden">
       {/* ─── Left Sidebar ─── */}
-      <div className="w-72 flex flex-col gap-3 min-h-0 shrink-0">
+      <div className="w-72 h-full flex flex-col gap-3 min-h-0 shrink-0">
         {/* Clock + Date Header */}
         <div className="shrink-0 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
           {/* Timer Clock or Active Pluse */}
@@ -1139,7 +1139,7 @@ export function Today() {
             )}
           </div>
 
-          <div className="px-3 py-2 flex-1 overflow-y-auto min-h-0">
+          <div className="px-3 py-2 flex-1 overflow-y-auto min-h-0 relative">
             {!hasAnything ? (
               <div className="text-center py-8">
                 <Target className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto" />
@@ -1212,6 +1212,9 @@ export function Today() {
                         ))}
                       </>
                     )}
+
+                    {/* Spacer for WebKit scroll padding bug */}
+                    <div className="h-20" />
                   </div>
                 </SortableContext>
               </DndContext>
@@ -1223,15 +1226,17 @@ export function Today() {
       {/* ─── Right Main: Execution Detail ─── */}
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col min-h-0 overflow-hidden">
         {selectedTodoId ? (
-          <div className="flex-1 overflow-y-auto min-w-0 pb-40">
-            <TodoExecutionPanel
-              todoId={panelTodoId ?? selectedTodoId}
-              onNavigate={handleNavigate}
-              showBreadcrumbs={true}
-              todayTodos={allActiveTodos}
-              onSwitchTodo={handleSelectTodo}
-              onNodeClick={handleNodeClick}
-            />
+          <div className="flex-1 overflow-y-auto min-w-0">
+            <div className="mb-40">
+              <TodoExecutionPanel
+                todoId={panelTodoId ?? selectedTodoId}
+                onNavigate={handleNavigate}
+                showBreadcrumbs={true}
+                todayTodos={allActiveTodos}
+                onSwitchTodo={handleSelectTodo}
+                onNodeClick={handleNodeClick}
+              />
+            </div>
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center">

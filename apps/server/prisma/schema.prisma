@@ -122,6 +122,20 @@ model Pluse {
   updatedAt     DateTime @updatedAt
 }
 
+model RepeatOccurrence {
+  id               String   @id
+  templateId       String
+  date             DateTime
+  status           String
+  completedAt      DateTime?
+  materializedTodoId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([date])
+}
+
 model SyncEvent {
   id        String   @id @default(uuid())
   table     String
