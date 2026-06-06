@@ -30,17 +30,19 @@ RUN pnpm --filter server build
 # Production stage
 FROM node:20-alpine AS production
 
-WORKDIR /app
+WORKDIR /app/apps/server
 
 # Install wget for healthcheck
 RUN apk add --no-cache wget
 
-# Copy built artifacts
+# Copy workspace root node_modules (pnpm store)
+COPY --from=builder /app/node_modules /app/node_modules
+
+# Copy server app preserving directory structure for symlink integrity
 COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/prisma ./prisma
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/server/node_modules ./node_modules
 COPY --from=builder /app/apps/server/package.json ./
+COPY --from=builder /app/apps/server/node_modules ./node_modules
 COPY apps/server/docker-entrypoint.sh ./
 
 # Create data directory for SQLite
