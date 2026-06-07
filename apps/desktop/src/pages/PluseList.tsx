@@ -558,6 +558,16 @@ export function PluseList() {
 
   useEffect(() => {
     loadData();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => loadData(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [loadData]);
 
   async function handleCreate() {

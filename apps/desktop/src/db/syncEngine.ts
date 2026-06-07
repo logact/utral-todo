@@ -32,6 +32,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let deviceId: string | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let started = false;
 
 function normalizeServerUrl(url: string): string {
   let normalized = url.trim();
@@ -308,6 +309,8 @@ export async function processQueue(): Promise<void> {
 }
 
 function connectSSE(): void {
+  if (sseSource) return; // Already connected or connecting
+
   const config = getSyncConfig();
   if (!config?.serverUrl) return;
 
@@ -369,11 +372,11 @@ function connectSSE(): void {
       processQueue().catch(() => {});
     };
 
-    sseSource.onerror = (err) => {
-      console.error('[sync] SSE error:', err);
-      if (sseSource) {
-        sseSource.close();
-        sseSource = null;
+    sseSource.onerror = () => {
+      const wasConnected = sseSource?.readyState === EventSource.OPEN;
+      sseSource = null;
+      if (wasConnected) {
+        console.log('[sync] SSE connection closed');
       }
       scheduleReconnect();
     };
@@ -420,6 +423,7 @@ function stopPolling(): void {
 }
 
 function scheduleReconnect(): void {
+  if (!started) return; // Don't reconnect if intentionally stopped
   if (reconnectTimer) return;
   startPolling();
   reconnectTimer = setTimeout(() => {
@@ -450,6 +454,8 @@ export async function onLocalChange(
 }
 
 export async function start(): Promise<void> {
+  if (started) return;
+  started = true;
   await getOrCreateDeviceId();
   window.removeEventListener('nativeSyncTrigger', onNativeSyncTrigger);
   window.addEventListener('nativeSyncTrigger', onNativeSyncTrigger);
@@ -457,6 +463,7 @@ export async function start(): Promise<void> {
 }
 
 export function stop(): void {
+  started = false;
   if (sseSource) {
     sseSource.close();
     sseSource = null;
@@ -465,6 +472,7 @@ export function stop(): void {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  reconnectDelay = 1000;
   stopPolling();
 }
 

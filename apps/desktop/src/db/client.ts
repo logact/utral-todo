@@ -108,12 +108,25 @@ export function parseActionEdge(data: unknown): ActionEdge {
 
 export function parsePluse(data: unknown): Pluse {
   const p = data as Record<string, unknown>;
+  const intervalTodosRaw = p.intervalTodos as Record<string, string> | undefined;
+  let intervalTodos: Record<number, string> | undefined;
+  if (intervalTodosRaw) {
+    intervalTodos = {};
+    for (const key of Object.keys(intervalTodosRaw)) {
+      const idx = parseInt(key, 10);
+      if (!isNaN(idx)) {
+        intervalTodos[idx] = intervalTodosRaw[key];
+      }
+    }
+  }
   return {
     id: p.id as string,
     name: p.name as string,
     description: p.description as string,
     intervals: p.intervals as number[],
     repeatCount: (p.repeatCount as number) ?? 1,
+    intervalTodos,
+    autoAdvance: (p.autoAdvance as boolean | undefined) ?? true,
     createdAt: parseDate(p.createdAt)!,
     updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
   };

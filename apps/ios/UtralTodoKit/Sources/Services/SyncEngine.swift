@@ -207,6 +207,14 @@ public final class SyncEngine: ObservableObject {
             await applyTimerSessionEvent(recordId: recordId, operation: event.operation, payload: payload)
         case "project":
             await applyProjectEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "todoRelation":
+            await applyTodoRelationEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "todoLog":
+            await applyTodoLogEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "roadmap":
+            await applyRoadmapEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "actionEdge":
+            await applyActionEdgeEvent(recordId: recordId, operation: event.operation, payload: payload)
         default:
             break
         }
@@ -386,6 +394,164 @@ public final class SyncEngine: ObservableObject {
             )
             if let updatedAt = remoteUpdatedAt { project.updatedAt = updatedAt }
             modelContext.insert(project)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyTodoRelationEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let relation = try? modelContext.fetch(FetchDescriptor<TodoRelation>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(relation)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let relation = try? modelContext.fetch(FetchDescriptor<TodoRelation>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= relation.updatedAt { return }
+            if let fromTodoId = json["fromTodoId"] as? String { relation.fromTodoId = fromTodoId }
+            if let toTodoId = json["toTodoId"] as? String { relation.toTodoId = toTodoId }
+            if let type = json["type"] as? String { relation.type = type }
+            relation.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let relation = TodoRelation(
+                id: recordId,
+                fromTodoId: (json["fromTodoId"] as? String) ?? "",
+                toTodoId: (json["toTodoId"] as? String) ?? "",
+                type: (json["type"] as? String) ?? "depends_on"
+            )
+            if let updatedAt = remoteUpdatedAt { relation.updatedAt = updatedAt }
+            modelContext.insert(relation)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyTodoLogEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let log = try? modelContext.fetch(FetchDescriptor<TodoLog>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(log)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let log = try? modelContext.fetch(FetchDescriptor<TodoLog>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= log.updatedAt { return }
+            if let todoId = json["todoId"] as? String { log.todoId = todoId }
+            if let type = json["type"] as? String { log.type = type }
+            if let content = json["content"] as? String { log.content = content }
+            if let minutesSpent = json["minutesSpent"] as? Int { log.minutesSpent = minutesSpent }
+            log.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let log = TodoLog(
+                id: recordId,
+                todoId: (json["todoId"] as? String) ?? "",
+                type: (json["type"] as? String) ?? "progress",
+                content: (json["content"] as? String) ?? "",
+                minutesSpent: json["minutesSpent"] as? Int
+            )
+            if let updatedAt = remoteUpdatedAt { log.updatedAt = updatedAt }
+            modelContext.insert(log)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyRoadmapEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let roadmap = try? modelContext.fetch(FetchDescriptor<Roadmap>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(roadmap)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let roadmap = try? modelContext.fetch(FetchDescriptor<Roadmap>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= roadmap.updatedAt { return }
+            if let goalTodoId = json["goalTodoId"] as? String { roadmap.goalTodoId = goalTodoId }
+            if let phasesArray = json["phases"] as? [[String: Any]] {
+                let phases: [RoadmapPhase] = phasesArray.compactMap { dict in
+                    guard let id = dict["id"] as? String,
+                          let title = dict["title"] as? String else { return nil }
+                    return RoadmapPhase(
+                        id: id,
+                        title: title,
+                        order: dict["order"] as? Int ?? 0,
+                        todoIds: dict["todoIds"] as? [String] ?? [],
+                        startAt: self.parseDate(dict["startAt"]),
+                        endAt: self.parseDate(dict["endAt"])
+                    )
+                }
+                roadmap.phases = phases
+            }
+            roadmap.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let phases: [RoadmapPhase] = (json["phases"] as? [[String: Any]])?.compactMap { dict in
+                guard let id = dict["id"] as? String,
+                      let title = dict["title"] as? String else { return nil }
+                return RoadmapPhase(
+                    id: id,
+                    title: title,
+                    order: dict["order"] as? Int ?? 0,
+                    todoIds: dict["todoIds"] as? [String] ?? [],
+                    startAt: self.parseDate(dict["startAt"]),
+                    endAt: self.parseDate(dict["endAt"])
+                )
+            } ?? []
+            let roadmap = Roadmap(
+                id: recordId,
+                goalTodoId: (json["goalTodoId"] as? String) ?? "",
+                phases: phases
+            )
+            if let updatedAt = remoteUpdatedAt { roadmap.updatedAt = updatedAt }
+            modelContext.insert(roadmap)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyActionEdgeEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let edge = try? modelContext.fetch(FetchDescriptor<ActionEdge>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(edge)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let edge = try? modelContext.fetch(FetchDescriptor<ActionEdge>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= edge.updatedAt { return }
+            if let fromTodoId = json["fromTodoId"] as? String { edge.fromTodoId = fromTodoId }
+            if let toTodoId = json["toTodoId"] as? String { edge.toTodoId = toTodoId }
+            if let type = json["type"] as? String { edge.type = type }
+            edge.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let edge = ActionEdge(
+                id: recordId,
+                fromTodoId: (json["fromTodoId"] as? String) ?? "",
+                toTodoId: (json["toTodoId"] as? String) ?? "",
+                type: (json["type"] as? String) ?? "insight"
+            )
+            if let updatedAt = remoteUpdatedAt { edge.updatedAt = updatedAt }
+            modelContext.insert(edge)
         }
         try? modelContext.save()
     }

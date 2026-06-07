@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03D9D391E21E3E63421B5F7A /* TimerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F486CF411396D0FDEAAEF8E /* TimerModule.swift */; };
 		0BF984AC5962E8985D27D1FA /* NotificationModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = E03684DA61ED93A4C9207A09 /* NotificationModule.swift */; };
 		0E2CB69805BCA43789FDB17F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB39167164E8924E9758F5D6 /* ContentView.swift */; };
 		225FEA0E154424C6EE8242C1 /* WebShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD668E6975967C384F78BA88 /* WebShellView.swift */; };
@@ -18,6 +19,7 @@
 		9B4E09311ECACC3FA9DABAC6 /* BridgeModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E5089D42C8015FF5D4B43E /* BridgeModule.swift */; };
 		A938DCA7B216233B579A7B54 /* StorageModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC31CE3DD5A4789D835358A /* StorageModule.swift */; };
 		AACBF0FA81C333EBF1F04F67 /* TodoDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE711F480922FCFB163AA4A1 /* TodoDetailView.swift */; };
+		BA867E994E78976FB5774A32 /* SyncModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8C23BAA72E4EA3DEED9553 /* SyncModule.swift */; };
 		D812C68C1A87F2B00672EE7D /* DeviceModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 911495CC6EC4FA74FDAD8236 /* DeviceModule.swift */; };
 		D9CA3B710032C855B2DB8AE5 /* BridgeMessageHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5037EB04CC1B7C289DB0408 /* BridgeMessageHandler.swift */; };
 		DB467F054F35C7670FC6F936 /* HapticModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */; };
@@ -27,12 +29,14 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1F486CF411396D0FDEAAEF8E /* TimerModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerModule.swift; sourceTree = "<group>"; };
 		2C3ECF47550EBE23440BCF1A /* TimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerView.swift; sourceTree = "<group>"; };
 		3A42F5255CFADA11105E9DB5 /* CameraModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModule.swift; sourceTree = "<group>"; };
 		4650C39295C46F7BD720DDBA /* UtralTodoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UtralTodoKit; path = UtralTodoKit; sourceTree = SOURCE_ROOT; };
 		4C85C76B6D2CDE82D5F7CF9A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5DED0B62F9DC46415593765D /* BridgeModuleError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeModuleError.swift; sourceTree = "<group>"; };
 		64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticModule.swift; sourceTree = "<group>"; };
+		6D8C23BAA72E4EA3DEED9553 /* SyncModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncModule.swift; sourceTree = "<group>"; };
 		6FC31CE3DD5A4789D835358A /* StorageModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageModule.swift; sourceTree = "<group>"; };
 		83E5089D42C8015FF5D4B43E /* BridgeModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeModule.swift; sourceTree = "<group>"; };
 		911495CC6EC4FA74FDAD8236 /* DeviceModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceModule.swift; sourceTree = "<group>"; };
@@ -100,6 +104,8 @@
 				64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */,
 				E03684DA61ED93A4C9207A09 /* NotificationModule.swift */,
 				6FC31CE3DD5A4789D835358A /* StorageModule.swift */,
+				6D8C23BAA72E4EA3DEED9553 /* SyncModule.swift */,
+				1F486CF411396D0FDEAAEF8E /* TimerModule.swift */,
 			);
 			path = NativeModules;
 			sourceTree = "<group>";
@@ -253,6 +259,8 @@
 				DB467F054F35C7670FC6F936 /* HapticModule.swift in Sources */,
 				0BF984AC5962E8985D27D1FA /* NotificationModule.swift in Sources */,
 				A938DCA7B216233B579A7B54 /* StorageModule.swift in Sources */,
+				BA867E994E78976FB5774A32 /* SyncModule.swift in Sources */,
+				03D9D391E21E3E63421B5F7A /* TimerModule.swift in Sources */,
 				F1BC9AC2EFFDE852E8D3B0EB /* UtralTodoApp.swift in Sources */,
 				225FEA0E154424C6EE8242C1 /* WebShellView.swift in Sources */,
 			);

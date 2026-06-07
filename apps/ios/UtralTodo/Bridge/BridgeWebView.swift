@@ -58,7 +58,7 @@ struct BridgeWebView: UIViewRepresentable {
     private func loadContent(in webView: WKWebView) {
         // Development: load from Vite dev server if reachable
         #if DEBUG
-        if let url = URL(string: "http://localhost:1421") {
+        if let url = URL(string: "http://192.168.1.86:1421/") {
             var request = URLRequest(url: url)
             request.setValue("true", forHTTPHeaderField: "X-Utral-iOS")
             webView.load(request)

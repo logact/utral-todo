@@ -288,7 +288,7 @@ export function PluseRun() {
   const intervalStartRef = useRef<number>(0);
   const [smoothElapsed, setSmoothElapsed] = useState(0);
 
-  useEffect(() => {
+  const loadPluse = useCallback(() => {
     if (!id) return;
     Promise.all([getPluse(id), getAllTodos()]).then(([p, allTodos]) => {
       setPluse(p || null);
@@ -296,6 +296,23 @@ export function PluseRun() {
       setIsLoading(false);
     });
   }, [id]);
+
+  useEffect(() => {
+    loadPluse();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
+      if (detail?.table === 'pluse' && detail?.recordId === id) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => loadPluse(), 100);
+      }
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
+  }, [loadPluse, id]);
 
   const expandedIntervals = pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : [];
   const currentDuration = expandedIntervals[currentIndex] || 0;
