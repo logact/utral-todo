@@ -1,13 +1,26 @@
-import { fetch } from '@tauri-apps/plugin-http';
 import { db } from './database';
 import { getSyncConfig } from './sync';
 import type { SyncEvent } from '../types';
+
+let tauriFetch: typeof fetch | null = null;
+
+async function resolveFetch(): Promise<typeof fetch> {
+  if (tauriFetch) return tauriFetch;
+  try {
+    const tauriHttp = await import('@tauri-apps/plugin-http');
+    tauriFetch = tauriHttp.fetch;
+    return tauriFetch;
+  } catch {
+    return fetch.bind(globalThis);
+  }
+}
 
 let sseSource: EventSource | null = null;
 let processing = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let deviceId: string | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function normalizeServerUrl(url: string): string {
   let normalized = url.trim();
@@ -24,6 +37,21 @@ async function getOrCreateDeviceId(): Promise<string> {
     deviceId = state.value;
     return deviceId;
   }
+  // On iOS, use the native deviceId so APNS silent pushes route correctly
+  const bridge = (window as unknown as Record<string, unknown>).__bridge__ as
+    | { platform?: string; call?: (module: string, action: string) => Promise<string> }
+    | undefined;
+  if (bridge?.platform === 'ios' && bridge.call) {
+    try {
+      const nativeId = await bridge.call('sync', 'getDeviceId');
+      await db.syncState.put({ key: 'deviceId', value: nativeId });
+      deviceId = nativeId;
+      return deviceId;
+    } catch {
+      // Fall through to random UUID
+    }
+  }
+
   const newId = crypto.randomUUID();
   await db.syncState.put({ key: 'deviceId', value: newId });
   deviceId = newId;
@@ -54,7 +82,8 @@ async function syncFetch(path: string, options?: RequestInit): Promise<Response>
     headers['Authorization'] = `Bearer ${config.apiToken}`;
   }
 
-  const res = await fetch(fullUrl, {
+  const doFetch = await resolveFetch();
+  const res = await doFetch(fullUrl, {
     headers,
     ...options,
   });
@@ -317,6 +346,7 @@ function connectSSE(): void {
     sseSource.onopen = () => {
       console.log('[sync] SSE connected');
       reconnectDelay = 1000;
+      stopPolling();
       // Process any queued changes
       processQueue().catch(() => {});
     };
@@ -335,8 +365,44 @@ function connectSSE(): void {
   });
 }
 
+async function pollEvents(): Promise<void> {
+  const lastSync = await getLastSyncAt();
+  if (!lastSync) return;
+
+  try {
+    const res = await syncFetch('/api/sync/events', {
+      method: 'POST',
+      body: JSON.stringify({ since: lastSync.toISOString() }),
+    });
+    const result = await res.json() as { events: SyncEvent[] };
+    if (result.events?.length) {
+      for (const event of result.events) {
+        await applyRemoteEvent(event);
+      }
+    }
+    await setLastSyncAt(new Date());
+  } catch (err) {
+    console.error('[sync] Poll failed:', err);
+  }
+}
+
+function startPolling(): void {
+  if (pollTimer) return;
+  pollTimer = setInterval(() => {
+    pollEvents().catch(() => {});
+  }, 30000);
+}
+
+function stopPolling(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
 function scheduleReconnect(): void {
   if (reconnectTimer) return;
+  startPolling();
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectSSE();
@@ -366,6 +432,8 @@ export async function onLocalChange(
 
 export async function start(): Promise<void> {
   await getOrCreateDeviceId();
+  window.removeEventListener('nativeSyncTrigger', onNativeSyncTrigger);
+  window.addEventListener('nativeSyncTrigger', onNativeSyncTrigger);
   connectSSE();
 }
 
@@ -378,6 +446,13 @@ export function stop(): void {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  stopPolling();
+}
+
+function onNativeSyncTrigger() {
+  console.log('[sync] Native sync trigger received');
+  processQueue().catch(() => {});
+  pollEvents().catch(() => {});
 }
 
 export function getSyncStatus(): { connected: boolean; pendingCount: number } {

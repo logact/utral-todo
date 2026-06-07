@@ -39,7 +39,9 @@ export function Sidebar({ onQuickCreate }: SidebarProps) {
         {!collapsed && (
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100 tracking-tight">Utral Todo</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Desktop</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {(typeof window !== 'undefined' && (window as any).__bridge__?.platformName) || 'Desktop'}
+            </p>
           </div>
         )}
         <button

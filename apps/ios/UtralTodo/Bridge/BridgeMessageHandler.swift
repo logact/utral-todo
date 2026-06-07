@@ -18,9 +18,11 @@ final class BridgeMessageHandler: NSObject, WKScriptMessageHandler {
     private func registerDefaultModules() {
         register(HapticModule())
         register(NotificationModule())
+        register(TimerModule())
         register(CameraModule())
         register(DeviceModule())
         register(StorageModule())
+        register(SyncModule())
     }
 
     func userContentController(

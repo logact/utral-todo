@@ -1,32 +1,360 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Circle, Clock, Zap, Target } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Zap, Target, Play, Pause, SkipForward, RotateCcw, X, ChevronDown, Timer } from 'lucide-react';
 import { getTodaysTodos, getInProgressTodos, getOverdueTodos, updateTodoStatus } from '../db/todos';
-import type { Todo, TodoStatus } from '@utral/types';
+import { getAllPluses } from '../db/pluse';
+import type { Todo, TodoStatus, Pluse } from '@utral/types';
 import { nativeHaptic } from '../bridge/native';
+
+/* ─── Helpers ─── */
+
+function expandIntervals(intervals: number[], repeatCount: number): number[] {
+  const result: number[] = [];
+  for (let r = 0; r < repeatCount; r++) {
+    result.push(...intervals);
+  }
+  return result;
+}
+
+function formatCountdown(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function formatSeconds(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+/* ─── Pluse Mini Timer ─── */
+
+function PluseMiniTimer({
+  pluse,
+  onClose,
+}: {
+  pluse: Pluse;
+  onClose: () => void;
+}) {
+  const expandedIntervals = expandIntervals(pluse.intervals, pluse.repeatCount);
+  const totalItems = expandedIntervals.length;
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [, forceTick] = useState(0);
+
+  const currentDuration = expandedIntervals[currentIndex] || 0;
+
+  const getElapsed = useCallback(() => {
+    if (!isRunning || !startTime) return elapsedSeconds;
+    return elapsedSeconds + Math.floor((Date.now() - startTime) / 1000);
+  }, [isRunning, elapsedSeconds, startTime]);
+
+  const elapsed = getElapsed();
+  const remainingSeconds = Math.max(0, currentDuration - elapsed);
+
+  // Tick every second while running
+  useEffect(() => {
+    if (!isRunning || isCompleted) return;
+    intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isRunning, isCompleted]);
+
+  // Clear pending auto-advance timeout when user explicitly starts running
+  useEffect(() => {
+    if (isRunning && timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, [isRunning]);
+
+  // Unmount: clear any pending timeout
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
+
+  // Check completion / auto-advance
+  useEffect(() => {
+    if (isCompleted || !isRunning) return;
+    const shouldAutoAdvance = pluse.autoAdvance !== false;
+    if (elapsed >= currentDuration && currentDuration > 0) {
+      nativeHaptic.notification('success').catch(() => {});
+      if (currentIndex < totalItems - 1) {
+        const nextIndex = currentIndex + 1;
+        setIsRunning(false);
+        setCurrentIndex(nextIndex);
+        setElapsedSeconds(0);
+        setStartTime(null);
+
+        if (shouldAutoAdvance) {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => {
+            setIsRunning(true);
+            setStartTime(Date.now());
+            nativeHaptic.impact('light').catch(() => {});
+          }, 2000);
+        }
+      } else {
+        setIsRunning(false);
+        setIsCompleted(true);
+        setStartTime(null);
+        nativeHaptic.notification('success').catch(() => {});
+      }
+    }
+  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, currentDuration, pluse]);
+
+  const toggleRunning = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (isCompleted) {
+      setCurrentIndex(0);
+      setElapsedSeconds(0);
+      setIsRunning(true);
+      setIsCompleted(false);
+      setStartTime(Date.now());
+      nativeHaptic.impact('medium').catch(() => {});
+      return;
+    }
+
+    if (isRunning) {
+      const total = elapsedSeconds + (startTime ? Math.floor((Date.now() - startTime) / 1000) : 0);
+      setIsRunning(false);
+      setElapsedSeconds(total);
+      setStartTime(null);
+    } else {
+      setIsRunning(true);
+      setStartTime(Date.now());
+    }
+    nativeHaptic.impact('light').catch(() => {});
+  }, [isRunning, isCompleted, elapsedSeconds, startTime]);
+
+  const skipToNext = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (currentIndex >= totalItems - 1) return;
+    const nextIndex = currentIndex + 1;
+    setIsRunning(false);
+    setCurrentIndex(nextIndex);
+    setElapsedSeconds(0);
+    setStartTime(null);
+    nativeHaptic.impact('medium').catch(() => {});
+  }, [currentIndex, totalItems]);
+
+  const restart = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setCurrentIndex(0);
+    setElapsedSeconds(0);
+    setIsRunning(false);
+    setIsCompleted(false);
+    setStartTime(null);
+    nativeHaptic.impact('medium').catch(() => {});
+  }, []);
+
+  if (isCompleted) {
+    return (
+      <div className="text-center space-y-3 py-2">
+        <div className="text-3xl font-semibold text-slate-900 dark:text-slate-100">
+          Done!
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {pluse.name} complete
+        </p>
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={restart}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Again
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 active:bg-slate-50 dark:active:bg-slate-700 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center space-y-3 py-2">
+      <div className="text-4xl font-mono font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+        {formatCountdown(remainingSeconds)}
+      </div>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+        Interval {currentIndex + 1} of {totalItems} · {formatSeconds(currentDuration)}
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          onClick={toggleRunning}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium transition-colors active:scale-95 ${
+            isRunning
+              ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+              : 'bg-indigo-600 text-white active:bg-indigo-700'
+          }`}
+        >
+          {isRunning ? (
+            <>
+              <Pause className="w-3.5 h-3.5" />
+              Pause
+            </>
+          ) : (
+            <>
+              <Play className="w-3.5 h-3.5" />
+              {elapsed > 0 ? 'Resume' : 'Start'}
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={skipToNext}
+          disabled={currentIndex >= totalItems - 1}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 active:bg-slate-50 dark:active:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <SkipForward className="w-3.5 h-3.5" />
+          Skip
+        </button>
+
+        {elapsed > 0 && (
+          <button
+            onClick={restart}
+            className="p-2 rounded-xl text-slate-400 dark:text-slate-500 active:text-slate-600 dark:active:text-slate-300 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+            title="Restart"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        <button
+          onClick={onClose}
+          className="p-2 rounded-xl text-slate-400 dark:text-slate-500 active:text-slate-600 dark:active:text-slate-300 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+          title="Close"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Pluse Selector ─── */
+
+function PluseSelector({
+  pluses,
+  activeId,
+  onSelect,
+}: {
+  pluses: Pluse[];
+  activeId: string;
+  onSelect: (pluse: Pluse) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const active = pluses.find((p) => p.id === activeId);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-center gap-1 w-full text-[11px] text-slate-500 dark:text-slate-400 active:text-slate-700 dark:active:text-slate-300 transition-colors"
+      >
+        {active?.name ?? 'Select pluse'}
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"
+        >
+          {pluses.map((pluse) => {
+            const totalSeconds = pluse.intervals.reduce((s, d) => s + d, 0) * pluse.repeatCount;
+            const isActive = pluse.id === activeId;
+            return (
+              <button
+                key={pluse.id}
+                onClick={() => {
+                  onSelect(pluse);
+                  setOpen(false);
+                }}
+                className={`w-full text-left flex items-center gap-2 px-3 py-2 text-[11px] transition-colors ${
+                  isActive
+                    ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                    : 'text-slate-700 dark:text-slate-300 active:bg-slate-50 dark:active:bg-slate-800'
+                }`}
+              >
+                <span className="flex-1 truncate">{pluse.name}</span>
+                <span className="text-slate-400 dark:text-slate-500 shrink-0">{formatSeconds(totalSeconds)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main Page ─── */
 
 export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [inProgress, setInProgress] = useState<Todo[]>([]);
   const [overdue, setOverdue] = useState<Todo[]>([]);
+  const [pluses, setPluses] = useState<Pluse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activePluse, setActivePluse] = useState<Pluse | null>(null);
+  const [pluseKey, setPluseKey] = useState(0);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [today, progress, overdueList] = await Promise.all([
+    const [today, progress, overdueList, allPluses] = await Promise.all([
       getTodaysTodos(),
       getInProgressTodos(),
       getOverdueTodos(),
+      getAllPluses(),
     ]);
     setTodos(today);
     setInProgress(progress);
     setOverdue(overdueList);
+    setPluses(allPluses);
+    if (allPluses.length > 0 && !activePluse) {
+      setActivePluse(allPluses[0]);
+    }
     setLoading(false);
-  }, []);
+  }, [activePluse]);
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function toggleStatus(todo: Todo) {
     const newStatus: TodoStatus = todo.status === 'done' ? 'pending' : 'done';
@@ -44,6 +372,16 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   const allTodos = [...overdue, ...inProgress, ...todos];
   const doneCount = allTodos.filter((t) => t.status === 'done').length;
   const totalCount = allTodos.length;
+  const currentTodo = inProgress[0];
+
+  function handleClosePluse() {
+    setActivePluse(null);
+  }
+
+  function handleSelectPluse(pluse: Pluse) {
+    setActivePluse(pluse);
+    setPluseKey((k) => k + 1);
+  }
 
   if (loading) {
     return (
@@ -54,9 +392,9 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   }
 
   return (
-    <div className="px-4 py-3">
+    <div className="px-4 py-3 space-y-4">
       {/* Stats */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div
             className={`w-2 h-2 rounded-full ${
@@ -82,33 +420,114 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
         )}
       </div>
 
-      {/* Todo list */}
-      {allTodos.length === 0 ? (
-        <div className="text-center py-12">
-          <Target className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
-          <p className="mt-3 text-sm text-slate-400 dark:text-slate-500">
-            No tasks for today
-          </p>
-          <button
-            onClick={onQuickCreate}
-            className="mt-4 text-sm text-indigo-600 dark:text-indigo-400 font-medium"
-          >
-            Add your first task
-          </button>
+      {/* Pluse Clock Card */}
+      {pluses.length > 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+          {activePluse ? (
+            <>
+              <PluseMiniTimer
+                key={`${activePluse.id}-${pluseKey}`}
+                pluse={activePluse}
+                onClose={handleClosePluse}
+              />
+              {/* Pluse selector */}
+              {pluses.length > 1 && (
+                <div className="px-3 py-1.5 border-t border-slate-100 dark:border-slate-800 relative">
+                  <PluseSelector
+                    pluses={pluses}
+                    activeId={activePluse.id}
+                    onSelect={handleSelectPluse}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-4 space-y-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400">No active pluse</p>
+              <button
+                onClick={() => {
+                  if (pluses.length > 0) {
+                    setActivePluse(pluses[0]);
+                    setPluseKey((k) => k + 1);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-xl bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
+              >
+                <Play className="w-3.5 h-3.5" />
+                Start {pluses[0]?.name}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="space-y-1">
-          {allTodos.map((todo) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              onToggle={() => toggleStatus(todo)}
-              onStart={() => startTodo(todo)}
-            />
-          ))}
-          <div className="h-8" />
+        <Link
+          to="/pluses"
+          className="block bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 p-4 text-center active:border-indigo-400 dark:active:border-indigo-500 transition-colors"
+        >
+          <Timer className="w-5 h-5 text-slate-400 dark:text-slate-500 mx-auto mb-1.5" />
+          <p className="text-xs text-slate-500 dark:text-slate-400">No pluses yet</p>
+          <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">Create your first pluse</p>
+        </Link>
+      )}
+
+      {/* Current Task Card */}
+      {currentTodo && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-amber-200 dark:border-amber-800/50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+              Current Focus
+            </span>
+          </div>
+          <p className="text-[15px] font-medium text-slate-900 dark:text-slate-100">
+            {currentTodo.title}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toggleStatus(currentTodo)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 active:bg-emerald-100 dark:active:bg-emerald-900/40 transition-colors"
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              Mark done
+            </button>
+          </div>
         </div>
       )}
+
+      {/* Todo list */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between py-1">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            {allTodos.length > 0 ? 'Tasks' : ''}
+          </span>
+        </div>
+        {allTodos.length === 0 ? (
+          <div className="text-center py-12">
+            <Target className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+            <p className="mt-3 text-sm text-slate-400 dark:text-slate-500">
+              No tasks for today
+            </p>
+            <button
+              onClick={onQuickCreate}
+              className="mt-4 text-sm text-indigo-600 dark:text-indigo-400 font-medium"
+            >
+              Add your first task
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {allTodos.map((todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                onToggle={() => toggleStatus(todo)}
+                onStart={() => startTodo(todo)}
+              />
+            ))}
+            <div className="h-8" />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

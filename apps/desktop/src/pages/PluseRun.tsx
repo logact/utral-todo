@@ -240,6 +240,29 @@ function TodoSelector({
 }
 
 
+/* ---------- Native bridge helpers ---------- */
+function isNativeShell(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__bridge__?.isNative;
+}
+
+async function nativeTimerSchedule(id: string, title: string, body: string, seconds: number): Promise<void> {
+  const bridge = (window as any).__bridge__;
+  if (!bridge?.call) return;
+  await bridge.call('timer', 'schedule', { id, title, body, seconds });
+}
+
+async function nativeTimerCancel(id: string): Promise<void> {
+  const bridge = (window as any).__bridge__;
+  if (!bridge?.call) return;
+  await bridge.call('timer', 'cancel', { id });
+}
+
+async function nativeTimerCancelAll(): Promise<void> {
+  const bridge = (window as any).__bridge__;
+  if (!bridge?.call) return;
+  await bridge.call('timer', 'cancelAll', {});
+}
+
 /* ---------- Main Page ---------- */
 export function PluseRun() {
   const { id } = useParams<{ id: string }>();
@@ -277,6 +300,15 @@ export function PluseRun() {
   const expandedIntervals = pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : [];
   const currentDuration = expandedIntervals[currentIndex] || 0;
   const anchoredTodo = anchoredTodoId ? todos.find((t) => t.id === anchoredTodoId) : undefined;
+
+  // Cancel all timer notifications on unmount
+  useEffect(() => {
+    return () => {
+      if (isNativeShell()) {
+        nativeTimerCancelAll().catch(() => {});
+      }
+    };
+  }, []);
 
   // Timer
   useEffect(() => {
@@ -326,6 +358,29 @@ export function PluseRun() {
     }
   }, [currentIndex, pluse]);
 
+  // Schedule/cancel native timer notifications
+  useEffect(() => {
+    if (!isNativeShell() || !pluse) return;
+
+    const timerNotificationId = `pluse-timer-${pluse.id}`;
+
+    if (isRunning && !isCompleted && currentDuration > elapsedSeconds) {
+      const remaining = currentDuration - elapsedSeconds;
+      nativeTimerSchedule(
+        timerNotificationId,
+        `${pluse.name} — Interval ${currentIndex + 1} complete`,
+        'Your timer interval has finished.',
+        remaining
+      ).catch(() => {});
+    } else {
+      nativeTimerCancel(timerNotificationId).catch(() => {});
+    }
+
+    return () => {
+      nativeTimerCancel(timerNotificationId).catch(() => {});
+    };
+  }, [isRunning, pluse, currentIndex, elapsedSeconds, isCompleted, currentDuration]);
+
   // Check for item completion
   useEffect(() => {
     if (!pluse || isCompleted) return;
@@ -363,6 +418,14 @@ export function PluseRun() {
         } else {
           // Stop — user must manually restart
           setIsCompleted(true);
+          if (isNativeShell() && pluse) {
+            nativeTimerSchedule(
+              `pluse-done-${pluse.id}`,
+              `${pluse.name} — Complete!`,
+              'All intervals finished. Great work!',
+              1
+            ).catch(() => {});
+          }
         }
       }
     }
@@ -388,6 +451,9 @@ export function PluseRun() {
     setIsCompleted(false);
     setTodoMarkedDone(false);
     completedRef.current = false;
+    if (isNativeShell() && pluse) {
+      nativeTimerCancel(`pluse-timer-${pluse.id}`).catch(() => {});
+    }
   }
 
   function endSession() {
@@ -396,6 +462,9 @@ export function PluseRun() {
       return;
     }
     setIsRunning(false);
+    if (isNativeShell() && pluse) {
+      nativeTimerCancel(`pluse-timer-${pluse.id}`).catch(() => {});
+    }
     navigate('/pluses');
   }
 

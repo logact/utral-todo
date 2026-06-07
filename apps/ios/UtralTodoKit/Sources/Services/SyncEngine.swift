@@ -194,21 +194,209 @@ public final class SyncEngine: ObservableObject {
     }
 
     private func applyRemoteEvent(_ event: RemoteSyncEvent) async {
-        // Find existing local record and apply last-write-wins
         let recordId = event.recordId
         let table = event.table
+        let payload = event.payload
 
-        // Update the corresponding model
         switch table {
         case "todo":
-            if let todo = try? modelContext.fetch(FetchDescriptor<Todo>(predicate: #Predicate { $0.id == recordId })).first {
-                // Apply update - simplified; in production you'd merge fields
-                todo.updatedAt = Date()
-                try? modelContext.save()
-            }
+            await applyTodoEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "pluse":
+            await applyPluseEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "timerSession":
+            await applyTimerSessionEvent(recordId: recordId, operation: event.operation, payload: payload)
+        case "project":
+            await applyProjectEvent(recordId: recordId, operation: event.operation, payload: payload)
         default:
             break
         }
+    }
+
+    // MARK: - Entity-specific apply helpers
+
+    private func applyTodoEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let todo = try? modelContext.fetch(FetchDescriptor<Todo>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(todo)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let todo = try? modelContext.fetch(FetchDescriptor<Todo>(predicate: #Predicate { $0.id == recordId })).first {
+            // Last-write-wins
+            if let remoteUpdatedAt, remoteUpdatedAt <= todo.updatedAt { return }
+            if let title = json["title"] as? String { todo.title = title }
+            if let desc = json["description"] as? String { todo.desc = desc }
+            if let status = json["status"] as? String { todo.status = status }
+            if let priority = json["priority"] as? String { todo.priority = priority }
+            todo.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let todo = Todo(
+                id: recordId,
+                title: (json["title"] as? String) ?? "",
+                desc: (json["description"] as? String) ?? "",
+                status: (json["status"] as? String) ?? "pending",
+                priority: (json["priority"] as? String) ?? "medium"
+            )
+            if let updatedAt = remoteUpdatedAt { todo.updatedAt = updatedAt }
+            modelContext.insert(todo)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyPluseEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let pluse = try? modelContext.fetch(FetchDescriptor<Pluse>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(pluse)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let pluse = try? modelContext.fetch(FetchDescriptor<Pluse>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= pluse.updatedAt { return }
+            if let name = json["name"] as? String { pluse.name = name }
+            if let desc = json["description"] as? String { pluse.desc = desc }
+            if let repeatCount = json["repeatCount"] as? Int { pluse.repeatCount = repeatCount }
+            if let autoAdvance = json["autoAdvance"] as? Bool { pluse.autoAdvance = autoAdvance }
+            if let intervals = json["intervals"] as? [Int] {
+                pluse.intervalsData = (try? JSONEncoder().encode(intervals)) ?? Data()
+            }
+            if let intervalTodos = json["intervalTodos"] as? [String: String] {
+                var dict: [Int: String] = [:]
+                for (key, value) in intervalTodos { if let idx = Int(key) { dict[idx] = value } }
+                pluse.intervalTodosData = try? JSONEncoder().encode(dict)
+            }
+            pluse.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let intervals = (json["intervals"] as? [Int]) ?? [25]
+            var intervalTodos: [Int: String]?
+            if let dict = json["intervalTodos"] as? [String: String] {
+                intervalTodos = [:]
+                for (key, value) in dict { if let idx = Int(key) { intervalTodos?[idx] = value } }
+            }
+            let pluse = Pluse(
+                id: recordId,
+                name: (json["name"] as? String) ?? "",
+                desc: (json["description"] as? String) ?? "",
+                intervals: intervals,
+                repeatCount: (json["repeatCount"] as? Int) ?? 1,
+                intervalTodos: intervalTodos,
+                autoAdvance: (json["autoAdvance"] as? Bool) ?? true
+            )
+            if let updatedAt = remoteUpdatedAt { pluse.updatedAt = updatedAt }
+            modelContext.insert(pluse)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyTimerSessionEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let session = try? modelContext.fetch(FetchDescriptor<TimerSession>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(session)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let session = try? modelContext.fetch(FetchDescriptor<TimerSession>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= session.updatedAt { return }
+            if let name = json["name"] as? String { session.name = name }
+            if let type = json["type"] as? String { session.type = type }
+            if let status = json["status"] as? String { session.status = status }
+            if let pluseId = json["pluseId"] as? String { session.pluseId = pluseId }
+            if let todoId = json["todoId"] as? String { session.todoId = todoId }
+            if let repeatCount = json["repeatCount"] as? Int { session.repeatCount = repeatCount }
+            if let currentIndex = json["currentIndex"] as? Int { session.currentIndex = currentIndex }
+            if let elapsedSeconds = json["elapsedSeconds"] as? Int { session.elapsedSeconds = elapsedSeconds }
+            if let intervals = json["intervals"] as? [Int] {
+                session.intervalsData = (try? JSONEncoder().encode(intervals))
+            }
+            if let startedAt = parseDate(json["startedAt"]) { session.startedAt = startedAt }
+            if let pausedAt = parseDate(json["pausedAt"]) { session.pausedAt = pausedAt }
+            if let completedAt = parseDate(json["completedAt"]) { session.completedAt = completedAt }
+            session.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let intervals = (json["intervals"] as? [Int])
+            let session = TimerSession(
+                id: recordId,
+                type: (json["type"] as? String) ?? "stopwatch",
+                name: (json["name"] as? String) ?? "Timer Session",
+                pluseId: json["pluseId"] as? String,
+                todoId: json["todoId"] as? String,
+                intervals: intervals,
+                repeatCount: (json["repeatCount"] as? Int) ?? 1,
+                startedAt: parseDate(json["startedAt"]) ?? Date(),
+                pausedAt: parseDate(json["pausedAt"]),
+                completedAt: parseDate(json["completedAt"]),
+                currentIndex: (json["currentIndex"] as? Int) ?? 0,
+                elapsedSeconds: (json["elapsedSeconds"] as? Int) ?? 0,
+                status: (json["status"] as? String) ?? "running"
+            )
+            if let updatedAt = remoteUpdatedAt { session.updatedAt = updatedAt }
+            modelContext.insert(session)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyProjectEvent(recordId: String, operation: String, payload: Data?) async {
+        if operation == "delete" {
+            if let project = try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == recordId })).first {
+                modelContext.delete(project)
+                try? modelContext.save()
+            }
+            return
+        }
+
+        guard let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
+
+        let remoteUpdatedAt = parseDate(json["updatedAt"])
+
+        if let project = try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == recordId })).first {
+            if let remoteUpdatedAt, remoteUpdatedAt <= project.updatedAt { return }
+            if let title = json["title"] as? String { project.title = title }
+            if let desc = json["description"] as? String { project.desc = desc }
+            if let status = json["status"] as? String { project.status = status }
+            if let color = json["color"] as? String { project.color = color }
+            project.updatedAt = remoteUpdatedAt ?? Date()
+        } else if operation == "create" || operation == "update" {
+            let project = Project(
+                id: recordId,
+                title: (json["title"] as? String) ?? "",
+                desc: (json["description"] as? String) ?? "",
+                color: (json["color"] as? String) ?? "#6366f1",
+                status: (json["status"] as? String) ?? "active"
+            )
+            if let updatedAt = remoteUpdatedAt { project.updatedAt = updatedAt }
+            modelContext.insert(project)
+        }
+        try? modelContext.save()
+    }
+
+    private func parseDate(_ value: Any?) -> Date? {
+        guard let value else { return nil }
+        if let date = value as? Date { return date }
+        if let string = value as? String {
+            return ISO8601DateFormatter().date(from: string)
+        }
+        return nil
     }
 }
 

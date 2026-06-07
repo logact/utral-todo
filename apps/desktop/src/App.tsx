@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useCliBridge } from './hooks/useCliBridge';
 import { useSync } from './hooks/useSync';
+import { initIOSSync } from './db/iosSync';
 import { Sidebar } from './components/layout/Sidebar';
 import { QuickTodoModal } from './components/QuickTodoModal';
 import { TodoNew } from './pages/TodoNew';
@@ -54,6 +55,13 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 export default function App() {
   useCliBridge();
   useSync();
+
+  useEffect(() => {
+    // Initialize iOS-specific sync when running inside the native shell
+    initIOSSync().catch((err) => {
+      console.error('[App] iOS sync init failed:', err);
+    });
+  }, []);
 
   return (
     <BrowserRouter>

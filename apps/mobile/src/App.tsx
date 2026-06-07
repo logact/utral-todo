@@ -3,28 +3,34 @@ import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import {
   CalendarCheck,
   ListTodo,
-  FolderKanban,
+  Timer,
   Settings,
   Zap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Today } from './pages/Today';
 import { Todos } from './pages/Todos';
-import { Projects } from './pages/Projects';
+import { Pluses } from './pages/Pluses';
 import { SettingsPage } from './pages/Settings';
 import { TodoDetail } from './pages/TodoDetail';
+import { PluseRun } from './pages/PluseRun';
 import { addTodo } from './db/todos';
 
 const navItems = [
   { path: '/', icon: CalendarCheck, label: 'Today' },
   { path: '/todos', icon: ListTodo, label: 'Todos' },
-  { path: '/projects', icon: FolderKanban, label: 'Projects' },
+  { path: '/pluses', icon: Timer, label: 'Pluses' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 function BottomNav() {
   const location = useLocation();
   const pathname = location.pathname;
+
+  // Hide bottom nav when running a pluse
+  if (pathname.startsWith('/pluse/')) {
+    return null;
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-lg border-t border-slate-200 dark:border-slate-700 pb-safe">
@@ -57,9 +63,15 @@ function BottomNav() {
 }
 
 function AppLayout({ children, title }: { children: React.ReactNode; title?: string }) {
+  const location = useLocation();
+  const pathname = location.pathname;
+
+  // Hide header when running a pluse for full-screen experience
+  const hideHeader = pathname.startsWith('/pluse/');
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950">
-      {title && (
+      {title && !hideHeader && (
         <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 pt-safe">
           <div className="flex items-center h-12 px-4">
             <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
@@ -110,10 +122,10 @@ export default function App() {
           }
         />
         <Route
-          path="/projects"
+          path="/pluses"
           element={
-            <AppLayout title="Projects">
-              <Projects />
+            <AppLayout title="Pluses">
+              <Pluses />
             </AppLayout>
           }
         />
@@ -125,16 +137,18 @@ export default function App() {
             </AppLayout>
           }
         />
+        <Route
+          path="/pluse/:id/run"
+          element={
+            <AppLayout>
+              <PluseRun />
+            </AppLayout>
+          }
+        />
       </Routes>
 
-      {/* Quick Create FAB */}
-      <button
-        onClick={openQuick}
-        className="fixed right-4 bottom-20 z-50 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center active:scale-95 transition-transform"
-        aria-label="Quick add"
-      >
-        <Zap className="w-5 h-5" />
-      </button>
+      {/* Quick Create FAB — hide on pluse run */}
+      <QuickCreateFAB openQuick={openQuick} />
 
       {/* Quick Create Modal */}
       {quickOpen && (
@@ -161,6 +175,22 @@ export default function App() {
         </div>
       )}
     </HashRouter>
+  );
+}
+
+function QuickCreateFAB({ openQuick }: { openQuick: () => void }) {
+  const location = useLocation();
+  if (location.pathname.startsWith('/pluse/')) {
+    return null;
+  }
+  return (
+    <button
+      onClick={openQuick}
+      className="fixed right-4 bottom-20 z-50 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center active:scale-95 transition-transform"
+      aria-label="Quick add"
+    >
+      <Zap className="w-5 h-5" />
+    </button>
   );
 }
 

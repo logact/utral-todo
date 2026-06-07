@@ -25,4 +25,10 @@ extension BridgeValue {
         if case .object(let value) = self { return value }
         return nil
     }
+
+    var asDouble: Double? {
+        if case .double(let value) = self { return value }
+        if case .int(let value) = self { return Double(value) }
+        return nil
+    }
 }
