@@ -41,7 +41,7 @@ The iOS app is now a **thin native shell** around the web app:
 ```
 
 **Why a WebView shell?**
-- Single codebase: the web app (`apps/desktop/src/`) runs on desktop (Tauri) and iOS
+- Single codebase: the web app (`apps/mobile/src/`) runs inside the iOS shell
 - Fast iteration: develop in the browser with Vite HMR, changes reflect instantly in the simulator
 - TypeScript everywhere: no context-switching between Swift and JS
 - Native features bridged only where needed (haptics, push, camera)
@@ -99,7 +99,7 @@ The shell loads the web app from `http://localhost:1420` (the Vite dev server) w
 pnpm dev:desktop
 ```
 
-Then run the iOS app in Xcode. Hot reload works — save a file in `apps/desktop/src/` and the iOS app updates automatically.
+Then run the iOS app in Xcode. Hot reload works — save a file in `apps/mobile/src/` and the iOS app updates automatically.
 
 ### Production mode
 
@@ -107,10 +107,10 @@ In Release builds, the shell loads bundled web assets from `www/index.html` in t
 
 ```bash
 # Build the web app
-pnpm build:desktop
+pnpm build:mobile
 
 # Copy into the iOS bundle
-cp -r apps/desktop/dist/* apps/ios/UtralTodo/www/
+cp -r apps/mobile/dist/* apps/ios/UtralTodo/www/
 ```
 
 (You can automate this in a build phase script in Xcode.)
@@ -142,7 +142,7 @@ The bridge is auto-injected into every page load at `documentStart`.
 
 ## Using the Bridge from TypeScript
 
-Import from the bridge client in `apps/desktop/src/bridge/native.ts`:
+Import from the bridge client in `apps/mobile/src/bridge/native.ts`:
 
 ```typescript
 import { isNativeShell, nativeHaptic, nativeDevice, nativeNotification } from '@/bridge/native';
@@ -200,7 +200,7 @@ struct MyModule: BridgeModule {
 }
 ```
 
-2. Register it in `BridgeMessageHandler.registerDefaultModules()`.
+2. Register it in `BridgeMessageHandler.registerModules()`.
 
 3. Add the TypeScript wrapper in `apps/desktop/src/bridge/native.ts`.
 

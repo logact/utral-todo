@@ -83,11 +83,20 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
-  const updates: Partial<Todo> = { status, updatedAt: new Date() };
+  const now = new Date();
+
+  if (status === 'in_progress') {
+    const others = await db.todos.where('status').equals('in_progress').and((t) => t.id !== id).toArray();
+    for (const todo of others) {
+      await db.todos.update(todo.id, { status: 'pending', updatedAt: now });
+    }
+  }
+
+  const updates: Partial<Todo> = { status, updatedAt: now };
   if (status === 'done') {
-    updates.completedAt = new Date();
+    updates.completedAt = now;
   } else if (status === 'in_progress') {
-    updates.startedAt = new Date();
+    updates.startedAt = now;
   }
   await db.todos.update(id, updates);
 }

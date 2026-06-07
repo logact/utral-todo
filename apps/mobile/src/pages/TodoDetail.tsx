@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Circle, Play, Pause, ArrowLeft, Trash2, Clock, Calendar, Bell, X } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowLeft, Trash2, Clock, Calendar, Bell, X, Timer } from 'lucide-react';
 import { getTodo, updateTodo, updateTodoStatus, deleteTodo } from '../db/todos';
 import type { Todo } from '@utral/types';
 import { nativeHaptic, nativeNotification, isNativeShell } from '../bridge/native';
@@ -53,14 +53,6 @@ export function TodoDetail() {
     await updateTodoStatus(todo.id, newStatus);
     nativeHaptic.impact('light').catch(() => {});
     setTodo({ ...todo, status: newStatus, completedAt: newStatus === 'done' ? new Date() : undefined });
-  }
-
-  async function toggleProgress() {
-    if (!todo) return;
-    const newStatus = todo.status === 'in_progress' ? 'pending' : 'in_progress';
-    await updateTodoStatus(todo.id, newStatus);
-    nativeHaptic.impact('medium').catch(() => {});
-    setTodo({ ...todo, status: newStatus, startedAt: newStatus === 'in_progress' ? new Date() : todo.startedAt });
   }
 
   async function handleDelete() {
@@ -339,29 +331,17 @@ export function TodoDetail() {
         </div>
       )}
 
-      {/* Action buttons */}
-      {!isDone && (
-        <div className="ml-9 space-y-2">
-          <button
-            onClick={toggleProgress}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-colors ${
-              isInProgress
-                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                : 'bg-indigo-600 text-white'
-            }`}
-          >
-            {isInProgress ? (
-              <>
-                <Pause className="w-4 h-4" />
-                Pause
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4" />
-                Start
-              </>
-            )}
-          </button>
+      {/* Status badge */}
+      {!isDone && isInProgress && (
+        <div className="ml-9">
+          <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800 p-4 text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Timer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                In Progress
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>

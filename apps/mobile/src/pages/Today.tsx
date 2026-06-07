@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { CheckCircle2, Circle, Clock, Zap, Target, Play, Pause, SkipForward, RotateCcw, X, ChevronDown, Timer } from 'lucide-react';
-import { getTodaysTodos, getInProgressTodos, getOverdueTodos, updateTodoStatus } from '../db/todos';
+import { Link, useNavigate } from 'react-router-dom';
+import { CheckCircle2, Circle, Clock, Zap, Target, Play, Pause, SkipForward, RotateCcw, X, ChevronDown, Timer, ArrowRight, Search, Sparkles } from 'lucide-react';
+import { getTodaysTodos, getInProgressTodos, getOverdueTodos, getAllTodos, updateTodoStatus } from '../db/todos';
 import { getAllPluses } from '../db/pluse';
-import type { Todo, TodoStatus, Pluse } from '@utral/types';
+import type { Todo, Pluse } from '@utral/types';
 import { nativeHaptic } from '../bridge/native';
 
 /* ─── Helpers ─── */
@@ -34,9 +34,11 @@ function formatSeconds(totalSeconds: number): string {
 function PluseMiniTimer({
   pluse,
   onClose,
+  onRequireTask,
 }: {
   pluse: Pluse;
   onClose: () => void;
+  onRequireTask: (pluse: Pluse) => void;
 }) {
   const expandedIntervals = expandIntervals(pluse.intervals, pluse.repeatCount);
   const totalItems = expandedIntervals.length;
@@ -131,12 +133,7 @@ function PluseMiniTimer({
       timeoutRef.current = null;
     }
     if (isCompleted) {
-      setCurrentIndex(0);
-      setElapsedSeconds(0);
-      setIsRunning(true);
-      setIsCompleted(false);
-      setStartTime(Date.now());
-      nativeHaptic.impact('medium').catch(() => {});
+      onRequireTask(pluse);
       return;
     }
 
@@ -146,11 +143,15 @@ function PluseMiniTimer({
       setElapsedSeconds(total);
       setStartTime(null);
     } else {
+      if (elapsedSeconds === 0 && currentIndex === 0) {
+        onRequireTask(pluse);
+        return;
+      }
       setIsRunning(true);
       setStartTime(Date.now());
     }
     nativeHaptic.impact('light').catch(() => {});
-  }, [isRunning, isCompleted, elapsedSeconds, startTime]);
+  }, [isRunning, isCompleted, elapsedSeconds, startTime, currentIndex, pluse, onRequireTask]);
 
   const skipToNext = useCallback(() => {
     if (timeoutRef.current) {
@@ -322,6 +323,194 @@ function PluseSelector({
   );
 }
 
+/* ─── Focus Session Starter Modal ─── */
+
+function FocusStarterModal({
+  pluses,
+  onCancel,
+  initialPluse,
+  initialTodoId,
+}: {
+  pluses: Pluse[];
+  onCancel: () => void;
+  initialPluse?: Pluse;
+  initialTodoId?: string;
+}) {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<'pluse' | 'todo'>(initialPluse ? 'todo' : 'pluse');
+  const [selectedPluse, setSelectedPluse] = useState<Pluse | null>(initialPluse ?? null);
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [filter, setFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Auto-navigate if both pluse and todo are pre-selected
+  useEffect(() => {
+    if (initialPluse && initialTodoId) {
+      navigate(`/pluse/${initialPluse.id}/run?todoId=${initialTodoId}`);
+    }
+  }, [initialPluse, initialTodoId, navigate]);
+
+  // If only one pluse and no pre-selected todo, skip to todo picker
+  useEffect(() => {
+    if (pluses.length === 1 && !initialPluse) {
+      setSelectedPluse(pluses[0]);
+      setStep('todo');
+    }
+  }, [pluses, initialPluse]);
+
+  useEffect(() => {
+    getAllTodos().then((all) => {
+      const pending = all.filter((t) => t.status === 'pending');
+      setTodos(pending);
+      setLoading(false);
+    });
+  }, []);
+
+  const filtered = filter.trim()
+    ? todos.filter((t) => t.title.toLowerCase().includes(filter.toLowerCase()))
+    : todos;
+
+  function selectPluse(pluse: Pluse) {
+    nativeHaptic.impact('light').catch(() => {});
+    if (initialTodoId) {
+      navigate(`/pluse/${pluse.id}/run?todoId=${initialTodoId}`);
+      return;
+    }
+    setSelectedPluse(pluse);
+    setStep('todo');
+  }
+
+  function selectTodo(todoId: string) {
+    if (!selectedPluse) return;
+    nativeHaptic.impact('medium').catch(() => {});
+    navigate(`/pluse/${selectedPluse.id}/run?todoId=${todoId}`);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={onCancel}>
+      <div
+        className="bg-white dark:bg-slate-900 rounded-t-2xl w-full max-w-lg p-4 pb-safe max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              {step === 'pluse' ? 'Choose your pluse' : 'What will you focus on?'}
+            </h2>
+            {step === 'todo' && selectedPluse && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Starting <span className="font-medium text-indigo-600 dark:text-indigo-400">{selectedPluse.name}</span>
+              </p>
+            )}
+          </div>
+          <button
+            onClick={onCancel}
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Step: Pluse picker */}
+        {step === 'pluse' && (
+          <div className="flex-1 overflow-auto space-y-2">
+            {pluses.map((pluse) => {
+              const totalSeconds = pluse.intervals.reduce((s, d) => s + d, 0) * pluse.repeatCount;
+              return (
+                <button
+                  key={pluse.id}
+                  onClick={() => selectPluse(pluse)}
+                  className="w-full text-left flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center shrink-0">
+                    <Timer className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                      {pluse.name}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      {formatSeconds(totalSeconds)} · {pluse.intervals.length * pluse.repeatCount} intervals
+                    </p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step: Todo picker */}
+        {step === 'todo' && (
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* Search */}
+            <div className="relative mb-3 flex-shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Search tasks..."
+                autoFocus
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 border-0 focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="flex-1 overflow-auto min-h-0 pb-4">
+              {loading ? (
+                <div className="text-center py-8 text-sm text-slate-400 dark:text-slate-500">Loading...</div>
+              ) : todos.length === 0 ? (
+                <div className="text-center py-8">
+                  <Target className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    No pending tasks available.
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                    Add a task on this page first.
+                  </p>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-8 text-sm text-slate-400 dark:text-slate-500">
+                  No tasks match your search.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filtered.map((todo) => (
+                    <button
+                      key={todo.id}
+                      onClick={() => selectTodo(todo.id)}
+                      className="w-full text-left flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center shrink-0">
+                        <Target className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                          {todo.title}
+                        </p>
+                        {todo.scheduledDate && (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                            {new Date(todo.scheduledDate).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ─── */
 
 export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
@@ -332,6 +521,8 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [activePluse, setActivePluse] = useState<Pluse | null>(null);
   const [pluseKey, setPluseKey] = useState(0);
+  const [focusModalOpen, setFocusModalOpen] = useState(false);
+  const [focusModalInitialPluse, setFocusModalInitialPluse] = useState<Pluse | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -357,22 +548,23 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   }, []);
 
   async function toggleStatus(todo: Todo) {
-    const newStatus: TodoStatus = todo.status === 'done' ? 'pending' : 'done';
+    const newStatus = todo.status === 'done' ? 'pending' : 'done';
     await updateTodoStatus(todo.id, newStatus);
     nativeHaptic.impact('light').catch(() => {});
     refresh();
   }
 
-  async function startTodo(todo: Todo) {
+  async function setFocus(todo: Todo) {
     await updateTodoStatus(todo.id, 'in_progress');
     nativeHaptic.impact('medium').catch(() => {});
     refresh();
   }
 
-  const allTodos = [...overdue, ...inProgress, ...todos];
+  const allTodos = [...overdue, ...inProgress, ...todos.filter((t) => t.status !== 'in_progress')];
   const doneCount = allTodos.filter((t) => t.status === 'done').length;
   const totalCount = allTodos.length;
   const currentTodo = inProgress[0];
+  const pendingCount = allTodos.filter((t) => t.status === 'pending').length;
 
   function handleClosePluse() {
     setActivePluse(null);
@@ -381,6 +573,23 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   function handleSelectPluse(pluse: Pluse) {
     setActivePluse(pluse);
     setPluseKey((k) => k + 1);
+  }
+
+  function handleStartFocus() {
+    nativeHaptic.impact('light').catch(() => {});
+    setFocusModalInitialPluse(undefined);
+    setFocusModalOpen(true);
+  }
+
+  function handleRequireTask(pluse: Pluse) {
+    nativeHaptic.impact('light').catch(() => {});
+    setFocusModalInitialPluse(pluse);
+    setFocusModalOpen(true);
+  }
+
+  function handleCloseFocusModal() {
+    setFocusModalOpen(false);
+    setFocusModalInitialPluse(undefined);
   }
 
   if (loading) {
@@ -420,7 +629,7 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
         )}
       </div>
 
-      {/* Pluse Clock Card */}
+      {/* Focus Session Card */}
       {pluses.length > 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           {activePluse ? (
@@ -429,6 +638,7 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
                 key={`${activePluse.id}-${pluseKey}`}
                 pluse={activePluse}
                 onClose={handleClosePluse}
+                onRequireTask={handleRequireTask}
               />
               {/* Pluse selector */}
               {pluses.length > 1 && (
@@ -442,20 +652,50 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
               )}
             </>
           ) : (
-            <div className="text-center py-4 space-y-2">
-              <p className="text-xs text-slate-500 dark:text-slate-400">No active pluse</p>
-              <button
-                onClick={() => {
-                  if (pluses.length > 0) {
-                    setActivePluse(pluses[0]);
-                    setPluseKey((k) => k + 1);
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-xl bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
-              >
-                <Play className="w-3.5 h-3.5" />
-                Start {pluses[0]?.name}
-              </button>
+            <div className="text-center py-5 space-y-3">
+              {pendingCount > 0 ? (
+                <>
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center mx-auto">
+                    <Sparkles className="w-6 h-6 text-indigo-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      Ready to focus?
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {pendingCount} task{pendingCount > 1 ? 's' : ''} waiting
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleStartFocus}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium px-5 py-2.5 rounded-xl bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    Start Focus Session
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      All caught up!
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      No pending tasks. Add one to start a focus session.
+                    </p>
+                  </div>
+                  <button
+                    onClick={onQuickCreate}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium px-5 py-2.5 rounded-xl bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Add a Task
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -513,6 +753,9 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
             >
               Add your first task
             </button>
+            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+              Start a focus session right from here once you add tasks.
+            </p>
           </div>
         ) : (
           <div className="space-y-1">
@@ -521,13 +764,23 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
                 key={todo.id}
                 todo={todo}
                 onToggle={() => toggleStatus(todo)}
-                onStart={() => startTodo(todo)}
+                onFocus={() => setFocus(todo)}
               />
             ))}
             <div className="h-8" />
           </div>
         )}
       </div>
+
+      {/* Focus Starter Modal */}
+      {focusModalOpen && (
+        <FocusStarterModal
+          pluses={pluses}
+          onCancel={handleCloseFocusModal}
+          initialPluse={focusModalInitialPluse}
+          initialTodoId={currentTodo?.id}
+        />
+      )}
     </div>
   );
 }
@@ -535,14 +788,15 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
 function TodoItem({
   todo,
   onToggle,
-  onStart,
+  onFocus,
 }: {
   todo: Todo;
   onToggle: () => void;
-  onStart: () => void;
+  onFocus?: () => void;
 }) {
   const isDone = todo.status === 'done';
   const isInProgress = todo.status === 'in_progress';
+  const canFocus = !isDone && !isInProgress;
 
   const priorityColor =
     todo.priority === 'high'
@@ -561,16 +815,7 @@ function TodoItem({
         )}
       </button>
 
-      <Link
-        to={`/todo/${todo.id}`}
-        className="flex-1 min-w-0"
-        onClick={(e) => {
-          if (todo.status === 'pending') {
-            e.preventDefault();
-            onStart();
-          }
-        }}
-      >
+      <Link to={`/todo/${todo.id}`} className="flex-1 min-w-0">
         <p
           className={`text-[15px] font-medium truncate ${
             isDone
@@ -598,6 +843,19 @@ function TodoItem({
           )}
         </div>
       </Link>
+
+      {canFocus && onFocus && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFocus();
+          }}
+          className="mt-0.5 shrink-0 p-1.5 rounded-lg text-slate-400 dark:text-slate-500 active:text-amber-600 dark:active:text-amber-400 active:bg-amber-50 dark:active:bg-amber-950/30 transition-colors"
+          title="Set as current focus"
+        >
+          <Target className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 }

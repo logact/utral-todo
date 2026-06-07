@@ -1,6 +1,14 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Timer, Play, Trash2, Plus, X, Save, ChevronUp, ChevronDown, Zap } from 'lucide-react';
+import {
+  Timer,
+  Trash2,
+  Plus,
+  X,
+  Save,
+  ChevronUp,
+  ChevronDown,
+  Zap,
+} from 'lucide-react';
 import type { Pluse } from '@utral/types';
 import { getAllPluses, createPluse, deletePluse, updatePluse } from '../db/pluse';
 import { nativeHaptic } from '../bridge/native';
@@ -182,12 +190,10 @@ function PluseEditor({
 function PluseCard({
   pluse,
   onDelete,
-  onStart,
   onEdit,
 }: {
   pluse: Pluse;
   onDelete: (id: string) => void;
-  onStart: (id: string) => void;
   onEdit: (pluse: Pluse) => void;
 }) {
   const totalSeconds = calcTotalSeconds(pluse.intervals, pluse.repeatCount);
@@ -242,13 +248,6 @@ function PluseCard({
         </div>
       </div>
 
-      <button
-        onClick={() => onStart(pluse.id)}
-        className="mt-3 w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium active:bg-indigo-700 transition-colors"
-      >
-        <Play className="w-4 h-4" />
-        Start Pluse
-      </button>
     </div>
   );
 }
@@ -256,7 +255,6 @@ function PluseCard({
 /* ─── Main Page ─── */
 
 export function Pluses() {
-  const navigate = useNavigate();
   const [pluses, setPluses] = useState<Pluse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -344,12 +342,12 @@ export function Pluses() {
               key={pluse.id}
               pluse={pluse}
               onDelete={handleDelete}
-              onStart={(id) => navigate(`/pluse/${id}/run`)}
               onEdit={(p) => setEditingId(p.id)}
             />
           ))}
         </div>
       )}
+
     </div>
   );
 }

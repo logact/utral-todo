@@ -58,7 +58,7 @@ struct BridgeWebView: UIViewRepresentable {
     private func loadContent(in webView: WKWebView) {
         // Development: load from Vite dev server if reachable
         #if DEBUG
-        if let url = URL(string: "http://localhost:1420") {
+        if let url = URL(string: "http://localhost:1421") {
             var request = URLRequest(url: url)
             request.setValue("true", forHTTPHeaderField: "X-Utral-iOS")
             webView.load(request)
@@ -75,7 +75,7 @@ struct BridgeWebView: UIViewRepresentable {
                 <html><body style="font-family:system-ui;padding:40px;text-align:center;">
                 <h1>Utral Todo</h1>
                 <p>Web content not found.</p>
-                <p>Build the desktop app and copy <code>dist/</code> to the app bundle.</p>
+                <p>Build the mobile app and copy <code>dist/</code> to the app bundle.</p>
                 </body></html>
             """
             webView.loadHTMLString(html, baseURL: nil)
