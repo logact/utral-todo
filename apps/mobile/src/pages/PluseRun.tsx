@@ -92,7 +92,7 @@ export function PluseRun() {
         setCurrentIndex(session.currentIndex);
 
         if (session.status === 'running') {
-          const awaySeconds = Math.floor((Date.now() - session.startedAt.getTime()) / 1000);
+          const awaySeconds = Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000);
           const totalElapsed = session.elapsedSeconds + awaySeconds;
           setElapsedSeconds(totalElapsed);
           setIsRunning(true);

@@ -50,9 +50,10 @@ function ActiveSessionCard({
   const currentDuration = expanded[session.currentIndex] || 0;
 
   // tick prop ensures re-render every second for live countdown
+  const startedAt = new Date(session.startedAt);
   const elapsed =
     session.status === 'running'
-      ? session.elapsedSeconds + Math.floor((Date.now() - session.startedAt.getTime()) / 1000)
+      ? session.elapsedSeconds + Math.floor((Date.now() - startedAt.getTime()) / 1000)
       : session.elapsedSeconds;
   void tick;
   const remainingSeconds = Math.max(0, currentDuration - elapsed);
