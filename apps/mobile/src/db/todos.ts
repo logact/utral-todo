@@ -1,5 +1,6 @@
 import { db } from './database';
 import type { Todo, TodoStatus, Priority, RepeatRule } from '@utral/types';
+import { triggerSync } from './timerSessions';
 
 export async function createTodo(
   title: string,
@@ -40,6 +41,7 @@ export async function createTodo(
     isGoal: options?.isGoal,
   };
   await db.todos.add(todo);
+  await triggerSync('todos', 'create', todo.id);
   return todo;
 }
 
@@ -80,6 +82,7 @@ export async function getOverdueTodos(): Promise<Todo[]> {
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
   await db.todos.update(id, { ...updates, updatedAt: new Date() });
+  await triggerSync('todos', 'update', id);
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
@@ -89,6 +92,7 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
     const others = await db.todos.where('status').equals('in_progress').and((t) => t.id !== id).toArray();
     for (const todo of others) {
       await db.todos.update(todo.id, { status: 'pending', updatedAt: now });
+      await triggerSync('todos', 'update', todo.id);
     }
   }
 
@@ -99,10 +103,12 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
     updates.startedAt = now;
   }
   await db.todos.update(id, updates);
+  await triggerSync('todos', 'update', id);
 }
 
 export async function deleteTodo(id: string): Promise<void> {
   await db.todos.delete(id);
+  await triggerSync('todos', 'delete', id);
 }
 
 export async function addTodo(options: { title: string; projectId?: string; scheduledDate?: Date }): Promise<Todo> {

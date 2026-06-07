@@ -15,6 +15,16 @@ export function useTodoLogs(todoId: string) {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const add = useCallback(

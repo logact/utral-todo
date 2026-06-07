@@ -37,10 +37,21 @@ export function subscribe(deviceId: string, res: Response): void {
 
 export function broadcast(event: SyncEvent, excludeDeviceId?: string): void {
   const data = `data: ${JSON.stringify({ type: 'event', event }) }\n\n`;
+  let sent = 0;
+  let skipped = 0;
   for (const conn of connections) {
-    if (excludeDeviceId && conn.deviceId === excludeDeviceId) continue;
-    conn.res.write(data);
+    if (excludeDeviceId && conn.deviceId === excludeDeviceId) {
+      skipped++;
+      continue;
+    }
+    try {
+      conn.res.write(data);
+      sent++;
+    } catch (err) {
+      console.error('[sync] Failed to write to connection:', err);
+    }
   }
+  console.log(`[sync] Broadcast ${event.table}/${event.operation}/${event.recordId} to ${sent} clients (skipped ${skipped}, total ${connections.size})`);
 
   // Also send APNS silent push to iOS/watchOS devices
   broadcastToDevices(

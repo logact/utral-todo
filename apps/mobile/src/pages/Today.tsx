@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Circle, Clock, Zap, Target, Play, Pause, SkipForward, RotateCcw, X, ChevronDown, Timer, ArrowRight, Search, Sparkles } from 'lucide-react';
 import { getTodaysTodos, getInProgressTodos, getOverdueTodos, getAllTodos, updateTodoStatus } from '../db/todos';
 import { getAllPluses } from '../db/pluse';
-import type { Todo, Pluse } from '@utral/types';
+import { getActiveTimerSession, updateTimerSession } from '../db/timerSessions';
+import type { Todo, Pluse, TimerSession } from '@utral/types';
 import { nativeHaptic } from '../bridge/native';
 
 /* ─── Helpers ─── */
@@ -27,6 +28,76 @@ function formatSeconds(totalSeconds: number): string {
   const s = totalSeconds % 60;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
+}
+
+/* ─── Active Session Resume Card ─── */
+
+function ActiveSessionCard({
+  session,
+  pluses,
+  tick,
+  onResume,
+  onStop,
+}: {
+  session: TimerSession;
+  pluses: Pluse[];
+  tick: number;
+  onResume: () => void;
+  onStop: () => void;
+}) {
+  const pluse = pluses.find((p) => p.id === session.pluseId);
+  const expanded = session.intervals ? expandIntervals(session.intervals, session.repeatCount) : [];
+  const currentDuration = expanded[session.currentIndex] || 0;
+
+  // tick prop ensures re-render every second for live countdown
+  const elapsed =
+    session.status === 'running'
+      ? session.elapsedSeconds + Math.floor((Date.now() - session.startedAt.getTime()) / 1000)
+      : session.elapsedSeconds;
+  void tick;
+  const remainingSeconds = Math.max(0, currentDuration - elapsed);
+  const totalItems = expanded.length;
+
+  return (
+    <div className="text-center space-y-3 py-4 px-4">
+      <div className="flex items-center justify-center gap-1.5">
+        <div className={`w-2 h-2 rounded-full ${session.status === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
+        <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+          {session.status === 'running' ? 'Focus in Progress' : 'Focus Paused'}
+        </span>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+          {pluse?.name ?? session.name}
+        </p>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+          Interval {session.currentIndex + 1} of {totalItems}
+        </p>
+      </div>
+
+      <div className="text-4xl font-mono font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+        {formatCountdown(remainingSeconds)}
+      </div>
+
+      <div className="flex items-center justify-center gap-2">
+        <button
+          onClick={onResume}
+          className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-medium bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
+        >
+          <Play className="w-3.5 h-3.5" />
+          Resume
+        </button>
+        <button
+          onClick={onStop}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 active:bg-slate-50 dark:active:bg-slate-700 transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+          Stop
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* ─── Pluse Mini Timer ─── */
@@ -523,19 +594,24 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   const [pluseKey, setPluseKey] = useState(0);
   const [focusModalOpen, setFocusModalOpen] = useState(false);
   const [focusModalInitialPluse, setFocusModalInitialPluse] = useState<Pluse | undefined>(undefined);
+  const [activeSession, setActiveSession] = useState<TimerSession | null>(null);
+  const [sessionTick, setSessionTick] = useState(0);
+  const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [today, progress, overdueList, allPluses] = await Promise.all([
+    const [today, progress, overdueList, allPluses, session] = await Promise.all([
       getTodaysTodos(),
       getInProgressTodos(),
       getOverdueTodos(),
       getAllPluses(),
+      getActiveTimerSession(),
     ]);
     setTodos(today);
     setInProgress(progress);
     setOverdue(overdueList);
     setPluses(allPluses);
+    setActiveSession(session || null);
     if (allPluses.length > 0 && !activePluse) {
       setActivePluse(allPluses[0]);
     }
@@ -546,6 +622,31 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
     refresh();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh when page becomes visible again (e.g., navigating back from PluseRun)
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [refresh]);
+
+  // Refresh when remote sync data arrives
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
+  }, [refresh]);
 
   async function toggleStatus(todo: Todo) {
     const newStatus = todo.status === 'done' ? 'pending' : 'done';
@@ -592,6 +693,28 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
     setFocusModalInitialPluse(undefined);
   }
 
+  // Tick for active session display
+  useEffect(() => {
+    if (!activeSession || activeSession.status === 'completed') return;
+    const interval = setInterval(() => setSessionTick((n) => n + 1), 1000);
+    return () => clearInterval(interval);
+  }, [activeSession]);
+
+  function handleResumeSession() {
+    if (!activeSession) return;
+    navigate(`/pluse/${activeSession.pluseId}/run?todoId=${activeSession.todoId}`);
+  }
+
+  async function handleStopSession() {
+    if (!activeSession) return;
+    await updateTimerSession(activeSession.id, {
+      status: 'completed',
+      completedAt: new Date(),
+    });
+    setActiveSession(null);
+    nativeHaptic.impact('medium').catch(() => {});
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -632,7 +755,15 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
       {/* Focus Session Card */}
       {pluses.length > 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-          {activePluse ? (
+          {activeSession ? (
+            <ActiveSessionCard
+              session={activeSession}
+              pluses={pluses}
+              tick={sessionTick}
+              onResume={handleResumeSession}
+              onStop={handleStopSession}
+            />
+          ) : activePluse ? (
             <>
               <PluseMiniTimer
                 key={`${activePluse.id}-${pluseKey}`}

@@ -271,6 +271,20 @@ export function Pluses() {
     load();
   }, [load]);
 
+  // Refresh when remote sync data arrives
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => load(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
+  }, [load]);
+
   async function handleCreate(data: { name: string; intervals: number[]; repeatCount: number; autoAdvance: boolean }) {
     await createPluse(data.name, data.intervals, data.repeatCount, '', data.autoAdvance);
     setIsCreating(false);

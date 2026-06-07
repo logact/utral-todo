@@ -37,6 +37,16 @@ export function useTodos() {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const add = useCallback(
@@ -144,6 +154,16 @@ export function useTodaysTodos() {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
@@ -198,6 +218,16 @@ export function useTodayData() {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
@@ -294,6 +324,16 @@ export function useScheduleTodos() {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const todoMapByDate = useMemo(() => {

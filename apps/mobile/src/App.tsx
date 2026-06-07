@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import {
   CalendarCheck,
@@ -15,6 +15,9 @@ import { SettingsPage } from './pages/Settings';
 import { TodoDetail } from './pages/TodoDetail';
 import { PluseRun } from './pages/PluseRun';
 import { addTodo } from './db/todos';
+import { setOnLocalChange } from './db/timerSessions';
+import { getSyncConfig } from './db/sync';
+import * as syncEngine from './db/syncEngine';
 
 const navItems = [
   { path: '/', icon: CalendarCheck, label: 'Today' },
@@ -93,6 +96,21 @@ export default function App() {
 
   const openQuick = useCallback(() => setQuickOpen(true), []);
   const closeQuick = useCallback(() => setQuickOpen(false), []);
+
+  useEffect(() => {
+    // Wire timer session changes to sync queue
+    setOnLocalChange(syncEngine.onLocalChange);
+
+    // Start sync engine if configured
+    const config = getSyncConfig();
+    if (config?.serverUrl) {
+      syncEngine.start().catch(() => {});
+    }
+
+    return () => {
+      syncEngine.stop();
+    };
+  }, []);
 
   return (
     <HashRouter>

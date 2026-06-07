@@ -537,7 +537,8 @@ export function useCliBridge() {
         console.warn('[useCliBridge] Tauri listen() not available; skipping CLI bridge setup');
         return;
       }
-      unlisten = await listen<CliRequestEvent>('cli-request', async (event) => {
+      try {
+        unlisten = await listen<CliRequestEvent>('cli-request', async (event) => {
         const { req_id, entity, action, args } = event.payload;
         let result: unknown;
 
@@ -582,6 +583,9 @@ export function useCliBridge() {
 
         await invoke('cli_respond', { req_id, result });
       });
+      } catch (err) {
+        console.warn('[useCliBridge] Tauri event listen failed; skipping CLI bridge:', err);
+      }
     };
 
     setup();

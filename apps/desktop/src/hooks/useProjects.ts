@@ -24,6 +24,16 @@ export function useProjects() {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const add = useCallback(
@@ -82,6 +92,16 @@ export function useProject(projectId: string | undefined) {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const updateProjectData = useCallback(async (updates: Partial<Project>) => {

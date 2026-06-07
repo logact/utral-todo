@@ -1,5 +1,6 @@
 import { db } from './database';
 import type { Pluse } from '@utral/types';
+import { triggerSync } from './timerSessions';
 
 export async function getAllPluses(): Promise<Pluse[]> {
   return db.pluses.toArray();
@@ -28,6 +29,7 @@ export async function createPluse(
     updatedAt: now,
   };
   await db.pluses.add(pluse);
+  await triggerSync('pluses', 'create', pluse.id);
   return pluse;
 }
 
@@ -36,8 +38,10 @@ export async function updatePluse(
   updates: Partial<Pick<Pluse, 'name' | 'description' | 'intervals' | 'repeatCount' | 'autoAdvance'>>
 ): Promise<void> {
   await db.pluses.update(id, { ...updates, updatedAt: new Date() });
+  await triggerSync('pluses', 'update', id);
 }
 
 export async function deletePluse(id: string): Promise<void> {
   await db.pluses.delete(id);
+  await triggerSync('pluses', 'delete', id);
 }

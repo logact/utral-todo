@@ -20,6 +20,16 @@ export function useRelations() {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   const add = useCallback(
@@ -58,6 +68,16 @@ export function useTodoRelations(todoId: string) {
 
   useEffect(() => {
     refresh();
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => refresh(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
   }, [refresh]);
 
   return { outgoing, incoming, isLoading, refresh };

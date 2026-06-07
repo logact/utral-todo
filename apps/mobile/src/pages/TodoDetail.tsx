@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Circle, ArrowLeft, Trash2, Clock, Calendar, Bell, X, Timer } from 'lucide-react';
 import { getTodo, updateTodo, updateTodoStatus, deleteTodo } from '../db/todos';
@@ -19,13 +19,30 @@ export function TodoDetail() {
   const [showDuePicker, setShowDuePicker] = useState(false);
   const [dueInput, setDueInput] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!id) return;
-    getTodo(id).then((t) => {
-      setTodo(t ?? null);
-      setLoading(false);
-    });
+    const t = await getTodo(id);
+    setTodo(t ?? null);
+    setLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Refresh when remote sync data arrives
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => load(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
+  }, [load]);
 
   useEffect(() => {
     if (todo?.scheduledDate) {

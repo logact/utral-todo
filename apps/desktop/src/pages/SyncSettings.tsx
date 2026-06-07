@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Cloud, AlertCircle, Loader2, Download, Upload, Wifi, WifiOff, Zap } from 'lucide-react';
 import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
 import { db } from '../db/database';
-import { processQueue } from '../db/syncEngine';
+import { processQueue, start, stop } from '../db/syncEngine';
 
 export function SyncSettings() {
   const [serverUrl, setServerUrl] = useState('');
@@ -48,6 +48,11 @@ export function SyncSettings() {
     }
     setUrlError('');
     saveSyncConfig({ serverUrl, apiToken: apiToken || undefined });
+    // Restart sync engine with new config
+    stop();
+    start().catch((err) => {
+      console.error('[SyncSettings] Failed to start sync:', err);
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }

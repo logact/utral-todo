@@ -1,30 +1,6 @@
 import { db } from './database';
-import { getSyncConfig } from './sync';
-import type { SyncEvent } from '../types';
-
-let tauriFetch: typeof fetch | null = null;
-
-async function resolveFetch(): Promise<typeof fetch> {
-  if (tauriFetch) return tauriFetch;
-
-  // Only use Tauri HTTP plugin when actually running inside Tauri.
-  // In a plain browser (Vite dev server), the plugin's fetch() calls
-  // invoke() internally, which is undefined and throws.
-  const hasTauri = typeof window !== 'undefined' &&
-    !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
-
-  if (hasTauri) {
-    try {
-      const tauriHttp = await import('@tauri-apps/plugin-http');
-      tauriFetch = tauriHttp.fetch;
-      return tauriFetch;
-    } catch {
-      // fall through to native fetch
-    }
-  }
-
-  return fetch.bind(globalThis);
-}
+import { syncFetch } from './sync';
+import type { SyncEvent } from '@utral/types';
 
 let sseSource: EventSource | null = null;
 let processing = false;
@@ -48,7 +24,7 @@ async function getOrCreateDeviceId(): Promise<string> {
     deviceId = state.value;
     return deviceId;
   }
-  // On iOS, use the native deviceId so APNS silent pushes route correctly
+  // Try native bridge for iOS device ID
   const bridge = (window as unknown as Record<string, unknown>).__bridge__ as
     | { platform?: string; call?: (module: string, action: string) => Promise<string> }
     | undefined;
@@ -66,7 +42,7 @@ async function getOrCreateDeviceId(): Promise<string> {
   const newId = crypto.randomUUID();
   await db.syncState.put({ key: 'deviceId', value: newId });
   deviceId = newId;
-  return newId;
+  return deviceId;
 }
 
 async function getLastSyncAt(): Promise<Date | undefined> {
@@ -79,34 +55,8 @@ async function setLastSyncAt(date: Date): Promise<void> {
   await db.syncState.put({ key: 'lastSyncAt', value: date.toISOString() });
 }
 
-async function syncFetch(path: string, options?: RequestInit): Promise<Response> {
-  const config = getSyncConfig();
-  if (!config) throw new Error('Sync not configured');
-
-  const url = normalizeServerUrl(config.serverUrl);
-  const fullUrl = `${url}${path}`;
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (config.apiToken) {
-    headers['Authorization'] = `Bearer ${config.apiToken}`;
-  }
-
-  const doFetch = await resolveFetch();
-  const res = await doFetch(fullUrl, {
-    headers,
-    ...options,
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return res;
-}
-
 export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
+  console.log('[sync] Applying remote event:', event.table, event.operation, event.recordId);
   const payload = event.payload as Record<string, unknown> | undefined;
 
   // Parse dates in payload
@@ -182,6 +132,7 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
     default: console.warn('[sync] Unknown table:', event.table);
   }
 
+  console.log('[sync] Remote event applied and dispatched:', event.table, event.operation, event.recordId);
   window.dispatchEvent(new CustomEvent('sync:remote-applied', { detail: { table: event.table, operation: event.operation, recordId: event.recordId } }));
 }
 
@@ -190,12 +141,6 @@ export async function processQueue(): Promise<void> {
   processing = true;
 
   try {
-    const config = getSyncConfig();
-    if (!config?.serverUrl) {
-      processing = false;
-      return;
-    }
-
     const myDeviceId = await getOrCreateDeviceId();
     const items = await db.syncQueue.orderBy('createdAt').toArray();
     if (items.length === 0) {
@@ -203,7 +148,6 @@ export async function processQueue(): Promise<void> {
       return;
     }
 
-    // Batch into chunks of 50
     const batchSize = 50;
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
@@ -237,7 +181,6 @@ export async function processQueue(): Promise<void> {
           const record = await getRecord();
           if (!record) continue;
 
-          // Serialize dates
           const payload = JSON.parse(JSON.stringify(record));
 
           changes.push({
@@ -278,7 +221,6 @@ export async function processQueue(): Promise<void> {
           console.warn('[sync] Some changes rejected:', result.rejected);
         }
 
-        // Remove successfully processed items from queue
         for (const item of batch) {
           await db.syncQueue.delete(item.id);
         }
@@ -286,7 +228,6 @@ export async function processQueue(): Promise<void> {
         await setLastSyncAt(new Date());
       } catch (err) {
         console.error('[sync] Push failed:', err);
-        // Increment retry count for all items in batch
         for (const item of batch) {
           const newRetry = (item.retryCount || 0) + 1;
           if (newRetry >= 5) {
@@ -299,7 +240,7 @@ export async function processQueue(): Promise<void> {
             });
           }
         }
-        break; // Stop processing more batches on error
+        break;
       }
     }
   } finally {
@@ -308,12 +249,25 @@ export async function processQueue(): Promise<void> {
 }
 
 function connectSSE(): void {
-  const config = getSyncConfig();
-  if (!config?.serverUrl) return;
+  let config: { serverUrl: string; apiToken?: string } | null = null;
+  try {
+    const raw = localStorage.getItem('utral:syncConfig');
+    if (raw) config = JSON.parse(raw) as { serverUrl: string; apiToken?: string };
+  } catch (err) {
+    console.error('[sync] Failed to parse sync config:', err);
+    return;
+  }
+  if (!config?.serverUrl) {
+    console.log('[sync] No server URL configured, skipping SSE');
+    return;
+  }
 
   const url = normalizeServerUrl(config.serverUrl);
   const myDeviceId = deviceId;
-  if (!myDeviceId) return;
+  if (!myDeviceId) {
+    console.error('[sync] No deviceId available, cannot connect SSE');
+    return;
+  }
 
   const params = new URLSearchParams();
   params.set('deviceId', myDeviceId);
@@ -338,9 +292,11 @@ function connectSSE(): void {
     }
 
     sseSource.onmessage = (e) => {
+      console.log('[sync] SSE message received:', e.data);
       try {
         const data = JSON.parse(e.data);
         if (data.type === 'delta' && Array.isArray(data.events)) {
+          console.log('[sync] Delta with', data.events.length, 'events');
           for (const event of data.events) {
             applyRemoteEvent(event as SyncEvent).catch((err) => {
               console.error('[sync] Failed to apply delta event:', err);
@@ -350,10 +306,13 @@ function connectSSE(): void {
             setLastSyncAt(new Date()).catch(() => {});
           }
         } else if (data.type === 'event' && data.event) {
+          console.log('[sync] Single event:', data.event.table, data.event.operation, data.event.recordId);
           applyRemoteEvent(data.event as SyncEvent).catch((err) => {
             console.error('[sync] Failed to apply event:', err);
           });
           setLastSyncAt(new Date()).catch(() => {});
+        } else {
+          console.log('[sync] Unhandled SSE message type:', data.type);
         }
       } catch (err) {
         console.error('[sync] Failed to parse SSE message:', err);
@@ -365,7 +324,6 @@ function connectSSE(): void {
       reconnectDelay = 1000;
       stopPolling();
       setLastSyncAt(new Date()).catch(() => {});
-      // Process any queued changes
       processQueue().catch(() => {});
     };
 
@@ -377,8 +335,7 @@ function connectSSE(): void {
       }
       scheduleReconnect();
     };
-  }).catch((err) => {
-    console.error('[sync] Failed to get lastSyncAt:', err);
+  }).catch(() => {
     scheduleReconnect();
   });
 }
@@ -443,16 +400,15 @@ export async function onLocalChange(
     retryCount: 0,
   });
 
-  // Debounce queue processing
   setTimeout(() => {
     processQueue().catch(() => {});
   }, 100);
 }
 
 export async function start(): Promise<void> {
+  console.log('[sync] Starting sync engine...');
   await getOrCreateDeviceId();
-  window.removeEventListener('nativeSyncTrigger', onNativeSyncTrigger);
-  window.addEventListener('nativeSyncTrigger', onNativeSyncTrigger);
+  console.log('[sync] Device ID:', deviceId);
   connectSSE();
 }
 
@@ -468,15 +424,9 @@ export function stop(): void {
   stopPolling();
 }
 
-function onNativeSyncTrigger() {
-  console.log('[sync] Native sync trigger received');
-  processQueue().catch(() => {});
-  pollEvents().catch(() => {});
-}
-
 export function getSyncStatus(): { connected: boolean; pendingCount: number } {
   return {
     connected: sseSource?.readyState === EventSource.OPEN,
-    pendingCount: 0, // Will be updated by caller
+    pendingCount: 0,
   };
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle, Search, X } from 'lucide-react';
 import { getAllTodos, updateTodoStatus } from '../db/todos';
 import type { Todo, TodoStatus } from '@utral/types';
 import { nativeHaptic } from '../bridge/native';
@@ -8,14 +8,33 @@ import { nativeHaptic } from '../bridge/native';
 export function Todos() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [filter, setFilter] = useState<TodoStatus | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    getAllTodos().then((all) => {
-      setTodos(all);
-      setLoading(false);
-    });
+  const load = useCallback(async () => {
+    setLoading(true);
+    const all = await getAllTodos();
+    setTodos(all);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Refresh when remote sync data arrives
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => load(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
+  }, [load]);
 
   async function toggleStatus(todo: Todo) {
     const newStatus: TodoStatus = todo.status === 'done' ? 'pending' : 'done';
@@ -28,7 +47,16 @@ export function Todos() {
     );
   }
 
-  const filtered = filter === 'all' ? todos : todos.filter((t) => t.status === filter);
+  const query = searchQuery.trim().toLowerCase();
+  const filtered = todos.filter((t) => {
+    const matchesFilter = filter === 'all' || t.status === filter;
+    const matchesSearch =
+      !query ||
+      t.title.toLowerCase().includes(query) ||
+      (t.description?.toLowerCase().includes(query)) ||
+      (t.instructions?.toLowerCase().includes(query));
+    return matchesFilter && matchesSearch;
+  });
 
   if (loading) {
     return (
@@ -40,6 +68,26 @@ export function Todos() {
 
   return (
     <div className="px-4 py-3">
+      {/* Search */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search tasks..."
+          className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 border-0 focus:ring-2 focus:ring-indigo-500"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 dark:text-slate-500"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       {/* Filter tabs */}
       <div className="flex gap-2 mb-4">
         {(['all', 'pending', 'in_progress', 'done'] as const).map((f) => (

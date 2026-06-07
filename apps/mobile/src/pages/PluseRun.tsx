@@ -10,9 +10,15 @@ import {
   CheckCircle2,
   Target,
 } from 'lucide-react';
-import type { Pluse, Todo } from '@utral/types';
+import type { Pluse, Todo, TimerSession } from '@utral/types';
 import { getPluse } from '../db/pluse';
 import { getTodo, updateTodoStatus } from '../db/todos';
+import {
+  getActiveTimerSession,
+  createTimerSession,
+  updateTimerSession,
+  deleteTimerSession,
+} from '../db/timerSessions';
 import { nativeHaptic } from '../bridge/native';
 
 function formatTime(totalSeconds: number): string {
@@ -53,7 +59,10 @@ export function PluseRun() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasStartedRef = useRef(false);
+  const sessionRef = useRef<TimerSession | null>(null);
+  const isRestoringRef = useRef(false);
 
+  // Load pluse and todo
   useEffect(() => {
     if (!id) return;
     if (!todoId) {
@@ -61,10 +70,7 @@ export function PluseRun() {
       return;
     }
     setIsLoading(true);
-    Promise.all([
-      getPluse(id),
-      getTodo(todoId),
-    ]).then(([p, t]) => {
+    Promise.all([getPluse(id), getTodo(todoId)]).then(([p, t]) => {
       setPluse(p || null);
       setTodo(t || null);
       setIsLoading(false);
@@ -74,6 +80,52 @@ export function PluseRun() {
   const expandedIntervals = pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : [];
   const currentDuration = expandedIntervals[currentIndex] || 0;
 
+  // Restore active timer session on mount
+  useEffect(() => {
+    if (!id || !todoId || !pluse) return;
+
+    async function restore() {
+      const session = await getActiveTimerSession();
+      if (session && session.pluseId === id && session.todoId === todoId) {
+        isRestoringRef.current = true;
+        sessionRef.current = session;
+        setCurrentIndex(session.currentIndex);
+
+        if (session.status === 'running') {
+          const awaySeconds = Math.floor((Date.now() - session.startedAt.getTime()) / 1000);
+          const totalElapsed = session.elapsedSeconds + awaySeconds;
+          setElapsedSeconds(totalElapsed);
+          setIsRunning(true);
+          // Reset startedAt to now so we don't double-count on next restore
+          await updateTimerSession(session.id, {
+            elapsedSeconds: totalElapsed,
+            startedAt: new Date(),
+          });
+        } else if (session.status === 'paused') {
+          setElapsedSeconds(session.elapsedSeconds);
+          setIsRunning(false);
+        } else if (session.status === 'completed') {
+          setIsCompleted(true);
+          setIsRunning(false);
+          setElapsedSeconds(session.elapsedSeconds);
+        }
+
+        if (session.status !== 'completed') {
+          hasStartedRef.current = true;
+          updateTodoStatus(todoId, 'in_progress').catch(() => {});
+        }
+
+        // Clear restoring flag after state settles
+        setTimeout(() => {
+          isRestoringRef.current = false;
+        }, 100);
+      }
+    }
+
+    restore();
+  }, [id, todoId, pluse]);
+
+  // Timer tick
   useEffect(() => {
     if (isRunning) {
       timerRef.current = setInterval(() => {
@@ -90,16 +142,17 @@ export function PluseRun() {
     };
   }, [isRunning]);
 
-  // Auto-set todo to in_progress on first play
+  // Auto-set todo to in_progress on first play (only for new sessions, not restored)
   useEffect(() => {
-    if (isRunning && todoId && !hasStartedRef.current) {
+    if (isRunning && todoId && !hasStartedRef.current && !isRestoringRef.current) {
       hasStartedRef.current = true;
       updateTodoStatus(todoId, 'in_progress').catch(() => {});
     }
   }, [isRunning, todoId]);
 
+  // Check completion / auto-advance
   useEffect(() => {
-    if (!pluse || isCompleted) return;
+    if (!pluse || isCompleted || isRestoringRef.current) return;
     const itemDurationSeconds = currentDuration;
     const shouldAutoAdvance = pluse.autoAdvance !== false;
 
@@ -109,11 +162,28 @@ export function PluseRun() {
       if (currentIndex < expandedIntervals.length - 1) {
         if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
-        setCurrentIndex((prev) => prev + 1);
+        const nextIndex = currentIndex + 1;
+        setCurrentIndex(nextIndex);
         setElapsedSeconds(0);
+
+        // Update session
+        if (sessionRef.current) {
+          updateTimerSession(sessionRef.current.id, {
+            currentIndex: nextIndex,
+            elapsedSeconds: 0,
+            status: 'paused',
+          }).catch(() => {});
+        }
+
         if (shouldAutoAdvance) {
           setTimeout(() => {
             setIsRunning(true);
+            if (sessionRef.current) {
+              updateTimerSession(sessionRef.current.id, {
+                status: 'running',
+                startedAt: new Date(),
+              }).catch(() => {});
+            }
             nativeHaptic.impact('light').catch(() => {});
           }, 2000);
         }
@@ -125,31 +195,96 @@ export function PluseRun() {
           setElapsedSeconds(0);
           setTimeout(() => {
             setIsRunning(true);
+            if (sessionRef.current) {
+              updateTimerSession(sessionRef.current.id, {
+                currentIndex: 0,
+                elapsedSeconds: 0,
+                status: 'running',
+                startedAt: new Date(),
+              }).catch(() => {});
+            }
             nativeHaptic.impact('light').catch(() => {});
           }, 2000);
         } else {
           setIsCompleted(true);
           nativeHaptic.notification('success').catch(() => {});
+          if (sessionRef.current) {
+            updateTimerSession(sessionRef.current.id, {
+              status: 'completed',
+              completedAt: new Date(),
+            }).catch(() => {});
+          }
         }
       }
     }
   }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length]);
 
-  function toggleRunning() {
-    setIsRunning((r) => !r);
+  async function toggleRunning() {
     nativeHaptic.impact('light').catch(() => {});
-  }
 
-  function skipToNext() {
-    if (currentIndex < expandedIntervals.length - 1) {
+    if (isRunning) {
+      // Pausing
       setIsRunning(false);
-      setCurrentIndex((prev) => prev + 1);
-      setElapsedSeconds(0);
-      nativeHaptic.impact('medium').catch(() => {});
+      if (sessionRef.current) {
+        await updateTimerSession(sessionRef.current.id, {
+          elapsedSeconds,
+          status: 'paused',
+          pausedAt: new Date(),
+        });
+      }
+    } else {
+      // Starting or resuming
+      if (!sessionRef.current && pluse && todoId) {
+        // Mark any existing active session as completed before creating new one
+        const existing = await getActiveTimerSession();
+        if (existing) {
+          await updateTimerSession(existing.id, {
+            status: 'completed',
+            completedAt: new Date(),
+          });
+        }
+        // Create new session on first start
+        const session = await createTimerSession({
+          type: 'pluse',
+          name: pluse.name,
+          pluseId: pluse.id,
+          todoId,
+          intervals: pluse.intervals,
+          repeatCount: pluse.repeatCount,
+          status: 'running',
+          startedAt: new Date(),
+          currentIndex: 0,
+          elapsedSeconds: 0,
+        });
+        sessionRef.current = session;
+      } else if (sessionRef.current) {
+        await updateTimerSession(sessionRef.current.id, {
+          status: 'running',
+          startedAt: new Date(),
+        });
+      }
+      setIsRunning(true);
     }
   }
 
-  function restart() {
+  async function skipToNext() {
+    if (currentIndex >= expandedIntervals.length - 1) return;
+    const nextIndex = currentIndex + 1;
+    setIsRunning(false);
+    setCurrentIndex(nextIndex);
+    setElapsedSeconds(0);
+    nativeHaptic.impact('medium').catch(() => {});
+
+    if (sessionRef.current) {
+      await updateTimerSession(sessionRef.current.id, {
+        currentIndex: nextIndex,
+        elapsedSeconds: 0,
+        status: 'paused',
+      });
+    }
+  }
+
+  async function restart() {
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setIsRunning(false);
@@ -157,6 +292,11 @@ export function PluseRun() {
     setTodoMarkedDone(false);
     hasStartedRef.current = false;
     nativeHaptic.impact('medium').catch(() => {});
+
+    if (sessionRef.current) {
+      await deleteTimerSession(sessionRef.current.id);
+      sessionRef.current = null;
+    }
   }
 
   async function markTodoDone() {
