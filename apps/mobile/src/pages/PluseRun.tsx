@@ -19,7 +19,75 @@ import {
   updateTimerSession,
   deleteTimerSession,
 } from '../db/timerSessions';
-import { nativeHaptic } from '../bridge/native';
+import { nativeHaptic, nativeNotification, isNativeShell } from '../bridge/native';
+
+/* ---------- Browser Notification helpers ---------- */
+let browserNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function requestBrowserNotificationPermission(): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+function showBrowserNotification(title: string, body: string): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body });
+  }
+}
+
+function scheduleBrowserNotification(id: string, title: string, body: string, seconds: number): void {
+  cancelBrowserNotification(id);
+  const ms = Math.max(1000, seconds * 1000);
+  const timer = setTimeout(() => {
+    showBrowserNotification(title, body);
+    browserNotificationTimers.delete(id);
+  }, ms);
+  browserNotificationTimers.set(id, timer);
+}
+
+function cancelBrowserNotification(id: string): void {
+  const timer = browserNotificationTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    browserNotificationTimers.delete(id);
+  }
+}
+
+function cancelAllBrowserNotifications(): void {
+  for (const timer of browserNotificationTimers.values()) {
+    clearTimeout(timer);
+  }
+  browserNotificationTimers.clear();
+}
+
+/* ---------- Unified timer notification ---------- */
+function timerNotifySchedule(id: string, title: string, body: string, seconds: number): void {
+  if (isNativeShell()) {
+    const ms = Date.now() + Math.max(1000, seconds * 1000);
+    nativeNotification.schedule({ id, title, body, date: ms }).catch(() => {});
+  } else {
+    scheduleBrowserNotification(id, title, body, seconds);
+  }
+}
+
+function timerNotifyCancel(id: string): void {
+  if (isNativeShell()) {
+    nativeNotification.cancel(id).catch(() => {});
+  } else {
+    cancelBrowserNotification(id);
+  }
+}
+
+function timerNotifyCancelAll(): void {
+  if (isNativeShell()) {
+    nativeNotification.cancelAll().catch(() => {});
+  }
+  cancelAllBrowserNotifications();
+}
 
 function formatTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -150,6 +218,37 @@ export function PluseRun() {
     }
   }, [isRunning, todoId]);
 
+  // Cancel all timer notifications on unmount
+  useEffect(() => {
+    return () => {
+      timerNotifyCancelAll();
+    };
+  }, []);
+
+  // Schedule/cancel timer notifications
+  useEffect(() => {
+    if (!pluse) return;
+
+    const timerNotificationId = `pluse-timer-${pluse.id}`;
+
+    if (isRunning && !isCompleted && currentDuration > elapsedSeconds) {
+      const remaining = currentDuration - elapsedSeconds;
+      timerNotifySchedule(
+        timerNotificationId,
+        `${pluse.name} — Interval ${currentIndex + 1} complete`,
+        'Your timer interval has finished.',
+        remaining
+      );
+      requestBrowserNotificationPermission().catch(() => {});
+    } else {
+      timerNotifyCancel(timerNotificationId);
+    }
+
+    return () => {
+      timerNotifyCancel(timerNotificationId);
+    };
+  }, [isRunning, pluse, currentIndex, elapsedSeconds, isCompleted, currentDuration]);
+
   // Check completion / auto-advance
   useEffect(() => {
     if (!pluse || isCompleted || isRestoringRef.current) return;
@@ -162,6 +261,11 @@ export function PluseRun() {
       if (currentIndex < expandedIntervals.length - 1) {
         if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
+        timerNotifyCancel(`pluse-timer-${pluse?.id}`);
+        showBrowserNotification(
+          `${pluse?.name} — Interval ${currentIndex + 1} complete`,
+          `Interval ${currentIndex + 2} of ${expandedIntervals.length} is next.`
+        );
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
         setElapsedSeconds(0);
@@ -190,7 +294,12 @@ export function PluseRun() {
       } else {
         if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
+        timerNotifyCancel(`pluse-timer-${pluse?.id}`);
         if (shouldAutoAdvance) {
+          showBrowserNotification(
+            `${pluse?.name} — Round complete`,
+            'Restarting from interval 1...'
+          );
           setCurrentIndex(0);
           setElapsedSeconds(0);
           setTimeout(() => {
@@ -208,6 +317,12 @@ export function PluseRun() {
         } else {
           setIsCompleted(true);
           nativeHaptic.notification('success').catch(() => {});
+          timerNotifySchedule(
+            `pluse-done-${pluse?.id}`,
+            `${pluse?.name} — Complete!`,
+            'All intervals finished. Great work!',
+            1
+          );
           if (sessionRef.current) {
             updateTimerSession(sessionRef.current.id, {
               status: 'completed',
@@ -292,6 +407,11 @@ export function PluseRun() {
     setTodoMarkedDone(false);
     hasStartedRef.current = false;
     nativeHaptic.impact('medium').catch(() => {});
+
+    if (pluse) {
+      timerNotifyCancel(`pluse-timer-${pluse.id}`);
+      timerNotifyCancel(`pluse-done-${pluse.id}`);
+    }
 
     if (sessionRef.current) {
       await deleteTimerSession(sessionRef.current.id);

@@ -112,6 +112,19 @@ router.post('/events', async (req, res) => {
 router.post('/', async (req, res) => {
   const payload = req.body as SyncPayload;
   const accepted: Partial<Record<keyof SyncPayload, number>> = {};
+  const deviceId = (req.body as Record<string, unknown>).deviceId as string | undefined;
+
+  console.log(`[sync] Legacy push from ${deviceId || 'unknown device'}:`, {
+    todos: payload.todos?.length ?? 0,
+    projects: payload.projects?.length ?? 0,
+    relations: payload.relations?.length ?? 0,
+    todoLogs: payload.todoLogs?.length ?? 0,
+    roadmaps: payload.roadmaps?.length ?? 0,
+    actionEdges: payload.actionEdges?.length ?? 0,
+    pluses: payload.pluses?.length ?? 0,
+    timerSessions: payload.timerSessions?.length ?? 0,
+    repeatOccurrences: payload.repeatOccurrences?.length ?? 0,
+  });
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -369,6 +382,7 @@ router.post('/', async (req, res) => {
       }
     });
 
+    console.log('[sync] Legacy push accepted:', accepted);
     res.json({ accepted });
   } catch (err) {
     console.error('Sync error:', err);
@@ -378,6 +392,7 @@ router.post('/', async (req, res) => {
 
 // GET /api/sync — return all data for client to pull
 router.get('/', async (_req, res) => {
+  console.log('[sync] Legacy pull request');
   try {
     const todos = await prisma.todo.findMany();
     const projects = await prisma.project.findMany();

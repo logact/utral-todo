@@ -102,7 +102,7 @@ function normalizeDates<T>(items: T[]): T[] {
 }
 
 export async function syncAll(config: SyncConfig): Promise<SyncResult> {
-  console.log('[sync] starting sync to:', config.serverUrl);
+  console.log('[sync] starting legacy full sync to:', config.serverUrl);
   const result: SyncResult = {
     success: false,
     pulled: { todos: 0, projects: 0, relations: 0, todoLogs: 0, roadmaps: 0, actionEdges: 0, pluses: 0, timerSessions: 0 },
@@ -258,9 +258,13 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
     // Save last sync timestamp
     localStorage.setItem('lastSyncAt', new Date().toISOString());
     result.success = true;
+    console.log('[sync] legacy full sync completed:', {
+      pushed: result.pushed,
+      pulled: result.pulled,
+    });
     return result;
   } catch (err) {
-    console.error('[sync] error:', err);
+    console.error('[sync] legacy full sync error:', err);
     result.error = err instanceof Error ? err.message : String(err);
     return result;
   }

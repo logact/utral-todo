@@ -240,6 +240,49 @@ function TodoSelector({
 }
 
 
+/* ---------- Browser Notification helpers ---------- */
+let browserNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function requestBrowserNotificationPermission(): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+function showBrowserNotification(title: string, body: string): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body });
+  }
+}
+
+function scheduleBrowserNotification(id: string, title: string, body: string, seconds: number): void {
+  cancelBrowserNotification(id);
+  const ms = Math.max(1000, seconds * 1000);
+  const timer = setTimeout(() => {
+    showBrowserNotification(title, body);
+    browserNotificationTimers.delete(id);
+  }, ms);
+  browserNotificationTimers.set(id, timer);
+}
+
+function cancelBrowserNotification(id: string): void {
+  const timer = browserNotificationTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    browserNotificationTimers.delete(id);
+  }
+}
+
+function cancelAllBrowserNotifications(): void {
+  for (const timer of browserNotificationTimers.values()) {
+    clearTimeout(timer);
+  }
+  browserNotificationTimers.clear();
+}
+
 /* ---------- Native bridge helpers ---------- */
 function isNativeShell(): boolean {
   return typeof window !== 'undefined' && !!(window as any).__bridge__?.isNative;
@@ -261,6 +304,30 @@ async function nativeTimerCancelAll(): Promise<void> {
   const bridge = (window as any).__bridge__;
   if (!bridge?.call) return;
   await bridge.call('timer', 'cancelAll', {});
+}
+
+/* ---------- Unified timer notification ---------- */
+function timerNotifySchedule(id: string, title: string, body: string, seconds: number): void {
+  if (isNativeShell()) {
+    nativeTimerSchedule(id, title, body, seconds).catch(() => {});
+  } else {
+    scheduleBrowserNotification(id, title, body, seconds);
+  }
+}
+
+function timerNotifyCancel(id: string): void {
+  if (isNativeShell()) {
+    nativeTimerCancel(id).catch(() => {});
+  } else {
+    cancelBrowserNotification(id);
+  }
+}
+
+function timerNotifyCancelAll(): void {
+  if (isNativeShell()) {
+    nativeTimerCancelAll().catch(() => {});
+  }
+  cancelAllBrowserNotifications();
 }
 
 /* ---------- Main Page ---------- */
@@ -321,9 +388,7 @@ export function PluseRun() {
   // Cancel all timer notifications on unmount
   useEffect(() => {
     return () => {
-      if (isNativeShell()) {
-        nativeTimerCancelAll().catch(() => {});
-      }
+      timerNotifyCancelAll();
     };
   }, []);
 
@@ -375,26 +440,27 @@ export function PluseRun() {
     }
   }, [currentIndex, pluse]);
 
-  // Schedule/cancel native timer notifications
+  // Schedule/cancel timer notifications
   useEffect(() => {
-    if (!isNativeShell() || !pluse) return;
+    if (!pluse) return;
 
     const timerNotificationId = `pluse-timer-${pluse.id}`;
 
     if (isRunning && !isCompleted && currentDuration > elapsedSeconds) {
       const remaining = currentDuration - elapsedSeconds;
-      nativeTimerSchedule(
+      timerNotifySchedule(
         timerNotificationId,
         `${pluse.name} — Interval ${currentIndex + 1} complete`,
         'Your timer interval has finished.',
         remaining
-      ).catch(() => {});
+      );
+      requestBrowserNotificationPermission().catch(() => {});
     } else {
-      nativeTimerCancel(timerNotificationId).catch(() => {});
+      timerNotifyCancel(timerNotificationId);
     }
 
     return () => {
-      nativeTimerCancel(timerNotificationId).catch(() => {});
+      timerNotifyCancel(timerNotificationId);
     };
   }, [isRunning, pluse, currentIndex, elapsedSeconds, isCompleted, currentDuration]);
 
@@ -403,46 +469,69 @@ export function PluseRun() {
     if (!pluse || isCompleted) return;
     const itemDurationSeconds = currentDuration;
     const shouldAutoAdvance = pluse.autoAdvance !== false;
+    console.log('[PluseRun] completion check', {
+      elapsedSeconds,
+      itemDurationSeconds,
+      currentIndex,
+      totalIntervals: expandedIntervals.length,
+      shouldAutoAdvance,
+      autoAdvanceValue: pluse.autoAdvance,
+      isRunning,
+    });
 
     if (elapsedSeconds >= itemDurationSeconds) {
+      console.log('[PluseRun] interval complete, advancing...', { currentIndex, shouldAutoAdvance });
       if (soundEnabled && !completedRef.current) playBeep();
 
       if (currentIndex < expandedIntervals.length - 1) {
         if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
+        timerNotifyCancel(`pluse-timer-${pluse?.id}`);
+        showBrowserNotification(
+          `${pluse?.name} — Interval ${currentIndex + 1} complete`,
+          `Interval ${currentIndex + 2} of ${expandedIntervals.length} is next.`
+        );
         setCurrentIndex((prev) => prev + 1);
         setElapsedSeconds(0);
         if (shouldAutoAdvance) {
+          console.log('[PluseRun] scheduling auto-advance in 2s');
           setTimeout(() => {
+            console.log('[PluseRun] auto-advance timeout fired');
             setIsRunning(true);
             if (soundEnabled) playBeep(660, 150);
           }, 2000);
         }
       } else {
         // Last interval finished
+        console.log('[PluseRun] last interval complete', { shouldAutoAdvance });
         if (timerRef.current) clearInterval(timerRef.current);
         setIsRunning(false);
+        timerNotifyCancel(`pluse-timer-${pluse?.id}`);
         if (shouldAutoAdvance) {
           // Auto-restart the whole pulse after a brief pause
+          console.log('[PluseRun] auto-restarting pulse in 2s');
           setCurrentIndex(0);
           setElapsedSeconds(0);
           setSmoothElapsed(0);
           completedRef.current = false;
+          showBrowserNotification(
+            `${pluse?.name} — Round complete`,
+            'Restarting from interval 1...'
+          );
           setTimeout(() => {
+            console.log('[PluseRun] auto-restart timeout fired');
             setIsRunning(true);
             if (soundEnabled) playBeep(660, 150);
           }, 2000);
         } else {
           // Stop — user must manually restart
           setIsCompleted(true);
-          if (isNativeShell() && pluse) {
-            nativeTimerSchedule(
-              `pluse-done-${pluse.id}`,
-              `${pluse.name} — Complete!`,
-              'All intervals finished. Great work!',
-              1
-            ).catch(() => {});
-          }
+          timerNotifySchedule(
+            `pluse-done-${pluse?.id}`,
+            `${pluse?.name} — Complete!`,
+            'All intervals finished. Great work!',
+            1
+          );
         }
       }
     }
@@ -468,8 +557,9 @@ export function PluseRun() {
     setIsCompleted(false);
     setTodoMarkedDone(false);
     completedRef.current = false;
-    if (isNativeShell() && pluse) {
-      nativeTimerCancel(`pluse-timer-${pluse.id}`).catch(() => {});
+    if (pluse) {
+      timerNotifyCancel(`pluse-timer-${pluse.id}`);
+      timerNotifyCancel(`pluse-done-${pluse.id}`);
     }
   }
 
@@ -479,8 +569,9 @@ export function PluseRun() {
       return;
     }
     setIsRunning(false);
-    if (isNativeShell() && pluse) {
-      nativeTimerCancel(`pluse-timer-${pluse.id}`).catch(() => {});
+    if (pluse) {
+      timerNotifyCancel(`pluse-timer-${pluse.id}`);
+      timerNotifyCancel(`pluse-done-${pluse.id}`);
     }
     navigate('/pluses');
   }

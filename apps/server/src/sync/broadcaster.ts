@@ -103,7 +103,9 @@ export async function applyChange(
   switch (table) {
     case 'todo': {
       if (operation === 'delete') {
-        await prisma.todo.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.todo.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete todo ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.todo.findUnique({ where: { id: recordId } });
@@ -117,7 +119,9 @@ export async function applyChange(
     }
     case 'project': {
       if (operation === 'delete') {
-        await prisma.project.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.project.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete project ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.project.findUnique({ where: { id: recordId } });
@@ -131,7 +135,9 @@ export async function applyChange(
     }
     case 'todoRelation': {
       if (operation === 'delete') {
-        await prisma.todoRelation.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.todoRelation.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete todoRelation ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.todoRelation.findUnique({ where: { id: recordId } });
@@ -145,7 +151,9 @@ export async function applyChange(
     }
     case 'todoLog': {
       if (operation === 'delete') {
-        await prisma.todoLog.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.todoLog.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete todoLog ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.todoLog.findUnique({ where: { id: recordId } });
@@ -159,7 +167,9 @@ export async function applyChange(
     }
     case 'roadmap': {
       if (operation === 'delete') {
-        await prisma.roadmap.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.roadmap.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete roadmap ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.roadmap.findUnique({ where: { id: recordId } });
@@ -173,7 +183,9 @@ export async function applyChange(
     }
     case 'actionEdge': {
       if (operation === 'delete') {
-        await prisma.actionEdge.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.actionEdge.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete actionEdge ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.actionEdge.findUnique({ where: { id: recordId } });
@@ -187,7 +199,9 @@ export async function applyChange(
     }
     case 'pluse': {
       if (operation === 'delete') {
-        await prisma.pluse.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.pluse.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete pluse ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.pluse.findUnique({ where: { id: recordId } });
@@ -201,7 +215,9 @@ export async function applyChange(
     }
     case 'timerSession': {
       if (operation === 'delete') {
-        await prisma.timerSession.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.timerSession.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete timerSession ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.timerSession.findUnique({ where: { id: recordId } });
@@ -215,7 +231,9 @@ export async function applyChange(
     }
     case 'repeatOccurrence': {
       if (operation === 'delete') {
-        await prisma.repeatOccurrence.delete({ where: { id: recordId } }).catch(() => {});
+        await prisma.repeatOccurrence.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete repeatOccurrence ${recordId}:`, err);
+        });
       } else {
         const data = payload as Record<string, unknown>;
         const existing = await prisma.repeatOccurrence.findUnique({ where: { id: recordId } });

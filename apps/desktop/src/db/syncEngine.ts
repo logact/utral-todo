@@ -17,8 +17,10 @@ async function resolveFetch(): Promise<typeof fetch> {
     try {
       const tauriHttp = await import('@tauri-apps/plugin-http');
       tauriFetch = tauriHttp.fetch;
+      console.log('[sync] Using Tauri HTTP plugin');
       return tauriFetch;
-    } catch {
+    } catch (err) {
+      console.warn('[sync] Tauri HTTP plugin unavailable, falling back to native fetch:', err);
       // fall through to native fetch
     }
   }
@@ -95,6 +97,8 @@ async function syncFetch(path: string, options?: RequestInit): Promise<Response>
   }
 
   const doFetch = await resolveFetch();
+  const method = options?.method || 'GET';
+  console.log(`[sync] ${method} ${fullUrl}`);
   const res = await doFetch(fullUrl, {
     headers,
     ...options,
@@ -102,6 +106,7 @@ async function syncFetch(path: string, options?: RequestInit): Promise<Response>
 
   if (!res.ok) {
     const text = await res.text();
+    console.error(`[sync] ${method} ${fullUrl} failed: HTTP ${res.status} — ${text.slice(0, 200)}`);
     throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
   return res;
@@ -123,15 +128,15 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
 
   if (event.operation === 'delete') {
     switch (event.table) {
-      case 'todo': await db.todos.delete(event.recordId).catch(() => {}); break;
-      case 'project': await db.projects.delete(event.recordId).catch(() => {}); break;
-      case 'todoRelation': await db.relations.delete(event.recordId).catch(() => {}); break;
-      case 'todoLog': await db.todoLogs.delete(event.recordId).catch(() => {}); break;
-      case 'roadmap': await db.roadmaps.delete(event.recordId).catch(() => {}); break;
-      case 'actionEdge': await db.actionEdges.delete(event.recordId).catch(() => {}); break;
-      case 'pluse': await db.pluses.delete(event.recordId).catch(() => {}); break;
-      case 'timerSession': await db.timerSessions.delete(event.recordId).catch(() => {}); break;
-      case 'repeatOccurrence': await db.repeatOccurrences.delete(event.recordId).catch(() => {}); break;
+      case 'todo': await db.todos.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete todo:', event.recordId, err)); break;
+      case 'project': await db.projects.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete project:', event.recordId, err)); break;
+      case 'todoRelation': await db.relations.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete relation:', event.recordId, err)); break;
+      case 'todoLog': await db.todoLogs.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete log:', event.recordId, err)); break;
+      case 'roadmap': await db.roadmaps.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete roadmap:', event.recordId, err)); break;
+      case 'actionEdge': await db.actionEdges.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete actionEdge:', event.recordId, err)); break;
+      case 'pluse': await db.pluses.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete pluse:', event.recordId, err)); break;
+      case 'timerSession': await db.timerSessions.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete timerSession:', event.recordId, err)); break;
+      case 'repeatOccurrence': await db.repeatOccurrences.delete(event.recordId).catch((err) => console.warn('[sync] Failed to delete repeatOccurrence:', event.recordId, err)); break;
       default: console.warn('[sync] Unknown table:', event.table);
     }
     return;
@@ -147,7 +152,7 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
     const local = await table.get(event.recordId) as Record<string, unknown> | undefined;
     if (!local) {
       await table.add(parsedEvent).catch((err: unknown) => {
-        console.warn('[sync] Failed to add remote record:', err);
+        console.warn(`[sync] Failed to add remote ${event.table} (${event.recordId}):`, err);
       });
       return;
     }
@@ -160,12 +165,12 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
       const localTime = new Date(localUpdatedAt).getTime();
       if (remoteTime > localTime) {
         await table.update(event.recordId, parsedEvent).catch((err: unknown) => {
-          console.warn('[sync] Failed to update remote record:', err);
+          console.warn(`[sync] Failed to update remote ${event.table} (${event.recordId}):`, err);
         });
       }
     } else {
       await table.update(event.recordId, parsedEvent).catch((err: unknown) => {
-        console.warn('[sync] Failed to update remote record:', err);
+        console.warn(`[sync] Failed to update remote ${event.table} (${event.recordId}):`, err);
       });
     }
   }
