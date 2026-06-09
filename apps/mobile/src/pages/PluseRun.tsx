@@ -239,7 +239,6 @@ export function PluseRun() {
         'Your timer interval has finished.',
         remaining
       );
-      requestBrowserNotificationPermission().catch(() => {});
     } else {
       timerNotifyCancel(timerNotificationId);
     }
@@ -349,6 +348,7 @@ export function PluseRun() {
       }
     } else {
       // Starting or resuming
+      requestBrowserNotificationPermission().catch(() => {});
       if (!sessionRef.current && pluse && todoId) {
         // Mark any existing active session as completed before creating new one
         const existing = await getActiveTimerSession();

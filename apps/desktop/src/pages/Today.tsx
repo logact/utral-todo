@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   DndContext,
@@ -255,7 +255,10 @@ function PluseMiniTimer({
   onClose: () => void;
   onIntervalTodo?: (todoId: string | null) => void;
 }) {
-  const expandedIntervals = expandIntervals(pluse.intervals, pluse.repeatCount);
+  const expandedIntervals = useMemo(
+    () => expandIntervals(pluse.intervals, pluse.repeatCount),
+    [pluse.intervals, pluse.repeatCount]
+  );
   const totalItems = expandedIntervals.length;
 
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -374,11 +377,9 @@ function PluseMiniTimer({
 
   // Check completion / auto-advance
   useEffect(() => {
-    console.log('[timer] completion effect', { isCompleted, isRunning, elapsed, itemDurationSeconds, currentIndex, totalItems, autoAdvance: pluse.autoAdvance });
     if (isCompleted || !isRunning) return;
     const shouldAutoAdvance = pluse.autoAdvance !== false;
     if (elapsed >= itemDurationSeconds) {
-      console.log('[timer] interval complete', { currentIndex, nextIndex: currentIndex + 1, shouldAutoAdvance });
       if (currentIndex < totalItems - 1) {
         const nextIndex = currentIndex + 1;
         setIsRunning(false);
@@ -395,9 +396,7 @@ function PluseMiniTimer({
 
         if (shouldAutoAdvance) {
           if (timeoutRef.current) clearTimeout(timeoutRef.current);
-          console.log('[timer] scheduling auto-advance in 2s');
           timeoutRef.current = setTimeout(() => {
-            console.log('[timer] auto-advance timeout fired');
             setIsRunning(true);
             setStartTime(Date.now());
             if (sessionId) {
@@ -420,7 +419,7 @@ function PluseMiniTimer({
         }
       }
     }
-  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse]);
+  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse.autoAdvance]);
 
   const toggleRunning = useCallback(async () => {
     if (timeoutRef.current) {
@@ -891,7 +890,9 @@ export function Today() {
     getAllPluses().then((all) => {
       setPluses(all);
       if (all.length > 0) {
-        setActivePluse(all[0]);
+        const savedId = localStorage.getItem('todayActivePluseId');
+        const saved = savedId ? all.find((p) => p.id === savedId) : null;
+        setActivePluse(saved || all[0]);
       }
       setPlusesLoading(false);
     });
@@ -1075,7 +1076,10 @@ export function Today() {
           {activePluse ? (
             <PluseMiniTimer
               pluse={activePluse}
-              onClose={() => setActivePluse(null)}
+              onClose={() => {
+                setActivePluse(null);
+                localStorage.removeItem('todayActivePluseId');
+              }}
               onIntervalTodo={(todoId) => {
                 if (todoId) setSelectedTodoId(todoId);
               }}
@@ -1117,7 +1121,10 @@ export function Today() {
               <PluseSelector
                 pluses={pluses}
                 activeId={activePluse.id}
-                onSelect={(pluse) => setActivePluse(pluse)}
+                onSelect={(pluse) => {
+                  setActivePluse(pluse);
+                  localStorage.setItem('todayActivePluseId', pluse.id);
+                }}
               />
             </div>
           )}

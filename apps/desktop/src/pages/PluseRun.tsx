@@ -454,7 +454,6 @@ export function PluseRun() {
         'Your timer interval has finished.',
         remaining
       );
-      requestBrowserNotificationPermission().catch(() => {});
     } else {
       timerNotifyCancel(timerNotificationId);
     }
@@ -538,7 +537,12 @@ export function PluseRun() {
   }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length, soundEnabled, playBeep, playFinish]);
 
   function toggleRunning() {
-    setIsRunning((r) => !r);
+    setIsRunning((r) => {
+      if (!r) {
+        requestBrowserNotificationPermission().catch(() => {});
+      }
+      return !r;
+    });
   }
 
   function skipToNext() {
