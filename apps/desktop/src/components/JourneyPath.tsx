@@ -221,6 +221,7 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
     let rafId: number;
 
     function fit() {
+      if (!el) return;
       if (el.clientWidth > 0 && el.clientHeight > 0) {
         handleFitView(el.clientWidth, el.clientHeight, false);
       }

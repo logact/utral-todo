@@ -350,6 +350,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
     let rafId: number;
 
     function fit() {
+      if (!el) return;
       if (el.clientWidth > 0 && el.clientHeight > 0) {
         handleFitView(el.clientWidth, el.clientHeight, false);
       }

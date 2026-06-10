@@ -19,7 +19,7 @@ import {
 import { getTodo, updateTodo, updateTodoStatus } from '../db/todos';
 import { getSpawnedTodos, getTemplateForInstance } from '../db/relations';
 import { getAllProjects } from '../db/projects';
-import { formatDuration, formatDateShort, formatTime } from '../utils/date';
+import { formatDuration, formatDateShort } from '../utils/date';
 import { BranchView } from '../components/BranchView';
 import { TraceView } from '../components/TraceView';
 import { JourneyPath } from '../components/JourneyPath';
