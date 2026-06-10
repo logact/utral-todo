@@ -45,6 +45,9 @@ COPY --from=builder /app/apps/server/package.json ./
 COPY --from=builder /app/apps/server/node_modules ./node_modules
 COPY apps/server/docker-entrypoint.sh ./
 
+# Copy workspace packages so symlinks in node_modules resolve
+COPY --from=builder /app/packages/types /app/packages/types
+
 # Create data directory for SQLite
 RUN mkdir -p /var/lib/utral-todo/data
 
