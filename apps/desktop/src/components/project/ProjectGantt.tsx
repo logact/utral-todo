@@ -1,6 +1,6 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Todo, Project } from '../../types';
 
@@ -11,17 +11,21 @@ interface ProjectGanttProps {
 }
 
 const DAY_WIDTH = 40;
-const ROW_HEIGHT = 48;
+const ROW_HEIGHT = 36;
 const HEADER_HEIGHT = 40;
-const TASK_COL_WIDTH = 200;
+const TASK_COL_WIDTH = 240;
 
-export function ProjectGantt({ todos }: ProjectGanttProps) {
+export function ProjectGantt({ todos, onUpdateTodo }: ProjectGanttProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragMode, setDragMode] = useState<'move' | 'start' | 'end' | null>(null);
+  const [dragDeltaDays, setDragDeltaDays] = useState(0);
+  const dragStart = useRef({ x: 0, barX: 0, barWidth: 0, startDay: 0, endDay: 0 });
 
-  // Only show todos with scheduledDate or dueDate
+  // Only show todos with scheduledDate, scheduledEndDate, or dueDate
   const ganttTodos = useMemo(() => {
     return todos
-      .filter((t) => t.scheduledDate || t.dueDate)
+      .filter((t) => t.scheduledDate || t.scheduledEndDate || t.dueDate)
       .sort((a, b) => {
         const aDate = a.scheduledDate || a.dueDate;
         const bDate = b.scheduledDate || b.dueDate;
@@ -45,13 +49,17 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
 
     for (const todo of ganttTodos) {
       const start = todo.scheduledDate ? new Date(todo.scheduledDate) : null;
-      const end = todo.dueDate ? new Date(todo.dueDate) : start;
+      const end = todo.scheduledEndDate ? new Date(todo.scheduledEndDate) : todo.dueDate ? new Date(todo.dueDate) : start;
+      const due = todo.dueDate ? new Date(todo.dueDate) : null;
 
       if (start) {
         if (!minDate || start < minDate) minDate = new Date(start);
       }
       if (end) {
         if (!maxDate || end > maxDate) maxDate = new Date(end);
+      }
+      if (due) {
+        if (!maxDate || due > maxDate) maxDate = new Date(due);
       }
     }
 
@@ -81,23 +89,25 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
   };
 
   const getTodoBar = (todo: Todo) => {
-    const start = todo.scheduledDate ? new Date(todo.scheduledDate) : null;
-    const end = todo.dueDate ? new Date(todo.dueDate) : start;
+    if (!todo.scheduledDate) return null;
 
-    if (!start && !end) return null;
+    const start = new Date(todo.scheduledDate);
+    const startDay = getDayOffset(start);
 
-    let startDay = start ? getDayOffset(start) : 0;
-    let endDay = end ? getDayOffset(end) : startDay;
-
-    // If no due date, show as 1-day bar
-    if (!end || endDay === startDay) {
-      endDay = startDay + 1;
+    if (todo.scheduledEndDate) {
+      const end = new Date(todo.scheduledEndDate);
+      const endDay = getDayOffset(end);
+      const barWidth = Math.max((endDay - startDay + 1) * DAY_WIDTH, DAY_WIDTH * 0.8);
+      return { x: startDay * DAY_WIDTH, width: barWidth, startDay, endDay };
     }
 
-    const barStart = startDay * DAY_WIDTH;
-    const barWidth = Math.max((endDay - startDay) * DAY_WIDTH, DAY_WIDTH * 0.8);
+    // No scheduledEndDate: show as 1-day bar
+    return { x: startDay * DAY_WIDTH, width: DAY_WIDTH * 0.8, startDay, endDay: startDay + 1 };
+  };
 
-    return { x: barStart, width: barWidth, startDay, endDay };
+  const getDueDateOffset = (todo: Todo) => {
+    if (!todo.dueDate) return null;
+    return getDayOffset(new Date(todo.dueDate));
   };
 
   const days = useMemo(() => {
@@ -142,6 +152,26 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
           {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
         </div>
         <div className="flex items-center gap-1">
+          {isTodayVisible && (
+            <button
+              onClick={() => {
+                if (!containerRef.current) return;
+                const scrollTo = todayOffset * DAY_WIDTH - containerRef.current.clientWidth / 2;
+                containerRef.current.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' });
+              }}
+              className="px-2 py-1 rounded-md text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+            >
+              Today
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#94a3b8' }} />
+            <span>scheduled</span>
+            <div className="w-0.5 h-3 bg-amber-500 dark:bg-amber-400 relative ml-1">
+              <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rotate-45 bg-amber-500 dark:bg-amber-400" />
+            </div>
+            <span>due</span>
+          </div>
           <button
             onClick={() => containerRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
             className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -172,11 +202,13 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
               {days.map((day, i) => {
                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                 const isToday = i === todayOffset;
+                const isSaturday = day.getDay() === 6;
                 return (
                   <div
                     key={i}
                     className={clsx(
-                      'flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-800 text-xs',
+                      'flex flex-col items-center justify-center border-slate-100 dark:border-slate-800 text-xs',
+                      isSaturday ? 'border-r-0' : 'border-r',
                       isWeekend && 'bg-slate-50 dark:bg-slate-900/30',
                       isToday && 'bg-indigo-50 dark:bg-indigo-950/20'
                     )}
@@ -197,18 +229,83 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
           {/* Task rows */}
           {ganttTodos.map((todo) => {
             const bar = getTodoBar(todo);
+            const dueOffset = getDueDateOffset(todo);
             const statusColor =
               todo.status === 'done'
                 ? '#10b981'
                 : todo.status === 'in_progress'
                 ? '#3b82f6'
                 : '#94a3b8';
+            const isDragging = draggingId === todo.id;
+
+            const handlePointerDown = (mode: 'move' | 'start' | 'end', e: React.PointerEvent) => {
+              e.stopPropagation();
+              const barEl = (e.currentTarget as HTMLElement).parentElement;
+              if (barEl) barEl.setPointerCapture(e.pointerId);
+              dragStart.current = {
+                x: e.clientX,
+                barX: bar?.x ?? 0,
+                barWidth: bar?.width ?? 0,
+                startDay: bar?.startDay ?? 0,
+                endDay: bar?.endDay ?? 0,
+              };
+              setDraggingId(todo.id);
+              setDragMode(mode);
+              setDragDeltaDays(0);
+            };
+
+            const handlePointerMove = (e: React.PointerEvent) => {
+              if (!isDragging || !dragMode) return;
+              const rawDelta = e.clientX - dragStart.current.x;
+              const dayDelta = Math.round(rawDelta / DAY_WIDTH);
+              setDragDeltaDays(dayDelta);
+            };
+
+            const handlePointerUp = () => {
+              if (!isDragging || !bar || !dragMode) {
+                setDraggingId(null);
+                setDragMode(null);
+                setDragDeltaDays(0);
+                return;
+              }
+              if (dragMode === 'move' && dragDeltaDays !== 0) {
+                const newStartDay = bar.startDay + dragDeltaDays;
+                const newDate = new Date(startDate);
+                newDate.setDate(newDate.getDate() + newStartDay);
+                onUpdateTodo(todo.id, { scheduledDate: newDate });
+              } else if (dragMode === 'start' && dragDeltaDays !== 0) {
+                const newStartDay = dragStart.current.startDay + dragDeltaDays;
+                const newEndDay = dragStart.current.endDay;
+                if (newStartDay <= newEndDay) {
+                  const newDate = new Date(startDate);
+                  newDate.setDate(newDate.getDate() + newStartDay);
+                  onUpdateTodo(todo.id, { scheduledDate: newDate });
+                }
+              } else if (dragMode === 'end' && dragDeltaDays !== 0) {
+                const newStartDay = dragStart.current.startDay;
+                const newEndDay = dragStart.current.endDay + dragDeltaDays;
+                if (newEndDay >= newStartDay) {
+                  const newDate = new Date(startDate);
+                  newDate.setDate(newDate.getDate() + newEndDay);
+                  onUpdateTodo(todo.id, { scheduledEndDate: newDate });
+                }
+              }
+              setDraggingId(null);
+              setDragMode(null);
+              setDragDeltaDays(0);
+            };
+
+            const tooltipParts: string[] = [];
+            if (todo.scheduledDate) tooltipParts.push(new Date(todo.scheduledDate).toLocaleDateString());
+            if (todo.scheduledEndDate) tooltipParts.push(' - ' + new Date(todo.scheduledEndDate).toLocaleDateString());
+            if (todo.dueDate && !todo.scheduledEndDate) tooltipParts.push(' (due: ' + new Date(todo.dueDate).toLocaleDateString() + ')');
+            const tooltipText = `${todo.title}${tooltipParts.length > 0 ? ' (' + tooltipParts.join('') + ')' : ''}`;
 
             return (
               <div key={todo.id} className="flex" style={{ height: ROW_HEIGHT }}>
                 <div
                   className="flex-shrink-0 border-r border-b border-slate-200 dark:border-slate-700 flex items-center px-3 text-sm sticky left-0 z-10 bg-white dark:bg-slate-900"
-                  style={{ width: TASK_COL_WIDTH }}
+                  style={{ width: TASK_COL_WIDTH, borderLeftWidth: 3, borderLeftColor: statusColor }}
                 >
                   <Link
                     to={`/todo/${todo.id}`}
@@ -222,11 +319,13 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
                   {days.map((day, i) => {
                     const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                     const isToday = i === todayOffset;
+                    const isSaturday = day.getDay() === 6;
                     return (
                       <div
                         key={i}
                         className={clsx(
-                          'border-r border-slate-100 dark:border-slate-800',
+                          'border-slate-100 dark:border-slate-800',
+                          isSaturday ? 'border-r-0' : 'border-r',
                           isWeekend && 'bg-slate-50 dark:bg-slate-900/30',
                           isToday && 'bg-indigo-50/30 dark:bg-indigo-950/10'
                         )}
@@ -243,20 +342,72 @@ export function ProjectGantt({ todos }: ProjectGanttProps) {
                     />
                   )}
 
-                  {/* Task bar */}
-                  {bar && (
+                  {/* Due date marker */}
+                  {dueOffset !== null && dueOffset >= 0 && dueOffset < totalDays && (
                     <div
-                      className="absolute top-2 h-7 rounded-md flex items-center px-2 text-xs font-medium text-white truncate cursor-pointer hover:opacity-90 transition-opacity"
-                      style={{
-                        left: bar.x,
-                        width: bar.width,
-                        backgroundColor: statusColor,
-                      }}
-                      title={`${todo.title} (${new Date(todo.scheduledDate || todo.dueDate!).toLocaleDateString()}${todo.dueDate ? ' - ' + new Date(todo.dueDate).toLocaleDateString() : ''})`}
+                      className="absolute top-0 bottom-0 w-0.5 bg-amber-500 dark:bg-amber-400 z-10"
+                      style={{ left: dueOffset * DAY_WIDTH + DAY_WIDTH / 2 }}
+                      title={`Due: ${new Date(todo.dueDate!).toLocaleDateString()}`}
                     >
-                      {bar.width > 60 && todo.title}
+                      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rotate-45 bg-amber-500 dark:bg-amber-400" />
                     </div>
                   )}
+
+                  {/* Task bar */}
+                  {bar && (() => {
+                    let previewLeft = bar.x;
+                    let previewWidth = Math.max(bar.width, DAY_WIDTH * 0.8);
+                    if (isDragging && dragMode === 'move') {
+                      previewLeft = bar.x + dragDeltaDays * DAY_WIDTH;
+                    } else if (isDragging && dragMode === 'start') {
+                      const newStartDay = dragStart.current.startDay + dragDeltaDays;
+                      const newEndDay = dragStart.current.endDay;
+                      if (newStartDay <= newEndDay) {
+                        previewLeft = newStartDay * DAY_WIDTH;
+                        previewWidth = Math.max((newEndDay - newStartDay + 1) * DAY_WIDTH, DAY_WIDTH * 0.8);
+                      }
+                    } else if (isDragging && dragMode === 'end') {
+                      const newStartDay = dragStart.current.startDay;
+                      const newEndDay = dragStart.current.endDay + dragDeltaDays;
+                      if (newEndDay >= newStartDay) {
+                        previewWidth = Math.max((newEndDay - newStartDay + 1) * DAY_WIDTH, DAY_WIDTH * 0.8);
+                      }
+                    }
+                    return (
+                      <div
+                        className={clsx(
+                          'absolute top-1.5 h-6 rounded-md flex items-center justify-center text-xs font-medium text-white truncate select-none',
+                          isDragging ? 'cursor-grabbing z-20' : 'cursor-grab hover:opacity-90'
+                        )}
+                        style={{
+                          left: previewLeft,
+                          width: previewWidth,
+                          backgroundColor: statusColor,
+                        }}
+                        title={tooltipText}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                      >
+                        <div
+                          className="absolute inset-y-0 left-0 w-3 cursor-w-resize z-10"
+                          onPointerDown={(e) => handlePointerDown('start', e)}
+                          title="Drag to change start date"
+                        />
+                        <div
+                          className="absolute inset-0 z-0"
+                          onPointerDown={(e) => handlePointerDown('move', e)}
+                        />
+                        <div
+                          className="absolute inset-y-0 right-0 w-3 cursor-e-resize z-10"
+                          onPointerDown={(e) => handlePointerDown('end', e)}
+                          title="Drag to change end date"
+                        />
+                        <span className="relative z-0 pointer-events-none">
+                          {bar.width > 60 ? todo.title : <Clock className="w-3 h-3" />}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );

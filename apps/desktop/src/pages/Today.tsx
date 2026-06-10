@@ -750,10 +750,12 @@ function CompactTodoRow({
           {todo.title}
         </span>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          {todo.scheduledDate && (
+          {(todo.scheduledDate || todo.scheduledEndDate) && (
             <span className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
               <Clock className="w-3 h-3" />
-              {formatTime(todo.scheduledDate)}
+              {todo.scheduledDate && formatTime(todo.scheduledDate)}
+              {todo.scheduledDate && todo.scheduledEndDate && ' — '}
+              {todo.scheduledEndDate && formatTime(todo.scheduledEndDate)}
             </span>
           )}
           <span className="text-[11px] text-slate-400 dark:text-slate-500">

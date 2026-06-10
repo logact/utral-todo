@@ -201,7 +201,7 @@ const TodoItemRow = memo(function TodoItemRow({
           {todo.title}
         </p>
         <div className="flex items-center gap-2 mt-0.5">
-          {todo.scheduledDate && (
+          {(todo.scheduledDate || todo.scheduledEndDate) && (
             <span className="relative inline-flex items-center">
               <button
                 onClick={() => setEditingTimeTodoId(todo.id)}
@@ -209,12 +209,14 @@ const TodoItemRow = memo(function TodoItemRow({
                 title="Click to change time"
               >
                 <Pencil className="w-2.5 h-2.5" />
-                {formatTime(todo.scheduledDate)}
+                {todo.scheduledDate && formatTime(todo.scheduledDate)}
+                {todo.scheduledDate && todo.scheduledEndDate && ' — '}
+                {todo.scheduledEndDate && formatTime(todo.scheduledEndDate)}
               </button>
               {isEditingTime && (
                 <div className="absolute top-full left-0 mt-1">
                   <TimeEditor
-                    date={new Date(todo.scheduledDate)}
+                    date={new Date(todo.scheduledDate || new Date())}
                     onChange={(newDate) => schedule(todo.id, newDate)}
                     onClose={() => setEditingTimeTodoId(null)}
                   />
@@ -222,7 +224,7 @@ const TodoItemRow = memo(function TodoItemRow({
               )}
             </span>
           )}
-          {todo.scheduledDate && (
+          {(todo.scheduledDate || todo.scheduledEndDate) && (
             <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
           )}
           <span className="text-xs text-slate-400 dark:text-slate-500">

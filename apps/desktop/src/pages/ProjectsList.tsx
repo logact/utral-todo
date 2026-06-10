@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, FolderKanban, Calendar, CheckCircle2, Clock, Circle, Archive, Trash2, Edit2, X } from 'lucide-react';
+import { Plus, FolderKanban, Calendar, CheckCircle2, Clock, Circle, Archive, Trash2, Edit2, X, ArrowUpDown, Search, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useProjects } from '../hooks/useProjects';
 import { getProjectStats } from '../db/projects';
@@ -11,6 +11,10 @@ const PRESET_COLORS = [
   '#8b5cf6', '#ef4444', '#14b8a6', '#f97316', '#06b6d4',
 ];
 
+type FilterTab = 'all' | 'active' | 'archived';
+type SortKey = 'title' | 'deadline' | 'createdAt' | 'updatedAt';
+type SortDir = 'asc' | 'desc';
+
 export function ProjectsList() {
   const { projects, isLoading, add, update, remove } = useProjects();
   const [showForm, setShowForm] = useState(false);
@@ -19,6 +23,11 @@ export function ProjectsList() {
   const [formDescription, setFormDescription] = useState('');
   const [formColor, setFormColor] = useState(PRESET_COLORS[0]);
   const [formDeadline, setFormDeadline] = useState('');
+  const [filter, setFilter] = useState<FilterTab>('all');
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('updatedAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
 
   const resetForm = () => {
     setFormTitle('');
@@ -48,6 +57,55 @@ export function ProjectsList() {
     }
     resetForm();
     setShowForm(false);
+  };
+
+  const filteredProjects = useMemo(() => {
+    let result = projects;
+    if (filter !== 'all') {
+      result = result.filter((p) => p.status === filter);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q)
+      );
+    }
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'title') {
+        cmp = a.title.localeCompare(b.title);
+      } else if (sortKey === 'deadline') {
+        const da = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        const db = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+        cmp = da - db;
+      } else if (sortKey === 'createdAt') {
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      } else if (sortKey === 'updatedAt') {
+        cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return result;
+  }, [projects, filter, search, sortKey, sortDir]);
+
+  const counts = useMemo(() => {
+    return {
+      all: projects.length,
+      active: projects.filter((p) => p.status === 'active').length,
+      archived: projects.filter((p) => p.status === 'archived').length,
+    };
+  }, [projects]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+    setShowSortDropdown(false);
   };
 
   const handleEdit = (project: Project) => {
@@ -90,6 +148,105 @@ export function ProjectsList() {
           New Project
         </button>
       </div>
+
+      {projects.length > 0 && (
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1 w-fit">
+            {([
+              { key: 'all' as FilterTab, label: 'All' },
+              { key: 'active' as FilterTab, label: 'Active' },
+              { key: 'archived' as FilterTab, label: 'Archived' },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setFilter(tab.key)}
+                className={clsx(
+                  'px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2',
+                  filter === tab.key
+                    ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                )}
+              >
+                {tab.label}
+                <span
+                  className={clsx(
+                    'text-xs px-1.5 py-0.5 rounded-full',
+                    filter === tab.key
+                      ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  )}
+                >
+                  {counts[tab.key]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search projects..."
+              className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowSortDropdown((v) => !v)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5" />
+              <span className="capitalize">{sortKey}</span>
+              <span className="text-xs text-slate-400">{sortDir === 'asc' ? '↑' : '↓'}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            {showSortDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSortDropdown(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                  {([
+                    { key: 'updatedAt' as SortKey, label: 'Last updated' },
+                    { key: 'createdAt' as SortKey, label: 'Created' },
+                    { key: 'title' as SortKey, label: 'Title' },
+                    { key: 'deadline' as SortKey, label: 'Deadline' },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.key}
+                      onClick={() => handleSort(opt.key)}
+                      className={clsx(
+                        'w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors',
+                        sortKey === opt.key
+                          ? 'text-indigo-700 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20'
+                          : 'text-slate-700 dark:text-slate-300'
+                      )}
+                    >
+                      {opt.label}
+                      {sortKey === opt.key && (
+                        <span className="text-xs text-slate-400">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="mb-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
@@ -182,9 +339,20 @@ export function ProjectsList() {
             Create a project to organize your todos with Kanban, Gantt, and List views.
           </p>
         </div>
+      ) : filteredProjects.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-12 text-center">
+          <Search className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-500 dark:text-slate-400 mb-1">No projects match your filters.</p>
+          <button
+            onClick={() => { setFilter('all'); setSearch(''); }}
+            className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Clear filters
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((project) => (
+          {filteredProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

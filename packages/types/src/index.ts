@@ -57,6 +57,7 @@ export interface Todo {
   updatedAt: Date;
   dueDate?: Date;
   scheduledDate?: Date;
+  scheduledEndDate?: Date;
   startedAt?: Date;
   completedAt?: Date;
   repeatRule?: RepeatRule;

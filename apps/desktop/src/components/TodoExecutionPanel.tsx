@@ -484,14 +484,6 @@ export function TodoExecutionPanel({
         </div>
       </div>
 
-      {/* Road to Goal - Timeline */}
-      {sourceChain.length > 1 && (
-        <GoalPath chain={sourceChain} currentId={todo.id} onNodeClick={onNodeClick} />
-      )}
-
-      {/* Goal Tree */}
-      <BranchView currentTodoId={todo.id} />
-
       {/* Road to Goal */}
       {goalTodo && (goalTodo.isGoal || actionEdges.length > 0) && (
         <JourneyPath
@@ -515,6 +507,14 @@ export function TodoExecutionPanel({
             }
           }}
         />
+      )}
+
+      {/* Goal Tree */}
+      <BranchView currentTodoId={todo.id} />
+
+      {/* Road to Goal - Timeline */}
+      {sourceChain.length > 1 && (
+        <GoalPath chain={sourceChain} currentId={todo.id} onNodeClick={onNodeClick} />
       )}
 
       {/* Repeat Rule */}

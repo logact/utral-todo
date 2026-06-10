@@ -118,7 +118,7 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { title, description, instructions, priority, estimatedMinutes, tags, projectId, parentId, dueDate, scheduledDate, repeatRule, order, isGoal } = req.body;
+  const { title, description, instructions, priority, estimatedMinutes, tags, projectId, parentId, dueDate, scheduledDate, scheduledEndDate, repeatRule, order, isGoal } = req.body;
 
   // If parentId is set, inherit projectId from parent
   let finalProjectId = projectId;
@@ -151,6 +151,7 @@ router.post('/', async (req, res) => {
       parentId: parentId ?? null,
       dueDate: dueDate ? new Date(dueDate) : null,
       scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+      scheduledEndDate: scheduledEndDate ? new Date(scheduledEndDate) : null,
       repeatRule: repeatRule ?? null,
       order: finalOrder ?? 0,
       isGoal: isGoal === true,
@@ -264,8 +265,9 @@ router.get('/:id/template', async (req, res) => {
 });
 
 router.patch('/:id', async (req, res) => {
-  const { isGoal, ...data } = req.body;
+  const { isGoal, scheduledEndDate, ...data } = req.body;
   const updateData: Prisma.TodoUpdateInput = { ...data };
+  if (scheduledEndDate !== undefined) updateData.scheduledEndDate = scheduledEndDate ? new Date(scheduledEndDate) : null;
   if (isGoal !== undefined) updateData.isGoal = isGoal;
 
   const todo = await prisma.todo.update({

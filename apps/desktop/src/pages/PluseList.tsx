@@ -1,7 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Play,
   Plus,
   Trash2,
   Timer,
@@ -372,13 +370,11 @@ function PluseCard({
   pluse,
   todos,
   onDelete,
-  onStart,
   onUpdate,
 }: {
   pluse: Pluse;
   todos: Todo[];
   onDelete: (id: string) => void;
-  onStart: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Pick<Pluse, 'name' | 'description' | 'intervals' | 'repeatCount' | 'intervalTodos' | 'autoAdvance'>>) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -523,20 +519,12 @@ function PluseCard({
         )}
       </div>
 
-      <button
-        onClick={() => onStart(pluse.id)}
-        className="mt-4 w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-      >
-        <Play className="w-4 h-4" />
-        Start Pluse
-      </button>
     </div>
   );
 }
 
 /* ---------- Main Page ---------- */
 export function PluseList() {
-  const navigate = useNavigate();
   const [pluses, setPluses] = useState<Pluse[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -677,7 +665,6 @@ export function PluseList() {
               pluse={pluse}
               todos={todos}
               onDelete={handleDelete}
-              onStart={(id) => navigate(`/pluse/${id}/run`)}
               onUpdate={handleUpdate}
             />
           ))}

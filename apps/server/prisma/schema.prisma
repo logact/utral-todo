@@ -34,6 +34,7 @@ model Todo {
   updatedAt        DateTime       @updatedAt
   dueDate          DateTime?
   scheduledDate    DateTime?
+  scheduledEndDate DateTime?
   startedAt        DateTime?
   completedAt      DateTime?
   repeatRule       Json?

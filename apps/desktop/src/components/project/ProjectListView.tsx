@@ -125,7 +125,7 @@ export function ProjectListView({ todos, onUpdateStatus }: ProjectListViewProps)
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_100px_80px_100px_60px] gap-2 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400">
+      <div className="grid grid-cols-[1fr_100px_80px_100px_100px_60px] gap-2 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400">
         <button onClick={() => handleSort('title')} className="flex items-center gap-1 text-left hover:text-slate-700 dark:hover:text-slate-300">
           Title <ArrowUpDown className="w-3 h-3" />
         </button>
@@ -137,6 +137,9 @@ export function ProjectListView({ todos, onUpdateStatus }: ProjectListViewProps)
         </button>
         <button onClick={() => handleSort('dueDate')} className="flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300">
           Due <ArrowUpDown className="w-3 h-3" />
+        </button>
+        <button onClick={() => handleSort('scheduledDate')} className="flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300">
+          Schedule <ArrowUpDown className="w-3 h-3" />
         </button>
         <span className="text-right">Time</span>
       </div>
@@ -190,7 +193,7 @@ function TodoRow({
     <>
       <div
         className={clsx(
-          'grid grid-cols-[1fr_100px_80px_100px_60px] gap-2 px-4 py-2.5 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors',
+          'grid grid-cols-[1fr_100px_80px_100px_100px_60px] gap-2 px-4 py-2.5 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors',
           todo.status === 'done' && 'opacity-60'
         )}
       >
@@ -231,6 +234,9 @@ function TodoRow({
         </span>
         <span className="text-xs text-slate-500 dark:text-slate-400">
           {todo.dueDate ? new Date(todo.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '-'}
+        </span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {todo.scheduledDate ? new Date(todo.scheduledDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '-'}
         </span>
         <span className="text-xs text-slate-500 dark:text-slate-400 text-right">
           {todo.estimatedMinutes}m

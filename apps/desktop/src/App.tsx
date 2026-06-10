@@ -179,6 +179,14 @@ export default function App() {
           }
         />
         <Route
+          path="/project/:id/:view"
+          element={
+            <AppLayout>
+              <ProjectDetail />
+            </AppLayout>
+          }
+        />
+        <Route
           path="/settings"
           element={
             <AppLayout>

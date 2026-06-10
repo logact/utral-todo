@@ -18,6 +18,7 @@ export interface VirtualTodo {
   updatedAt: Date;
   dueDate: Date | null;
   scheduledDate: Date | null;
+  scheduledEndDate: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
   repeatRule: any;
@@ -41,6 +42,7 @@ function toTodoLike(template: PrismaTodo): VirtualTodo {
     updatedAt: template.updatedAt,
     dueDate: template.dueDate,
     scheduledDate: template.scheduledDate,
+    scheduledEndDate: template.scheduledEndDate,
     startedAt: template.startedAt,
     completedAt: template.completedAt,
     repeatRule: template.repeatRule ? (typeof template.repeatRule === 'string' ? JSON.parse(template.repeatRule) : template.repeatRule) : undefined,

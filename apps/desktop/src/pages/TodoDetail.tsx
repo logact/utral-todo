@@ -19,7 +19,7 @@ import {
 import { getTodo, updateTodo, updateTodoStatus } from '../db/todos';
 import { getSpawnedTodos, getTemplateForInstance } from '../db/relations';
 import { getAllProjects } from '../db/projects';
-import { formatDuration, formatDateShort } from '../utils/date';
+import { formatDuration, formatDateShort, formatTime } from '../utils/date';
 import { BranchView } from '../components/BranchView';
 import { TraceView } from '../components/TraceView';
 import { JourneyPath } from '../components/JourneyPath';
@@ -92,6 +92,8 @@ export function TodoDetail() {
   const [editDueDate, setEditDueDate] = useState('');
   const [editScheduledDate, setEditScheduledDate] = useState('');
   const [editScheduledTime, setEditScheduledTime] = useState('');
+  const [editScheduledEndDate, setEditScheduledEndDate] = useState('');
+  const [editScheduledEndTime, setEditScheduledEndTime] = useState('');
   const [editHasRepeat, setEditHasRepeat] = useState(false);
   const [editRepeatType, setEditRepeatType] = useState<'daily' | 'weekly' | 'every_n_days'>('weekly');
   const [editRepeatWeekDays, setEditRepeatWeekDays] = useState<number[]>([1, 2, 3, 4, 5]);
@@ -222,6 +224,8 @@ export function TodoDetail() {
     setEditDueDate(t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '');
     setEditScheduledDate(t.scheduledDate ? new Date(t.scheduledDate).toISOString().split('T')[0] : '');
     setEditScheduledTime(t.scheduledDate ? new Date(t.scheduledDate).toTimeString().slice(0, 5) : '');
+    setEditScheduledEndDate(t.scheduledEndDate ? new Date(t.scheduledEndDate).toISOString().split('T')[0] : '');
+    setEditScheduledEndTime(t.scheduledEndDate ? new Date(t.scheduledEndDate).toTimeString().slice(0, 5) : '');
     if (t.repeatRule) {
       setEditHasRepeat(true);
       setEditRepeatType(t.repeatRule.type);
@@ -283,6 +287,15 @@ export function TodoDetail() {
         }
         return date;
       })(),
+      scheduledEndDate: (() => {
+        if (!editScheduledEndDate) return undefined;
+        const date = new Date(editScheduledEndDate);
+        if (editScheduledEndTime) {
+          const [h, m] = editScheduledEndTime.split(':').map(Number);
+          date.setHours(h, m, 0, 0);
+        }
+        return date;
+      })(),
       repeatRule,
     };
 
@@ -295,6 +308,7 @@ export function TodoDetail() {
             ...updates,
             dueDate: updates.dueDate,
             scheduledDate: updates.scheduledDate,
+            scheduledEndDate: updates.scheduledEndDate,
             repeatRule: updates.repeatRule,
           }
         : prev
@@ -440,6 +454,13 @@ export function TodoDetail() {
             {todo.dueDate && (
               <span className="text-[10px] text-slate-400 dark:text-slate-500">
                 Due {formatDateShort(todo.dueDate)}
+              </span>
+            )}
+            {(todo.scheduledDate || todo.scheduledEndDate) && (
+              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                {todo.scheduledDate && formatDateShort(todo.scheduledDate)}
+                {todo.scheduledDate && todo.scheduledEndDate && ' — '}
+                {todo.scheduledEndDate && formatDateShort(todo.scheduledEndDate)}
               </span>
             )}
             {todo.repeatRule && (
@@ -693,9 +714,12 @@ export function TodoDetail() {
             className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
+      </div>
+
+      <div className="space-y-3">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            Schedule For
+            Scheduled Start
           </label>
           <div className="flex gap-2">
             <input
@@ -709,6 +733,26 @@ export function TodoDetail() {
               value={editScheduledTime}
               onChange={(e) => setEditScheduledTime(e.target.value)}
               disabled={!editScheduledDate}
+              className="w-[100px] px-2 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+            Scheduled End
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={editScheduledEndDate}
+              onChange={(e) => setEditScheduledEndDate(e.target.value)}
+              className="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="time"
+              value={editScheduledEndTime}
+              onChange={(e) => setEditScheduledEndTime(e.target.value)}
+              disabled={!editScheduledEndDate}
               className="w-[100px] px-2 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
             />
           </div>
@@ -928,7 +972,7 @@ export function TodoDetail() {
       {isEditing ? (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
           {/* Left column — main content */}
-          <div className="space-y-6">
+          <div className="space-y-6 min-w-0">
             {headerCard}
             {sharedSections}
           </div>

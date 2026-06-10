@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -31,6 +31,8 @@ import {
   Square,
   GripVertical,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useTodos } from '../hooks/useTodos';
 import { bulkUpdateTodoProject } from '../db/todos';
@@ -273,6 +275,10 @@ export function Todos() {
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -304,6 +310,17 @@ export function Todos() {
     // Todos are already sorted by order from the server
     return result;
   }, [todos, activeTab, search]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTodos.length / itemsPerPage));
+  const paginatedTodos = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredTodos.slice(start, start + itemsPerPage);
+  }, [filteredTodos, currentPage]);
 
   const counts = useMemo(() => {
     const all = todos.length;
@@ -347,7 +364,7 @@ export function Todos() {
   }
 
   function selectAllVisible() {
-    setSelectedIds(new Set(filteredTodos.map((t) => t.id)));
+    setSelectedIds(new Set(paginatedTodos.map((t) => t.id)));
   }
 
   function clearSelection() {
@@ -392,7 +409,7 @@ export function Todos() {
   }
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 w-full">
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
@@ -536,11 +553,11 @@ export function Todos() {
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={filteredTodos.map((t) => t.id)}
+              items={paginatedTodos.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
             >
               <div className="divide-y divide-slate-100 dark:divide-slate-800 px-3">
-                {filteredTodos.map((todo) => (
+                {paginatedTodos.map((todo) => (
                   <SortableTodoRow
                     key={todo.id}
                     todo={todo}
@@ -558,6 +575,44 @@ export function Todos() {
           </DndContext>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            Showing {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredTodos.length)} of {filteredTodos.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`min-w-[2rem] h-8 px-2 rounded-lg text-sm font-medium transition-colors ${
+                  page === currentPage
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating action bar */}
       {selectMode && selectedIds.size > 0 && (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Kanban, GanttChart, List, FolderKanban, Plus, X, CheckSquare, Square, Search } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Kanban, GanttChart, List, FolderKanban, Plus, X, CheckSquare, Square, Search, CalendarRange } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useProject } from '../hooks/useProjects';
 import { ProjectKanban } from '../components/project/ProjectKanban';
@@ -254,11 +254,64 @@ function ImportTodosModal({
   );
 }
 
+function formatDateInput(d: Date | undefined): string {
+  if (!d) return '';
+  const date = new Date(d);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseDateInput(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function getTodoDate(todo: Todo): Date | undefined {
+  if (todo.scheduledDate) return new Date(todo.scheduledDate);
+  if (todo.dueDate) return new Date(todo.dueDate);
+  return undefined;
+}
+
 export function ProjectDetail() {
-  const { id } = useParams<{ id: string }>();
-  const [view, setView] = useState<ViewMode>('kanban');
+  const { id, view: viewParam } = useParams<{ id: string; view?: string }>();
+  const navigate = useNavigate();
+  const view: ViewMode = views.some((v) => v.id === viewParam) ? (viewParam as ViewMode) : 'kanban';
+
+  // Redirect invalid view params to kanban
+  useEffect(() => {
+    if (viewParam && !views.some((v) => v.id === viewParam)) {
+      navigate(`/project/${id}/kanban`, { replace: true });
+    }
+  }, [viewParam, id, navigate]);
+
   const [showImport, setShowImport] = useState(false);
+  const [scheduleStart, setScheduleStart] = useState('');
+  const [scheduleEnd, setScheduleEnd] = useState('');
+  const [taskSearch, setTaskSearch] = useState('');
   const { project, todos, stats, isLoading, updateTodoStatusLocal, updateTodoLocal, refresh } = useProject(id);
+
+  const filteredTodos = todos.filter((todo) => {
+    const q = taskSearch.trim().toLowerCase();
+    if (q && !todo.title.toLowerCase().includes(q)) return false;
+
+    const todoDate = getTodoDate(todo);
+    if (scheduleStart) {
+      const start = parseDateInput(scheduleStart);
+      if (start && todoDate && todoDate < start) return false;
+    }
+    if (scheduleEnd) {
+      const end = parseDateInput(scheduleEnd);
+      if (end && todoDate) {
+        const endInclusive = new Date(end);
+        endInclusive.setHours(23, 59, 59, 999);
+        if (todoDate > endInclusive) return false;
+      }
+    }
+    return true;
+  });
 
   if (isLoading) {
     return (
@@ -336,26 +389,88 @@ export function ProjectDetail() {
         </div>
       </div>
 
-      {/* View switcher */}
-      <div className="flex items-center gap-1 mb-6 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1 w-fit">
-        {views.map((v) => {
-          const Icon = v.icon;
-          return (
-            <button
-              key={v.id}
-              onClick={() => setView(v.id)}
-              className={clsx(
-                'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
-                view === v.id
-                  ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {v.label}
-            </button>
-          );
-        })}
+      {/* Filters */}
+      <div className="mb-6 flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Task name</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={taskSearch}
+              onChange={(e) => setTaskSearch(e.target.value)}
+              placeholder="Search tasks..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Schedule from</label>
+          <div className="relative">
+            <CalendarRange className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="date"
+              value={scheduleStart}
+              onChange={(e) => setScheduleStart(e.target.value)}
+              className="pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Schedule to</label>
+          <div className="relative">
+            <CalendarRange className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="date"
+              value={scheduleEnd}
+              onChange={(e) => setScheduleEnd(e.target.value)}
+              className="pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+        </div>
+        {(taskSearch || scheduleStart || scheduleEnd) && (
+          <button
+            onClick={() => {
+              setTaskSearch('');
+              setScheduleStart('');
+              setScheduleEnd('');
+            }}
+            className="px-3 py-2 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
+        {filteredTodos.length !== todos.length && (
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            Showing {filteredTodos.length} of {todos.length}
+          </span>
+        )}
+      </div>
+
+      {/* View tabs */}
+      <div className="mb-6">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">View</label>
+        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1 w-fit">
+          {views.map((v) => {
+            const Icon = v.icon;
+            const isActive = view === v.id;
+            return (
+              <Link
+                key={v.id}
+                to={`/project/${id}/${v.id}`}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {v.label}
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
       {/* View content */}
@@ -363,7 +478,7 @@ export function ProjectDetail() {
         {view === 'kanban' && (
           <ProjectKanban
             projectId={project.id}
-            todos={todos}
+            todos={filteredTodos}
             projectColor={project.color}
             onUpdateStatus={updateTodoStatusLocal}
             onUpdateTodo={updateTodoLocal}
@@ -372,14 +487,14 @@ export function ProjectDetail() {
         {view === 'gantt' && (
           <ProjectGantt
             project={project}
-            todos={todos}
+            todos={filteredTodos}
             onUpdateTodo={updateTodoLocal}
           />
         )}
         {view === 'list' && (
           <ProjectListView
             projectId={project.id}
-            todos={todos}
+            todos={filteredTodos}
             projectColor={project.color}
             onUpdateStatus={updateTodoStatusLocal}
             onUpdateTodo={updateTodoLocal}

@@ -35,6 +35,7 @@ export function parseTodo(data: unknown): Todo {
     updatedAt: parseDate(t.updatedAt) ?? parseDate(t.createdAt)!,
     dueDate: parseDate(t.dueDate),
     scheduledDate: parseDate(t.scheduledDate),
+    scheduledEndDate: parseDate(t.scheduledEndDate),
     startedAt: parseDate(t.startedAt),
     completedAt: parseDate(t.completedAt),
     repeatRule: parseRepeatRule(t.repeatRule),

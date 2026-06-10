@@ -129,6 +129,7 @@ export function computeVirtualTodo(
     updatedAt: template.updatedAt,
     dueDate: template.dueDate,
     scheduledDate: new Date(date),
+    scheduledEndDate: template.scheduledEndDate,
     startedAt: occurrence?.status === 'in_progress' ? new Date() : undefined,
     completedAt: occurrence?.completedAt,
     repeatRule: undefined,

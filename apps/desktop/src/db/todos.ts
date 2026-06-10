@@ -14,6 +14,7 @@ export async function createTodo(
     estimatedMinutes?: number;
     dueDate?: Date;
     scheduledDate?: Date;
+    scheduledEndDate?: Date;
     tags?: string[];
     repeatRule?: RepeatRule;
     order?: number;
@@ -37,6 +38,7 @@ export async function createTodo(
     parentId: options?.parentId,
     dueDate: options?.dueDate,
     scheduledDate: options?.scheduledDate,
+    scheduledEndDate: options?.scheduledEndDate,
     repeatRule: options?.repeatRule,
     order: options?.order ?? 0,
     isGoal: options?.isGoal,

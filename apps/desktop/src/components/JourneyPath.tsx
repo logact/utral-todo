@@ -211,6 +211,27 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
   const [isExpandedDragging, setIsExpandedDragging] = useState(false);
   const expandedDragRef = useRef({ startX: 0, startY: 0, startPanX: 0, startPanY: 0, moved: false });
 
+  // Auto-fit tracking
+  const hasAutoFitRef = useRef(false);
+
+  // Reset auto-fit when goal changes
+  useEffect(() => {
+    hasAutoFitRef.current = false;
+  }, [goalTodo.id]);
+
+  // Auto-fit view when graph loads
+  useEffect(() => {
+    if (!loading && graphNodes.length > 0 && !isExpanded && !hasAutoFitRef.current) {
+      hasAutoFitRef.current = true;
+      const timer = setTimeout(() => {
+        if (containerRef.current) {
+          handleFitView(containerRef.current.clientWidth, containerRef.current.clientHeight, false);
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, graphNodes.length, isExpanded]);
+
   // Fetch todos involved in the graph
   const loadGraph = useCallback(async () => {
     setLoading(true);

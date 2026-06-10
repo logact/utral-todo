@@ -146,6 +146,7 @@ router.post('/', async (req, res) => {
             updatedAt: toDate(item.updatedAt) ?? new Date(),
             dueDate: toDate(item.dueDate),
             scheduledDate: toDate(item.scheduledDate),
+            scheduledEndDate: toDate(item.scheduledEndDate),
             startedAt: toDate(item.startedAt),
             completedAt: toDate(item.completedAt),
             repeatRule: item.repeatRule ? JSON.stringify(item.repeatRule) : Prisma.DbNull,
