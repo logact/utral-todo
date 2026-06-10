@@ -1,0 +1,21 @@
+{
+  "name": "utral-todo-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "utral-todo-cli": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~6.0.2"
+  }
+}
