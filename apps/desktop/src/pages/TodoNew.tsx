@@ -13,7 +13,6 @@ export function TodoNew() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [instructions, setInstructions] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [estimatedMinutes, setEstimatedMinutes] = useState(60);
   const [parentId, setParentId] = useState('');
@@ -72,7 +71,6 @@ export function TodoNew() {
 
     const todo = await createTodo(title.trim(), {
       description: description.trim(),
-      instructions: instructions.trim(),
       priority,
       estimatedMinutes,
       parentId: parentId || undefined,
@@ -177,22 +175,6 @@ export function TodoNew() {
             rows={3}
             className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            Instructions
-          </label>
-          <textarea
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            placeholder="Step-by-step instructions on how to do this task..."
-            rows={4}
-            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-          />
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-            Add steps, tips, or links to help you complete this task
-          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

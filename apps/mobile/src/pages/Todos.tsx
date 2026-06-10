@@ -53,8 +53,7 @@ export function Todos() {
     const matchesSearch =
       !query ||
       t.title.toLowerCase().includes(query) ||
-      (t.description?.toLowerCase().includes(query)) ||
-      (t.instructions?.toLowerCase().includes(query));
+      (t.description?.toLowerCase().includes(query));
     return matchesFilter && matchesSearch;
   });
 

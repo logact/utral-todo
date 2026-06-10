@@ -45,7 +45,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
     case 'create': {
       const todo = await todosDb.createTodo(String(args.title ?? 'Untitled'), {
         description: String(args.description ?? ''),
-        instructions: String(args.instructions ?? ''),
         priority: (args.priority as 'low' | 'medium' | 'high') ?? 'medium',
         projectId: args.projectId ? String(args.projectId) : undefined,
         parentId: args.parentId ? String(args.parentId) : undefined,
@@ -66,7 +65,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       const updates: Record<string, unknown> = {};
       if (args.title !== undefined) updates.title = String(args.title);
       if (args.description !== undefined) updates.description = String(args.description);
-      if (args.instructions !== undefined) updates.instructions = String(args.instructions);
       if (args.status !== undefined) updates.status = String(args.status);
       if (args.priority !== undefined) updates.priority = String(args.priority);
       if (args.projectId !== undefined) updates.projectId = String(args.projectId);
@@ -119,8 +117,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       const todos = all.filter(
         (t) =>
           t.title.toLowerCase().includes(q) ||
-          (t.description?.toLowerCase().includes(q)) ||
-          (t.instructions?.toLowerCase().includes(q)),
+          (t.description?.toLowerCase().includes(q)),
       );
       return { success: true, data: todos.map(serializeForJson) };
     }

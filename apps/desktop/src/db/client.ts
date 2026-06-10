@@ -26,7 +26,6 @@ export function parseTodo(data: unknown): Todo {
     parentId: t.parentId as string | undefined,
     title: t.title as string,
     description: t.description as string,
-    instructions: t.instructions as string,
     status: t.status as Todo['status'],
     priority: t.priority as Todo['priority'],
     estimatedMinutes: t.estimatedMinutes as number,

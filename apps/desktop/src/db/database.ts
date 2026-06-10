@@ -137,13 +137,6 @@ db.version(11).stores({
   todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-}).upgrade(async (tx) => {
-  const todos = await tx.table('todos').toArray();
-  for (const todo of todos) {
-    if (todo.instructions === undefined) {
-      await tx.table('todos').update(todo.id, { instructions: '' });
-    }
-  }
 });
 
 db.version(12).stores({

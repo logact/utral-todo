@@ -120,7 +120,6 @@ export function computeVirtualTodo(
     parentId: template.parentId,
     title: template.title,
     description: template.description,
-    instructions: template.instructions,
     status: occurrence?.status ?? 'pending',
     priority: template.priority,
     estimatedMinutes: template.estimatedMinutes,

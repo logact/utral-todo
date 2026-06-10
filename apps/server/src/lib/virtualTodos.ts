@@ -9,7 +9,6 @@ export interface VirtualTodo {
   parentId: string | null;
   title: string;
   description: string;
-  instructions: string;
   status: string;
   priority: string;
   estimatedMinutes: number;
@@ -33,7 +32,6 @@ function toTodoLike(template: PrismaTodo): VirtualTodo {
     parentId: template.parentId,
     title: template.title,
     description: template.description,
-    instructions: template.instructions,
     status: template.status,
     priority: template.priority,
     estimatedMinutes: template.estimatedMinutes,

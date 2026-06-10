@@ -1233,7 +1233,7 @@ export function Today() {
       </div>
 
       {/* ─── Right Main: Execution Detail ─── */}
-      <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col min-h-0 overflow-hidden">
+      <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col min-h-0 min-w-0 overflow-hidden">
         {selectedTodoId ? (
           <div className="flex-1 overflow-y-auto min-w-0">
             <div className="mb-40">

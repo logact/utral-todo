@@ -14,6 +14,7 @@ interface Todo {
   parentId: string | null;
   dueDate: string | null;
   scheduledDate: string | null;
+  scheduledEndDate: string | null;
   repeatRule: unknown;
   order: number;
   isGoal: boolean;
@@ -79,7 +80,6 @@ export function registerTodoCommand(program: Command) {
     .description("create a new todo")
     .requiredOption("--title <title>", "todo title")
     .option("--description <text>", "description")
-    .option("--instructions <text>", "instructions")
     .option("--priority <p>", "priority (low/medium/high)", "medium")
     .option("--estimated <minutes>", "estimated minutes", "60")
     .option("--tags <tags>", "comma-separated tags")
@@ -87,13 +87,13 @@ export function registerTodoCommand(program: Command) {
     .option("--parent <id>", "parent todo ID")
     .option("--due <date>", "due date (ISO)")
     .option("--scheduled <date>", "scheduled date (ISO)")
+    .option("--scheduled-end <date>", "scheduled end date (ISO)")
     .option("--repeat-rule <rule>", "repeat rule JSON")
     .option("--is-goal", "mark as goal")
     .action(async (opts) => {
       const body: Record<string, unknown> = {
         title: opts.title,
         description: opts.description ?? "",
-        instructions: opts.instructions ?? "",
         priority: opts.priority,
         estimatedMinutes: parseInt(opts.estimated, 10),
         tags: opts.tags ? opts.tags.split(",").map((t: string) => t.trim()) : [],
@@ -101,6 +101,7 @@ export function registerTodoCommand(program: Command) {
         parentId: opts.parent ?? null,
         dueDate: opts.due ?? null,
         scheduledDate: opts.scheduled ?? null,
+        scheduledEndDate: opts.scheduledEnd ?? null,
         repeatRule: opts.repeatRule ? JSON.parse(opts.repeatRule) : null,
         isGoal: opts.isGoal === true,
       };
@@ -122,6 +123,7 @@ export function registerTodoCommand(program: Command) {
     .option("--project <id>", "new project ID")
     .option("--due <date>", "new due date")
     .option("--scheduled <date>", "new scheduled date")
+    .option("--scheduled-end <date>", "new scheduled end date")
     .option("--is-goal", "mark as goal")
     .option("--no-is-goal", "unmark as goal")
     .action(async (id: string, opts) => {
@@ -135,6 +137,7 @@ export function registerTodoCommand(program: Command) {
       if (opts.project !== undefined) body.projectId = opts.project;
       if (opts.due !== undefined) body.dueDate = opts.due;
       if (opts.scheduled !== undefined) body.scheduledDate = opts.scheduled;
+      if (opts.scheduledEnd !== undefined) body.scheduledEndDate = opts.scheduledEnd;
       if (opts.isGoal === true) body.isGoal = true;
       if (opts.isGoal === false) body.isGoal = false;
 

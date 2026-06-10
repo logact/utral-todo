@@ -83,7 +83,6 @@ export function TodoDetail() {
   const [isEditing, setIsEditing] = useState(true);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [editInstructions, setEditInstructions] = useState('');
   const [editPriority, setEditPriority] = useState<Priority>('medium');
   const [editEstimatedMinutes, setEditEstimatedMinutes] = useState(60);
   const [editTags, setEditTags] = useState<string[]>([]);
@@ -215,7 +214,6 @@ export function TodoDetail() {
   function initEditForm(t: Todo) {
     setEditTitle(t.title);
     setEditDescription(t.description);
-    setEditInstructions(t.instructions);
     setEditPriority(t.priority);
     setEditEstimatedMinutes(t.estimatedMinutes);
     setEditTags([...t.tags]);
@@ -272,7 +270,6 @@ export function TodoDetail() {
     const updates: Partial<Todo> = {
       title: editTitle.trim(),
       description: editDescription.trim(),
-      instructions: editInstructions.trim(),
       priority: editPriority,
       estimatedMinutes: editEstimatedMinutes,
       tags: editTags,
@@ -403,17 +400,6 @@ export function TodoDetail() {
               </p>
             </div>
           )}
-          {todo.instructions && (
-            <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-              <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
-                How to do this
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
-                {todo.instructions}
-              </p>
-            </div>
-          )}
-
           <div className="flex items-center gap-3 mt-3 flex-wrap">
             <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
               <Clock className="w-3.5 h-3.5" />
@@ -608,19 +594,6 @@ export function TodoDetail() {
         <textarea
           value={editDescription}
           onChange={(e) => setEditDescription(e.target.value)}
-          rows={3}
-          className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-          Instructions
-        </label>
-        <textarea
-          value={editInstructions}
-          onChange={(e) => setEditInstructions(e.target.value)}
-          placeholder="Step-by-step instructions..."
           rows={3}
           className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
         />

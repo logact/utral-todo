@@ -137,7 +137,6 @@ router.post('/', async (req, res) => {
             id,
             title: item.title as string,
             description: (item.description as string) || '',
-            instructions: (item.instructions as string) || '',
             status: item.status as string,
             priority: item.priority as string,
             estimatedMinutes: (item.estimatedMinutes as number) ?? 60,

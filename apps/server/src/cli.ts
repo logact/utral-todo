@@ -287,7 +287,6 @@ async function createTodo(args: Record<string, string | boolean>) {
   const data = {
     title: String(args.title ?? 'Untitled'),
     description: String(args.description ?? ''),
-    instructions: String(args.instructions ?? ''),
     status: 'pending',
     priority: String(args.priority ?? 'medium'),
     estimatedMinutes: args.estimatedMinutes ? Number(args.estimatedMinutes) : 60,
@@ -318,7 +317,6 @@ async function updateTodo(id: string, args: Record<string, string | boolean>) {
   const data: Record<string, unknown> = {};
   if (args.title !== undefined) data.title = String(args.title);
   if (args.description !== undefined) data.description = String(args.description);
-  if (args.instructions !== undefined) data.instructions = String(args.instructions);
   if (args.priority !== undefined) data.priority = String(args.priority);
   if (args.projectId !== undefined) data.projectId = String(args.projectId) || null;
   if (args.parentId !== undefined) data.parentId = String(args.parentId) || null;
@@ -441,8 +439,7 @@ async function searchTodos(query: string) {
   const rows = all.filter(
     (t) =>
       t.title.toLowerCase().includes(q) ||
-      (t.description && t.description.toLowerCase().includes(q)) ||
-      (t.instructions && t.instructions.toLowerCase().includes(q)),
+      (t.description && t.description.toLowerCase().includes(q)),
   );
   printOutput(
     applyLimit(rows).map((r) =>
@@ -1198,7 +1195,7 @@ Entities & Actions:
   todos
     list [--status=...] [--priority=...] [--projectId=...] [--tag=...]
     get <id>
-    create --title="..." [--description=...] [--instructions=...] [--priority=low|medium|high]
+    create --title="..." [--description=...] [--priority=low|medium|high]
          [--projectId=...] [--parentId=...] [--dueDate=YYYY-MM-DD] [--scheduledDate=YYYY-MM-DD]
          [--tags=a,b,c] [--estimatedMinutes=N] [--isGoal]
     update <id> [--title=...] [--status=...] [--priority=...] [--projectId=...] [--dueDate=...]

@@ -332,9 +332,6 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
   const [isExpandedDragging, setIsExpandedDragging] = useState(false);
   const expandedDragRef = useRef({ startX: 0, startY: 0, startPanX: 0, startPanY: 0, moved: false });
 
-  // Auto-fit tracking
-  const hasAutoFitRef = useRef(false);
-
   // Create child inline state
   const [creatingForId, setCreatingForId] = useState<string | null>(null);
   const [newChildTitle, setNewChildTitle] = useState('');
@@ -343,24 +340,34 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Reset auto-fit when todo changes
+  // Auto-fit view when tree data or container size changes
   useEffect(() => {
-    hasAutoFitRef.current = false;
-  }, [currentTodoId]);
+    if (!tree || isExpanded) return;
 
-  // Auto-fit view when tree loads
-  useEffect(() => {
-    if (tree && !loading && !isExpanded && !hasAutoFitRef.current) {
-      hasAutoFitRef.current = true;
-      const timer = setTimeout(() => {
-        const el = document.getElementById('branch-view-container');
-        if (el) {
-          handleFitView(el.clientWidth, el.clientHeight, false);
-        }
-      }, 50);
-      return () => clearTimeout(timer);
+    const el = document.getElementById('branch-view-container');
+    if (!el) return;
+
+    let rafId: number;
+
+    function fit() {
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        handleFitView(el.clientWidth, el.clientHeight, false);
+      }
     }
-  }, [tree, loading, isExpanded]);
+
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(fit);
+    });
+
+    ro.observe(el);
+    rafId = requestAnimationFrame(fit);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [tree, isExpanded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -559,7 +566,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
 
   return (
     <>
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
       {/* Header */}
       <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
         <GitBranch className="w-4 h-4 text-indigo-500" />
@@ -627,7 +634,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
       <div
         id="branch-view-container"
         className="relative overflow-hidden w-full select-none"
-        style={{ minHeight: dims.h + 16, cursor: isDragging ? 'grabbing' : 'grab' }}
+        style={{ minHeight: dims.h + 16, cursor: isDragging ? 'grabbing' : 'grab', contain: 'layout' }}
         onWheel={(e) => handleWheel(e, false)}
         onMouseDown={(e) => handleMouseDown(e, false)}
         onMouseMove={(e) => handleMouseMove(e, false)}
@@ -639,6 +646,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
             transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.scale})`,
             transformOrigin: '0 0',
             width: dims.w,
+            maxWidth: '100%',
             height: dims.h + 16,
           }}
         >

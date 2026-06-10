@@ -470,16 +470,6 @@ export function TodoExecutionPanel({
                 {todo.description || <span className="text-slate-400 dark:text-slate-500 italic">No description set</span>}
               </p>
             </div>
-            {todo.instructions && (
-              <div className="mt-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1.5">
-                  How to do this
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
-                  {todo.instructions}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -751,10 +741,10 @@ export function TodoExecutionPanel({
                       </div>
                     </div>
                   </div>
-                  {expandedStepId === sub.id && sub.instructions && (
+                  {expandedStepId === sub.id && sub.description && (
                     <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                       <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                        {sub.instructions}
+                        {sub.description}
                       </p>
                     </div>
                   )}

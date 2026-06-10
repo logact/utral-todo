@@ -42,9 +42,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
       <Sidebar onQuickCreate={openQuickModal} />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-8 min-w-0">
         {children}
       </main>
       <QuickTodoModal isOpen={quickModalOpen} onClose={closeQuickModal} />

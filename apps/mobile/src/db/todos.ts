@@ -8,7 +8,6 @@ export async function createTodo(
     parentId?: string;
     projectId?: string;
     description?: string;
-    instructions?: string;
     priority?: Priority;
     estimatedMinutes?: number;
     dueDate?: Date;
@@ -25,7 +24,6 @@ export async function createTodo(
     id: crypto.randomUUID(),
     title,
     description: options?.description ?? '',
-    instructions: options?.instructions ?? '',
     status: options?.status ?? 'pending',
     priority: options?.priority ?? 'medium',
     estimatedMinutes: options?.estimatedMinutes ?? 60,

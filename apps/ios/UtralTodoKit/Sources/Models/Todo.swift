@@ -8,7 +8,6 @@ public final class Todo {
     public var parentId: String?
     public var title: String
     public var desc: String
-    public var instructions: String
     public var status: String
     public var priority: String
     public var estimatedMinutes: Int
@@ -39,7 +38,6 @@ public final class Todo {
         parentId: String? = nil,
         title: String,
         desc: String = "",
-        instructions: String = "",
         status: String = "pending",
         priority: String = "medium",
         estimatedMinutes: Int = 60,
@@ -58,7 +56,6 @@ public final class Todo {
         self.parentId = parentId
         self.title = title
         self.desc = desc
-        self.instructions = instructions
         self.status = status
         self.priority = priority
         self.estimatedMinutes = estimatedMinutes

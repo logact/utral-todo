@@ -211,26 +211,34 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
   const [isExpandedDragging, setIsExpandedDragging] = useState(false);
   const expandedDragRef = useRef({ startX: 0, startY: 0, startPanX: 0, startPanY: 0, moved: false });
 
-  // Auto-fit tracking
-  const hasAutoFitRef = useRef(false);
-
-  // Reset auto-fit when goal changes
+  // Auto-fit view when graph data or container size changes
   useEffect(() => {
-    hasAutoFitRef.current = false;
-  }, [goalTodo.id]);
+    if (graphNodes.length === 0 || isExpanded) return;
 
-  // Auto-fit view when graph loads
-  useEffect(() => {
-    if (!loading && graphNodes.length > 0 && !isExpanded && !hasAutoFitRef.current) {
-      hasAutoFitRef.current = true;
-      const timer = setTimeout(() => {
-        if (containerRef.current) {
-          handleFitView(containerRef.current.clientWidth, containerRef.current.clientHeight, false);
-        }
-      }, 50);
-      return () => clearTimeout(timer);
+    const el = containerRef.current;
+    if (!el) return;
+
+    let rafId: number;
+
+    function fit() {
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        handleFitView(el.clientWidth, el.clientHeight, false);
+      }
     }
-  }, [loading, graphNodes.length, isExpanded]);
+
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(fit);
+    });
+
+    ro.observe(el);
+    rafId = requestAnimationFrame(fit);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [graphNodes.length, isExpanded]);
 
   // Fetch todos involved in the graph
   const loadGraph = useCallback(async () => {
@@ -504,6 +512,7 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
           minHeight: dims.h,
           cursor: dragActive ? 'grabbing' : 'grab',
           height: isExpandedView ? '100%' : undefined,
+          contain: 'layout',
         }}
         onMouseDown={e => handleMouseDown(e, isExpandedView)}
         onMouseMove={e => handleMouseMove(e, isExpandedView)}
@@ -517,6 +526,7 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
             transform: `translate(${currentView.panX}px, ${currentView.panY}px) scale(${currentView.scale})`,
             transformOrigin: '0 0',
             width: dims.w,
+            maxWidth: '100%',
             height: dims.h,
             position: 'relative',
           }}
@@ -731,7 +741,7 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
 
   return (
     <>
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
         {/* Header */}
         <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 flex-wrap">
           <Flag className="w-4 h-4 text-indigo-500" />

@@ -116,7 +116,6 @@ router.post('/todos/quick', async (req, res) => {
       data: {
         title,
         description: '',
-        instructions: '',
         status: 'pending',
         priority: 'medium',
         estimatedMinutes: 60,

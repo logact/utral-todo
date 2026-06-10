@@ -55,7 +55,6 @@ export function useTodos() {
       options?: {
         parentId?: string;
         description?: string;
-        instructions?: string;
         priority?: Priority;
         estimatedMinutes?: number;
         dueDate?: Date;
@@ -76,7 +75,6 @@ export function useTodos() {
       title: string,
       options?: {
         description?: string;
-        instructions?: string;
         priority?: Priority;
         estimatedMinutes?: number;
         dueDate?: Date;

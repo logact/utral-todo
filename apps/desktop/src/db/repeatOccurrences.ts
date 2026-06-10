@@ -77,7 +77,6 @@ export async function materializeInstance(
   // Create a real todo from the template
   const instance = await createTodo(template.title, {
     description: template.description,
-    instructions: template.instructions,
     priority: template.priority,
     estimatedMinutes: template.estimatedMinutes,
     projectId: template.projectId,

@@ -48,7 +48,6 @@ export interface Todo {
   parentId?: string;
   title: string;
   description: string;
-  instructions: string;
   status: TodoStatus;
   priority: Priority;
   estimatedMinutes: number;

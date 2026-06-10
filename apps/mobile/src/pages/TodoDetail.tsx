@@ -336,18 +336,6 @@ export function TodoDetail() {
         </div>
       )}
 
-      {/* Instructions */}
-      {todo.instructions && (
-        <div className="mb-6 ml-9 bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
-          <h3 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-            Instructions
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-            {todo.instructions}
-          </p>
-        </div>
-      )}
-
       {/* Status badge */}
       {!isDone && isInProgress && (
         <div className="ml-9">

@@ -118,7 +118,7 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { title, description, instructions, priority, estimatedMinutes, tags, projectId, parentId, dueDate, scheduledDate, scheduledEndDate, repeatRule, order, isGoal } = req.body;
+  const { title, description, priority, estimatedMinutes, tags, projectId, parentId, dueDate, scheduledDate, scheduledEndDate, repeatRule, order, isGoal } = req.body;
 
   // If parentId is set, inherit projectId from parent
   let finalProjectId = projectId;
@@ -142,7 +142,6 @@ router.post('/', async (req, res) => {
     data: {
       title,
       description: description ?? '',
-      instructions: instructions ?? '',
       status: 'pending',
       priority: priority ?? 'medium',
       estimatedMinutes: estimatedMinutes ?? 60,
