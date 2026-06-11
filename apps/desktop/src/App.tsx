@@ -8,8 +8,6 @@ import { QuickTodoModal } from './components/QuickTodoModal';
 import { TodoNew } from './pages/TodoNew';
 import { TodoExecute } from './pages/TodoExecute';
 import { TodoDetail } from './pages/TodoDetail';
-import { Roadmap } from './pages/Roadmap';
-import { Roadmaps } from './pages/Roadmaps';
 import { BigMap } from './pages/BigMap';
 import { Today } from './pages/Today';
 import { Todos } from './pages/Todos';
@@ -20,6 +18,8 @@ import { PluseList } from './pages/PluseList';
 import { PluseRun } from './pages/PluseRun';
 import { ProjectsList } from './pages/ProjectsList';
 import { ProjectDetail } from './pages/ProjectDetail';
+import { Roadmaps } from './pages/Roadmaps';
+import { RoadmapPage } from './pages/Roadmap';
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const [quickModalOpen, setQuickModalOpen] = useState(false);
@@ -123,22 +123,6 @@ export default function App() {
           }
         />
         <Route
-          path="/roadmaps"
-          element={
-            <AppLayout>
-              <Roadmaps />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/roadmap/:id"
-          element={
-            <AppLayout>
-              <Roadmap />
-            </AppLayout>
-          }
-        />
-        <Route
           path="/map"
           element={
             <AppLayout>
@@ -183,6 +167,22 @@ export default function App() {
           element={
             <AppLayout>
               <ProjectDetail />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/roadmaps"
+          element={
+            <AppLayout>
+              <Roadmaps />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/roadmap/:id"
+          element={
+            <AppLayout>
+              <RoadmapPage />
             </AppLayout>
           }
         />

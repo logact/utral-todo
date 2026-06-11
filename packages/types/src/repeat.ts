@@ -116,6 +116,8 @@ export function computeVirtualTodo(
   const id = makeVirtualTodoId(template.id, date);
   return {
     id,
+    nodeType: template.nodeType || 'task',
+    pattern: template.pattern ?? 'task',
     projectId: template.projectId,
     parentId: template.parentId,
     title: template.title,
@@ -133,6 +135,5 @@ export function computeVirtualTodo(
     completedAt: occurrence?.completedAt,
     repeatRule: undefined,
     order: template.order,
-    isGoal: template.isGoal,
   };
 }

@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Map as MapIcon, ChevronRight, Clock, Layers, CheckCircle2, Circle, Loader2 } from 'lucide-react';
+import { Map as MapIcon, ChevronRight, Clock, Layers, CheckCircle2, Circle, Loader2, Target } from 'lucide-react';
 import { getAllRoadmaps } from '../db/roadmaps';
 import { getAllTodos } from '../db/todos';
 import { formatDuration } from '../utils/date';
-import type { Roadmap, Todo, TodoStatus } from '../types';
+import type { Roadmap, Todo, TodoStatus, GoalStatus } from '../types';
 
 interface RoadmapSummary {
   roadmap: Roadmap;
@@ -16,7 +16,9 @@ interface RoadmapSummary {
   totalMinutes: number;
 }
 
-function StatusIcon({ status }: { status: TodoStatus }) {
+function StatusIcon({ status, goalStatus }: { status?: TodoStatus; goalStatus?: GoalStatus }) {
+  if (goalStatus === 'achieved') return <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />;
+  if (goalStatus) return <Target className="w-4 h-4 text-indigo-500 shrink-0" />;
   if (status === 'done') return <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />;
   if (status === 'in_progress') return <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />;
   return <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />;
@@ -34,7 +36,11 @@ function RoadmapCard({ summary }: { summary: RoadmapSummary }) {
     >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 shrink-0">
-          {goalTodo ? <StatusIcon status={goalTodo.status} /> : <MapIcon className="w-4 h-4 text-slate-400 shrink-0" />}
+          {goalTodo ? (
+            <StatusIcon status={goalTodo.status} goalStatus={goalTodo.goalStatus} />
+          ) : (
+            <MapIcon className="w-4 h-4 text-slate-400 shrink-0" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -66,7 +72,6 @@ function RoadmapCard({ summary }: { summary: RoadmapSummary }) {
             )}
           </div>
 
-          {/* Progress bar */}
           {todoCount > 0 && (
             <div className="mt-3">
               <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -93,7 +98,6 @@ export function Roadmaps() {
     async function load() {
       setIsLoading(true);
       const [rms, allTodos] = await Promise.all([getAllRoadmaps(), getAllTodos()]);
-      // Deduplicate by goalTodoId — keep the most recently updated one
       const byGoal = new Map<string, Roadmap>();
       for (const rm of rms) {
         const existing = byGoal.get(rm.goalTodoId);
@@ -154,7 +158,6 @@ export function Roadmaps() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <MapIcon className="w-6 h-6 text-indigo-500" />
@@ -177,13 +180,12 @@ export function Roadmaps() {
         )}
       </div>
 
-      {/* List */}
       {summaries.length === 0 ? (
         <div className="text-center py-16">
           <MapIcon className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">No roadmaps yet.</p>
           <p className="text-xs text-slate-400 dark:text-slate-500">
-            Open any todo and click "Roadmap" to create one.
+            Open any goal todo and click "Roadmap" to create one.
           </p>
         </div>
       ) : (

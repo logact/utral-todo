@@ -297,17 +297,10 @@ async function createTodo(args: Record<string, string | boolean>) {
     scheduledDate: args.scheduledDate ? new Date(String(args.scheduledDate)) : null,
     repeatRule: args.repeatRule ? JSON.parse(String(args.repeatRule)) : null,
     order: args.order ? Number(args.order) : finalOrder,
-    isGoal: args.isGoal === true || args.isGoal === 'true',
+    nodeType: args.nodeType === 'goal' || args.nodeType === 'goal' ? 'goal' : 'todo',
   };
 
   const todo = await prisma.todo.create({ data: data as never });
-
-  if (data.isGoal) {
-    const existing = await prisma.roadmap.findUnique({ where: { goalTodoId: todo.id } });
-    if (!existing) {
-      await prisma.roadmap.create({ data: { goalTodoId: todo.id, phases: [] } });
-    }
-  }
 
   if (!quietMode) console.log('Created todo:', todo.id);
   printOutput(todo);
@@ -326,20 +319,10 @@ async function updateTodo(id: string, args: Record<string, string | boolean>) {
     data.tags = String(args.tags).split(',').map((t) => t.trim());
   }
   if (args.repeatRule !== undefined) data.repeatRule = args.repeatRule ? JSON.parse(String(args.repeatRule)) : null;
-  if (args.isGoal !== undefined) data.isGoal = args.isGoal === true || args.isGoal === 'true';
+  if (args.nodeType !== undefined) data.nodeType = String(args.nodeType);
   if (args.order !== undefined) data.order = Number(args.order);
 
   const todo = await prisma.todo.update({ where: { id }, data });
-
-  const isGoal = data.isGoal;
-  if (isGoal === true) {
-    const existing = await prisma.roadmap.findUnique({ where: { goalTodoId: id } });
-    if (!existing) {
-      await prisma.roadmap.create({ data: { goalTodoId: id, phases: [] } });
-    }
-  } else if (isGoal === false) {
-    await prisma.roadmap.deleteMany({ where: { goalTodoId: id } });
-  }
 
   if (!quietMode) console.log('Updated todo:', todo.id);
   printOutput(todo);
@@ -694,51 +677,6 @@ async function deleteTodoLog(id: string) {
   if (!quietMode) console.log('Deleted todo log:', id);
 }
 
-// ─── Roadmaps ───────────────────────────────────────────────────────────────
-
-async function listRoadmaps() {
-  const rows = await prisma.roadmap.findMany({ orderBy: { updatedAt: 'desc' } });
-  printOutput(rows.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'goalTodoId', 'createdAt', 'updatedAt'])));
-}
-
-async function getRoadmap(id: string) {
-  const row = await prisma.roadmap.findUnique({ where: { id } });
-  if (!row) return fail('Roadmap not found');
-  printOutput(row);
-}
-
-async function createRoadmap(args: Record<string, string | boolean>) {
-  const row = await prisma.roadmap.create({
-    data: {
-      goalTodoId: String(args.goalTodoId ?? ''),
-      phases: args.phases ? JSON.parse(String(args.phases)) : [],
-    },
-  });
-  if (!quietMode) console.log('Created roadmap:', row.id);
-  printOutput(row);
-}
-
-async function updateRoadmap(id: string, args: Record<string, string | boolean>) {
-  const data: Record<string, unknown> = {};
-  if (args.phases !== undefined) data.phases = JSON.parse(String(args.phases));
-  if (args.goalTodoId !== undefined) data.goalTodoId = String(args.goalTodoId);
-  const row = await prisma.roadmap.update({ where: { id }, data });
-  if (!quietMode) console.log('Updated roadmap:', row.id);
-  printOutput(row);
-}
-
-async function setRoadmapPhases(id: string, args: Record<string, string | boolean>) {
-  const phases = args.phases ? JSON.parse(String(args.phases)) : [];
-  const row = await prisma.roadmap.update({ where: { id }, data: { phases } });
-  if (!quietMode) console.log('Updated roadmap phases:', row.id);
-  printOutput(row);
-}
-
-async function deleteRoadmap(id: string) {
-  await prisma.roadmap.delete({ where: { id } });
-  if (!quietMode) console.log('Deleted roadmap:', id);
-}
-
 // ─── Action Edges ───────────────────────────────────────────────────────────
 
 async function listActionEdges() {
@@ -971,7 +909,6 @@ async function syncPull() {
   const projects = await prisma.project.findMany();
   const relations = await prisma.todoRelation.findMany();
   const todoLogs = await prisma.todoLog.findMany();
-  const roadmaps = await prisma.roadmap.findMany();
   const actionEdges = await prisma.actionEdge.findMany();
   const pluses = await prisma.pluse.findMany();
   const timerSessions = await prisma.timerSession.findMany();
@@ -987,10 +924,6 @@ async function syncPull() {
     todoLogs: todoLogs.map((l) => ({
       ...l,
       metadata: typeof l.metadata === 'string' ? JSON.parse(l.metadata) : l.metadata,
-    })),
-    roadmaps: roadmaps.map((r) => ({
-      ...r,
-      phases: typeof r.phases === 'string' ? JSON.parse(r.phases) : r.phases,
     })),
     actionEdges,
     pluses: pluses.map((p) => ({
@@ -1011,7 +944,6 @@ async function exportJson(args: Record<string, string | boolean>) {
   const projects = await prisma.project.findMany();
   const relations = await prisma.todoRelation.findMany();
   const todoLogs = await prisma.todoLog.findMany();
-  const roadmaps = await prisma.roadmap.findMany();
   const actionEdges = await prisma.actionEdge.findMany();
   const pluses = await prisma.pluse.findMany();
   const timerSessions = await prisma.timerSession.findMany();
@@ -1021,7 +953,6 @@ async function exportJson(args: Record<string, string | boolean>) {
     projects,
     relations,
     todoLogs,
-    roadmaps,
     actionEdges,
     pluses,
     timerSessions,
@@ -1075,13 +1006,6 @@ async function importJson(args: Record<string, string | boolean>) {
         else await tx.todoLog.create({ data: item });
       }
     }
-    if (data.roadmaps?.length) {
-      for (const item of data.roadmaps) {
-        const existing = await tx.roadmap.findUnique({ where: { id: item.id } });
-        if (existing) await tx.roadmap.update({ where: { id: item.id }, data: item });
-        else await tx.roadmap.create({ data: item });
-      }
-    }
     if (data.actionEdges?.length) {
       for (const item of data.actionEdges) {
         const existing = await tx.actionEdge.findUnique({ where: { id: item.id } });
@@ -1115,7 +1039,6 @@ async function showStats() {
   const totalTodos = await prisma.todo.count();
   const totalProjects = await prisma.project.count();
   const totalRelations = await prisma.todoRelation.count();
-  const totalRoadmaps = await prisma.roadmap.count();
   const totalPluses = await prisma.pluse.count();
   const activeTimers = await prisma.timerSession.count({ where: { status: 'running' } });
   const totalDevices = await prisma.device.count();
@@ -1140,7 +1063,6 @@ async function showStats() {
     },
     projects: { total: totalProjects },
     relations: { total: totalRelations },
-    roadmaps: { total: totalRoadmaps },
     pluses: { total: totalPluses },
     timerSessions: { active: activeTimers },
     devices: { total: totalDevices },
@@ -1156,7 +1078,6 @@ async function wipeAll() {
   await prisma.todoLog.deleteMany();
   await prisma.todoRelation.deleteMany();
   await prisma.actionEdge.deleteMany();
-  await prisma.roadmap.deleteMany();
   await prisma.pluse.deleteMany();
   await prisma.todo.deleteMany();
   await prisma.project.deleteMany();
@@ -1197,7 +1118,7 @@ Entities & Actions:
     get <id>
     create --title="..." [--description=...] [--priority=low|medium|high]
          [--projectId=...] [--parentId=...] [--dueDate=YYYY-MM-DD] [--scheduledDate=YYYY-MM-DD]
-         [--tags=a,b,c] [--estimatedMinutes=N] [--isGoal]
+         [--tags=a,b,c] [--estimatedMinutes=N] [--nodeType=goal|todo]
     update <id> [--title=...] [--status=...] [--priority=...] [--projectId=...] [--dueDate=...]
     delete <id>
     status <id> pending|in_progress|done
@@ -1225,14 +1146,6 @@ Entities & Actions:
   todo-logs
     list [--todoId=...] [--type=...]
     create --todoId=... --type=... --content="..." [--minutesSpent=N] [--metadata='{"key":"val"}']
-    delete <id>
-
-  roadmaps
-    list
-    get <id>
-    create --goalTodoId=... [--phases='[{"name":"Phase 1","todoIds":["id1"]}]']
-    update <id> [--goalTodoId=...] [--phases=...]
-    set-phases <id> --phases='[...]'
     delete <id>
 
   action-edges
@@ -1357,18 +1270,6 @@ async function main() {
           case 'list': await listTodoLogs(args); break;
           case 'create': await createTodoLog(args); break;
           case 'delete': if (!id) fail('ID required'); await deleteTodoLog(id); break;
-          default: console.log(usage); process.exit(2);
-        }
-        break;
-
-      case 'roadmaps':
-        switch (action) {
-          case 'list': await listRoadmaps(); break;
-          case 'get': if (!id) fail('ID required'); await getRoadmap(id); break;
-          case 'create': await createRoadmap(args); break;
-          case 'update': if (!id) fail('ID required'); await updateRoadmap(id, args); break;
-          case 'set-phases': if (!id) fail('ID required'); await setRoadmapPhases(id, args); break;
-          case 'delete': if (!id) fail('ID required'); await deleteRoadmap(id); break;
           default: console.log(usage); process.exit(2);
         }
         break;

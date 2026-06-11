@@ -119,8 +119,8 @@ router.post('/', async (req, res) => {
     projects: payload.projects?.length ?? 0,
     relations: payload.relations?.length ?? 0,
     todoLogs: payload.todoLogs?.length ?? 0,
-    roadmaps: payload.roadmaps?.length ?? 0,
     actionEdges: payload.actionEdges?.length ?? 0,
+    roadmaps: payload.roadmaps?.length ?? 0,
     pluses: payload.pluses?.length ?? 0,
     timerSessions: payload.timerSessions?.length ?? 0,
     repeatOccurrences: payload.repeatOccurrences?.length ?? 0,
@@ -150,7 +150,6 @@ router.post('/', async (req, res) => {
             completedAt: toDate(item.completedAt),
             repeatRule: item.repeatRule ? JSON.stringify(item.repeatRule) : Prisma.DbNull,
             order: (item.order as number) ?? 0,
-            isGoal: (item.isGoal as boolean) ?? false,
             projectId: (item.projectId as string) || null,
             parentId: (item.parentId as string) || null,
           };
@@ -245,30 +244,6 @@ router.post('/', async (req, res) => {
         accepted.todoLogs = count;
       }
 
-      // Merge roadmaps
-      if (payload.roadmaps?.length) {
-        let count = 0;
-        for (const item of payload.roadmaps) {
-          const id = item.id as string;
-          const data = {
-            id,
-            goalTodoId: item.goalTodoId as string,
-            phases: JSON.stringify(item.phases ?? []),
-            createdAt: toDate(item.createdAt) ?? new Date(),
-            updatedAt: toDate(item.updatedAt) ?? new Date(),
-          };
-
-          const existing = await tx.roadmap.findUnique({ where: { id } });
-          if (existing) {
-            await tx.roadmap.update({ where: { id }, data });
-          } else {
-            await tx.roadmap.create({ data });
-          }
-          count++;
-        }
-        accepted.roadmaps = count;
-      }
-
       // Merge actionEdges
       if (payload.actionEdges?.length) {
         let count = 0;
@@ -292,6 +267,30 @@ router.post('/', async (req, res) => {
           count++;
         }
         accepted.actionEdges = count;
+      }
+
+      // Merge roadmaps
+      if (payload.roadmaps?.length) {
+        let count = 0;
+        for (const item of payload.roadmaps) {
+          const id = item.id as string;
+          const data = {
+            id,
+            goalTodoId: item.goalTodoId as string,
+            phases: JSON.stringify(item.phases ?? []),
+            createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
+          };
+
+          const existing = await tx.roadmap.findUnique({ where: { id } });
+          if (existing) {
+            await tx.roadmap.update({ where: { id }, data });
+          } else {
+            await tx.roadmap.create({ data });
+          }
+          count++;
+        }
+        accepted.roadmaps = count;
       }
 
       // Merge pluses
@@ -398,8 +397,8 @@ router.get('/', async (_req, res) => {
     const projects = await prisma.project.findMany();
     const relations = await prisma.todoRelation.findMany();
     const todoLogs = await prisma.todoLog.findMany();
-    const roadmaps = await prisma.roadmap.findMany();
     const actionEdges = await prisma.actionEdge.findMany();
+    const roadmaps = await prisma.roadmap.findMany();
     const pluses = await prisma.pluse.findMany();
     const timerSessions = await prisma.timerSession.findMany();
     const repeatOccurrences = await prisma.repeatOccurrence.findMany();
@@ -416,11 +415,11 @@ router.get('/', async (_req, res) => {
         ...l,
         metadata: typeof l.metadata === 'string' ? JSON.parse(l.metadata) : l.metadata,
       })),
+      actionEdges,
       roadmaps: roadmaps.map((r) => ({
         ...r,
         phases: typeof r.phases === 'string' ? JSON.parse(r.phases) : r.phases,
       })),
-      actionEdges,
       pluses: pluses.map((p) => ({
         ...p,
         intervals: typeof p.intervals === 'string' ? JSON.parse(p.intervals) : p.intervals,

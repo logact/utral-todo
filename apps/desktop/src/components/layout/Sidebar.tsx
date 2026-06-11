@@ -1,18 +1,23 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, CalendarCheck, CalendarDays, Settings, Network, Timer, ChevronLeft, ChevronRight, ListTodo, FolderKanban, Zap, Cloud } from 'lucide-react';
+import { Plus, CalendarCheck, CalendarDays, Settings, Network, Timer, ChevronLeft, ChevronRight, ChevronDown, ListTodo, FolderKanban, Zap, Cloud, Target, CheckSquare, Map as MapIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const navItems = [
   { path: '/', icon: CalendarCheck, label: 'Today' },
   { path: '/todos', icon: ListTodo, label: 'Todos' },
-  { path: '/todo/new', icon: Plus, label: 'New Todo' },
   { path: '/projects', icon: FolderKanban, label: 'Projects' },
   { path: '/schedule', icon: CalendarDays, label: 'Schedule' },
   { path: '/pluses', icon: Timer, label: 'Pluse' },
+  { path: '/roadmaps', icon: MapIcon, label: 'Roadmaps' },
   { path: '/map', icon: Network, label: 'Road to Goal' },
   { path: '/sync', icon: Cloud, label: 'Sync' },
   { path: '/settings', icon: Settings, label: 'Settings' },
+];
+
+const newSubItems = [
+  { path: '/todo/new', icon: CheckSquare, label: 'New Todo' },
+  { path: '/todo/new?nodeType=goal', icon: Target, label: 'New Goal' },
 ];
 
 interface SidebarProps {
@@ -20,8 +25,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onQuickCreate }: SidebarProps) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
 
   const shortcutLabel = useMemo(() => {
     const isMac = navigator.platform.toLowerCase().includes('mac');
@@ -74,6 +80,64 @@ export function Sidebar({ onQuickCreate }: SidebarProps) {
       </div>
 
       <nav className={clsx('flex-1 space-y-1', collapsed ? 'px-2' : 'px-3')}>
+        {/* New dropdown */}
+        {collapsed ? (
+          <Link
+            to="/todo/new"
+            title="New"
+            className={clsx(
+              'flex items-center rounded-lg text-sm font-medium transition-colors justify-center px-2 py-2.5',
+              pathname === '/todo/new'
+                ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+            )}
+          >
+            <Plus className="w-4.5 h-4.5 flex-shrink-0" />
+          </Link>
+        ) : (
+          <div className="relative">
+            <button
+              onClick={() => setNewOpen(!newOpen)}
+              className={clsx(
+                'w-full flex items-center rounded-lg text-sm font-medium transition-colors gap-3 px-3 py-2.5',
+                pathname === '/todo/new'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+              )}
+            >
+              <Plus className="w-4.5 h-4.5 flex-shrink-0" />
+              <span className="flex-1 text-left">New</span>
+              <ChevronDown
+                className={clsx('w-3.5 h-3.5 transition-transform', newOpen && 'rotate-180')}
+              />
+            </button>
+            {newOpen && (
+              <div className="mt-1 ml-4 space-y-0.5 border-l-2 border-slate-200 dark:border-slate-700 pl-2">
+                {newSubItems.map((sub) => {
+                  const SubIcon = sub.icon;
+                  const isSubActive = pathname + search === sub.path;
+                  return (
+                    <Link
+                      key={sub.path}
+                      to={sub.path}
+                      onClick={() => setNewOpen(false)}
+                      className={clsx(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+                        isSubActive
+                          ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
+                          : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+                      )}
+                    >
+                      <SubIcon className="w-4 h-4 flex-shrink-0" />
+                      {sub.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));

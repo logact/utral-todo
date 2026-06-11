@@ -231,8 +231,8 @@ export function BigMapCanvas({
             if (!fromNode || !toNode) return null;
 
             const isDimmed = hoveredNodeId && !hoveredConnectedIds.has(edge.fromId) && !hoveredConnectedIds.has(edge.toId);
-            const fromH = fromNode.isGoal ? GOAL_H : NODE_H;
-            const toH = toNode.isGoal ? GOAL_H : NODE_H;
+            const fromH = fromNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
+            const toH = toNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
             const { fromX, fromY, toX, toY, ctrlX, ctrlY } = computeEdgePath(
               fromNode, toNode, NODE_W, fromH, NODE_W, toH
             );
@@ -259,10 +259,10 @@ export function BigMapCanvas({
 
             const isHovered = hoveredEdgeId === edge.id;
             const isDimmed = hoveredNodeId && !(hoveredNodeId === edge.fromTodoId || hoveredNodeId === edge.toTodoId);
-            const fromW = fromNode.isGoal ? GOAL_W : NODE_W;
-            const fromH = fromNode.isGoal ? GOAL_H : NODE_H;
-            const toW = toNode.isGoal ? GOAL_W : NODE_W;
-            const toH = toNode.isGoal ? GOAL_H : NODE_H;
+            const fromW = fromNode.todo.nodeType === 'goal' ? GOAL_W : NODE_W;
+            const fromH = fromNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
+            const toW = toNode.todo.nodeType === 'goal' ? GOAL_W : NODE_W;
+            const toH = toNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
             const { fromX, fromY, toX, toY, ctrlX, ctrlY } = computeEdgePath(
               fromNode, toNode, fromW, fromH, toW, toH
             );
@@ -301,7 +301,7 @@ export function BigMapCanvas({
           {connectMode && connectSourceId && mouseCanvasPos && (() => {
             const srcNode = nodeMap.get(connectSourceId);
             if (!srcNode) return null;
-            const srcH = srcNode.isGoal ? GOAL_H : NODE_H;
+            const srcH = srcNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
             const fromX = srcNode.x;
             const fromY = srcNode.y + srcH / 2;
             const toX = mouseCanvasPos.x;
@@ -334,7 +334,7 @@ export function BigMapCanvas({
 
         {/* Node layer */}
         {nodes.map((node) => {
-          const isGoal = node.isGoal;
+          const isGoal = node.todo.nodeType === 'goal';
           const isDone = node.todo.status === 'done';
           const w = isGoal ? GOAL_W : NODE_W;
           const h = isGoal ? GOAL_H : NODE_H;
@@ -406,7 +406,7 @@ export function BigMapCanvas({
                   {node.hasParent && !isGoal && (
                     <div className="w-1 h-4 rounded-full bg-teal-400 shrink-0" />
                   )}
-                  <StatusDot status={node.todo.status} />
+                  <StatusDot status={node.todo.status ?? 'pending'} />
                   <span
                     className={`text-[13px] font-medium truncate flex-1 min-w-0 leading-tight ${
                       isDone
@@ -418,9 +418,9 @@ export function BigMapCanvas({
                   >
                     {node.todo.title}
                   </span>
-                  {node.todo.estimatedMinutes > 0 && !isGoal && (
+                  {(node.todo.estimatedMinutes ?? 60) > 0 && !isGoal && (
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
-                      {formatDuration(node.todo.estimatedMinutes)}
+                      {formatDuration(node.todo.estimatedMinutes ?? 60)}
                     </span>
                   )}
                   {isGoal && (

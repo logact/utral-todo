@@ -17,7 +17,7 @@ interface Todo {
   scheduledEndDate: string | null;
   repeatRule: unknown;
   order: number;
-  isGoal: boolean;
+  nodeType: string;
   createdAt: string;
   completedAt: string | null;
 }
@@ -89,7 +89,7 @@ export function registerTodoCommand(program: Command) {
     .option("--scheduled <date>", "scheduled date (ISO)")
     .option("--scheduled-end <date>", "scheduled end date (ISO)")
     .option("--repeat-rule <rule>", "repeat rule JSON")
-    .option("--is-goal", "mark as goal")
+    .option("--node-type <type>", "node type (goal/todo)", "todo")
     .action(async (opts) => {
       const body: Record<string, unknown> = {
         title: opts.title,
@@ -103,7 +103,7 @@ export function registerTodoCommand(program: Command) {
         scheduledDate: opts.scheduled ?? null,
         scheduledEndDate: opts.scheduledEnd ?? null,
         repeatRule: opts.repeatRule ? JSON.parse(opts.repeatRule) : null,
-        isGoal: opts.isGoal === true,
+        nodeType: opts.nodeType === 'goal' ? 'goal' : 'todo',
       };
       const res = await api.post<Todo>("/api/todos", body);
       const data = handleResponse(res);
@@ -124,8 +124,7 @@ export function registerTodoCommand(program: Command) {
     .option("--due <date>", "new due date")
     .option("--scheduled <date>", "new scheduled date")
     .option("--scheduled-end <date>", "new scheduled end date")
-    .option("--is-goal", "mark as goal")
-    .option("--no-is-goal", "unmark as goal")
+    .option("--node-type <type>", "node type (goal/todo)")
     .action(async (id: string, opts) => {
       const body: Record<string, unknown> = {};
       if (opts.title !== undefined) body.title = opts.title;
@@ -138,8 +137,7 @@ export function registerTodoCommand(program: Command) {
       if (opts.due !== undefined) body.dueDate = opts.due;
       if (opts.scheduled !== undefined) body.scheduledDate = opts.scheduled;
       if (opts.scheduledEnd !== undefined) body.scheduledEndDate = opts.scheduledEnd;
-      if (opts.isGoal === true) body.isGoal = true;
-      if (opts.isGoal === false) body.isGoal = false;
+      if (opts.nodeType !== undefined) body.nodeType = opts.nodeType;
 
       const res = await api.patch<Todo>(`/api/todos/${id}`, body);
       const data = handleResponse(res);

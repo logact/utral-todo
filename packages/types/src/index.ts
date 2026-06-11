@@ -2,6 +2,10 @@ export type TodoStatus = 'pending' | 'in_progress' | 'done';
 export type Priority = 'low' | 'medium' | 'high';
 export type TodoLogType = 'progress' | 'thought' | 'blocker' | 'decision' | 'system' | 'step_complete';
 
+export type NodeType = 'goal' | 'task';
+export type TaskPattern = 'task' | 'cognitive';
+export type GoalStatus = 'active' | 'paused' | 'achieved' | 'abandoned';
+
 export type ActionEdgeType = 'insight' | 'try' | 'pre_do';
 
 export interface ActionEdge {
@@ -9,6 +13,23 @@ export interface ActionEdge {
   fromTodoId: string;
   toTodoId: string;
   type: ActionEdgeType;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RoadmapPhase {
+  id: string;
+  title: string;
+  order: number;
+  todoIds: string[];
+  startAt?: Date;
+  endAt?: Date;
+}
+
+export interface Roadmap {
+  id: string;
+  goalTodoId: string;
+  phases: RoadmapPhase[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,26 +63,65 @@ export interface RepeatOccurrence {
   updatedAt: Date;
 }
 
-export interface Todo {
+export interface TodoBase {
   id: string;
-  projectId?: string;
-  parentId?: string;
+  nodeType: NodeType;
+  pattern?: TaskPattern;
   title: string;
   description: string;
+  projectId?: string;
+  parentId?: string;
+  tags: string[];
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Goal extends TodoBase {
+  nodeType: 'goal';
+  motivation?: string;
+  successCriteria?: string;
+  targetDate?: Date;
+  goalStatus: GoalStatus;
+}
+
+export interface Task extends TodoBase {
+  nodeType: 'task';
   status: TodoStatus;
   priority: Priority;
   estimatedMinutes: number;
-  tags: string[];
-  createdAt: Date;
-  updatedAt: Date;
-  dueDate?: Date;
   scheduledDate?: Date;
   scheduledEndDate?: Date;
+  dueDate?: Date;
   startedAt?: Date;
   completedAt?: Date;
   repeatRule?: RepeatRule;
-  order: number;
-  isGoal?: boolean;
+}
+
+export interface Todo extends TodoBase {
+  // Goal fields
+  motivation?: string;
+  successCriteria?: string;
+  targetDate?: Date;
+  goalStatus?: GoalStatus;
+  // Task fields
+  status?: TodoStatus;
+  priority?: Priority;
+  estimatedMinutes?: number;
+  scheduledDate?: Date;
+  scheduledEndDate?: Date;
+  dueDate?: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  repeatRule?: RepeatRule;
+}
+
+export function isGoal(todo: Todo): todo is Goal {
+  return todo.nodeType === 'goal';
+}
+
+export function isTask(todo: Todo): todo is Task {
+  return todo.nodeType === 'task';
 }
 
 export interface TodoLog {
@@ -71,32 +131,6 @@ export interface TodoLog {
   content: string;
   minutesSpent?: number;
   metadata?: Record<string, unknown>;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface RoadmapStep {
-  todoId: string;
-  title: string;
-  status: TodoStatus;
-  estimatedMinutes: number;
-  level: number;
-  state: 'done' | 'ready' | 'blocked' | 'goal';
-}
-
-export interface RoadmapPhase {
-  id: string;
-  title: string;
-  order: number;
-  todoIds: string[];
-  startAt?: Date;
-  endAt?: Date;
-}
-
-export interface Roadmap {
-  id: string;
-  goalTodoId: string;
-  phases: RoadmapPhase[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -147,8 +181,8 @@ export interface SyncPayload {
   projects?: Project[];
   relations?: TodoRelation[];
   todoLogs?: TodoLog[];
-  roadmaps?: Roadmap[];
   actionEdges?: ActionEdge[];
+  roadmaps?: Roadmap[];
   pluses?: Pluse[];
   timerSessions?: TimerSession[];
   repeatOccurrences?: RepeatOccurrence[];
@@ -177,8 +211,8 @@ export interface SyncResult {
     projects: number;
     relations: number;
     todoLogs: number;
-    roadmaps: number;
     actionEdges: number;
+    roadmaps: number;
     pluses: number;
     timerSessions: number;
   };
@@ -187,8 +221,8 @@ export interface SyncResult {
     projects: number;
     relations: number;
     todoLogs: number;
-    roadmaps: number;
     actionEdges: number;
+    roadmaps: number;
     pluses: number;
     timerSessions: number;
   };

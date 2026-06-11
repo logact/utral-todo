@@ -29,7 +29,7 @@ export function ProjectKanban({ todos, projectColor, onUpdateStatus }: ProjectKa
   const [dragOverColumn, setDragOverColumn] = useState<TodoStatus | null>(null);
 
   const getTodosByStatus = useCallback(
-    (status: TodoStatus) => todos.filter((t) => t.status === status && !t.parentId),
+    (status: TodoStatus) => todos.filter((t) => (t.status ?? 'pending') === status && !t.parentId),
     [todos]
   );
 
@@ -125,7 +125,7 @@ function KanbanCard({
   isDragging: boolean;
   onDragStart: (e: React.DragEvent, todoId: string) => void;
 }) {
-  const priorityStyle = PRIORITY_BADGE[todo.priority] || PRIORITY_BADGE.medium;
+  const priorityStyle = PRIORITY_BADGE[todo.priority ?? 'medium'] || PRIORITY_BADGE.medium;
 
   return (
     <div
@@ -151,10 +151,10 @@ function KanbanCard({
               {todo.priority}
             </span>
 
-            {todo.estimatedMinutes > 0 && (
+            {(todo.estimatedMinutes ?? 60) > 0 && (
               <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
                 <Clock className="w-3 h-3" />
-                {todo.estimatedMinutes}m
+                {todo.estimatedMinutes ?? 60}m
               </span>
             )}
 

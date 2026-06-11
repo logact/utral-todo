@@ -12,8 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
   Target,
+  ArrowRight,
 } from 'lucide-react';
-import { getTodo, updateTodo, updateTodoStatus, getSubTodos, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
+import { getTodo, updateTodoStatus, getSubTodos, getSubGoals, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
 import { traceSourceChain, getSpawnedTodos, getTemplateForInstance } from '../db/relations';
 import { useTodoLogs } from '../hooks/useTodoLogs';
 import {
@@ -65,6 +66,7 @@ export function TodoExecutionPanel({
 }) {
   const [todo, setTodo] = useState<Todo | null>(null);
   const [subTodos, setSubTodos] = useState<Todo[]>([]);
+  const [subGoals, setSubGoals] = useState<Todo[]>([]);
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const [isLoadingTodo, setIsLoadingTodo] = useState(true);
 
@@ -92,7 +94,9 @@ export function TodoExecutionPanel({
     if (t) {
       setTodo(t);
       const subs = await getSubTodos(t.id);
-      setSubTodos(subs);
+      const goals = await getSubGoals(t.id);
+      setSubGoals(goals);
+      setSubTodos(subs.filter((s) => s.nodeType !== 'goal'));
 
       const [chain, spawned, tmpl] = await Promise.all([
         traceSourceChain(t.id),
@@ -183,13 +187,6 @@ export function TodoExecutionPanel({
     await addLog('system', 'Reopened — marked as pending', {
       metadata: { action: 'status_change', from: 'done', to: 'pending' },
     });
-  }
-
-  async function toggleGoal() {
-    if (!todo) return;
-    const newVal = !todo.isGoal;
-    await updateTodo(todoId, { isGoal: newVal });
-    setTodo((prev) => (prev ? { ...prev, isGoal: newVal } : prev));
   }
 
   async function toggleSubTodo(subId: string, currentStatus: string) {
@@ -406,7 +403,7 @@ export function TodoExecutionPanel({
             <div className="flex items-center gap-3 mt-3 flex-wrap">
               <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                 <Clock className="w-3.5 h-3.5" />
-                Est. {formatDuration(todo.estimatedMinutes)}
+                Est. {formatDuration(todo.estimatedMinutes ?? 60)}
                 {totalMinutesSpent > 0 && (
                   <span className="text-slate-400 dark:text-slate-500">
                     {' '}· Logged {formatDuration(totalMinutesSpent)}
@@ -449,19 +446,6 @@ export function TodoExecutionPanel({
                 </span>
               )}
             </div>
-            <button
-              onClick={toggleGoal}
-              className={`inline-flex items-center gap-1.5 mt-2 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                todo.isGoal
-                  ? 'text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-              title={todo.isGoal ? 'This is a goal' : 'Set as goal'}
-            >
-              <Target className="w-3.5 h-3.5" />
-              {todo.isGoal ? 'Goal' : 'Set Goal'}
-            </button>
-
             <div className="mt-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
                 Description
@@ -474,8 +458,36 @@ export function TodoExecutionPanel({
         </div>
       </div>
 
+      {/* Sub-Goals */}
+      {subGoals.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Target className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+              Sub-Goals
+            </h2>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{subGoals.length}</span>
+          </div>
+          <div className="space-y-2">
+            {subGoals.map((subGoal) => (
+              <div
+                key={subGoal.id}
+                onClick={() => onNodeClick?.(subGoal.id)}
+                className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-amber-200 dark:hover:border-amber-800 cursor-pointer transition-colors group"
+              >
+                <Target className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-slate-700 dark:text-slate-300 font-medium">{subGoal.title}</span>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-amber-400 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Road to Goal */}
-      {goalTodo && (goalTodo.isGoal || actionEdges.length > 0) && (
+      {goalTodo && (goalTodo.nodeType === 'goal' || actionEdges.length > 0) && (
         <JourneyPath
           goalTodo={goalTodo}
           highlightTodoId={todo.id}
@@ -694,11 +706,11 @@ export function TodoExecutionPanel({
                     subDone
                       ? 'bg-slate-50 dark:bg-slate-800/50 border-transparent opacity-60'
                       : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'
-                  } ${!subDone && sub.isGoal ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''}`}
+                  } ${!subDone && sub.nodeType === 'goal' ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''}`}
                 >
                   <div className="flex items-center gap-2.5">
                     <button
-                      onClick={() => toggleSubTodo(sub.id, sub.status)}
+                      onClick={() => toggleSubTodo(sub.id, sub.status ?? 'pending')}
                       className="shrink-0"
                     >
                       {subDone ? (
@@ -728,7 +740,7 @@ export function TodoExecutionPanel({
                         {sub.title}
                       </span>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {sub.isGoal && (
+                        {sub.nodeType === 'goal' && (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">
                             Goal
                           </span>
@@ -790,9 +802,9 @@ export function TodoExecutionPanel({
                   >
                     {spawned.title}
                   </span>
-                  {spawned.estimatedMinutes > 0 && (
+                  {(spawned.estimatedMinutes ?? 0) > 0 && (
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                      {formatDuration(spawned.estimatedMinutes)}
+                      {formatDuration(spawned.estimatedMinutes ?? 60)}
                     </span>
                   )}
                   {spawned.status === 'in_progress' && (
@@ -818,7 +830,7 @@ export function TodoExecutionPanel({
         onSwitchTodo={(id) => {
           onSwitchTodo?.(id);
         }}
-        currentTodoStatus={todo.status}
+        currentTodoStatus={todo.status ?? 'pending'}
         onToggleStatus={handleToggleStatus}
         goalTodo={goalTodo}
         graphNodes={graphNodes}

@@ -13,6 +13,7 @@ import {
   getUnscheduledHighPriorityTodos,
   reorderTodos,
   getRepeatTemplates,
+  getTodaysGoals,
 } from '../db/todos';
 import { setOccurrenceStatus } from '../db/repeatOccurrences';
 import { db } from '../db/database';
@@ -196,21 +197,24 @@ export function useTodayData() {
   const [overdue, setOverdue] = useState<Todo[]>([]);
   const [inProgress, setInProgress] = useState<Todo[]>([]);
   const [suggested, setSuggested] = useState<Todo[]>([]);
+  const [todayGoals, setTodayGoals] = useState<Todo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const [todayTodos, overdueTodos, progressTodos, suggestTodos] =
+    const [todayTodos, overdueTodos, progressTodos, suggestTodos, goals] =
       await Promise.all([
         getTodaysTodos(),
         getOverdueTodos(),
         getInProgressTodos(),
         getUnscheduledHighPriorityTodos(),
+        getTodaysGoals(),
       ]);
     setTodos(todayTodos);
     setOverdue(overdueTodos);
     setInProgress(progressTodos);
     setSuggested(suggestTodos);
+    setTodayGoals(goals);
     setIsLoading(false);
   }, []);
 
@@ -269,17 +273,19 @@ export function useTodayData() {
     if (isVirtualTodoId(id)) return;
     await updateTodoSchedule(id, date);
     // Refresh everything since a scheduled todo may now appear in today's list
-    const [todayTodos, overdueTodos, progressTodos, suggestTodos] =
+    const [todayTodos, overdueTodos, progressTodos, suggestTodos, goals] =
       await Promise.all([
         getTodaysTodos(),
         getOverdueTodos(),
         getInProgressTodos(),
         getUnscheduledHighPriorityTodos(),
+        getTodaysGoals(),
       ]);
     setTodos(todayTodos);
     setOverdue(overdueTodos);
     setInProgress(progressTodos);
     setSuggested(suggestTodos);
+    setTodayGoals(goals);
   }, []);
 
   return {
@@ -287,6 +293,7 @@ export function useTodayData() {
     overdue,
     inProgress,
     suggested,
+    todayGoals,
     isLoading,
     refresh,
     setStatus,

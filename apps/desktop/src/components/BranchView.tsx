@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, GitBranch, Loader2, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
-import { createTodo, deleteTodo, getTodo, getAllTodos } from '../db/todos';
+import { createGoal, deleteTodo, getTodo, getAllTodos } from '../db/todos';
 import { getAllRelations } from '../db/relations';
 import type { Todo } from '../types';
 
@@ -148,18 +148,26 @@ async function findRoot(todoId: string): Promise<string> {
     const todo = await getTodo(current);
     if (!todo) break;
 
+    // Trace parentId only if parent is a goal
+    if (todo.parentId) {
+      const parent = await getTodo(todo.parentId);
+      if (parent && parent.nodeType === 'goal') {
+        current = todo.parentId;
+        continue;
+      }
+    }
+
+    // Trace source_from only if source is a goal
     const allRelations = await getAllRelations();
     const sourceRel = allRelations.find(
       (r) => r.toTodoId === current && r.type === 'source_from'
     );
     if (sourceRel) {
-      current = sourceRel.fromTodoId;
-      continue;
-    }
-
-    if (todo.parentId) {
-      current = todo.parentId;
-      continue;
+      const source = await getTodo(sourceRel.fromTodoId);
+      if (source && source.nodeType === 'goal') {
+        current = sourceRel.fromTodoId;
+        continue;
+      }
     }
 
     break;
@@ -182,7 +190,7 @@ async function buildTree(
   const spawnedBySource = new Map<string, string[]>();
 
   for (const todo of allTodos) {
-    if (todo.parentId) {
+    if (todo.parentId && todo.nodeType === 'goal') {
       if (!subsByParent.has(todo.parentId)) subsByParent.set(todo.parentId, []);
       subsByParent.get(todo.parentId)!.push(todo);
     }
@@ -214,6 +222,8 @@ async function buildTree(
     }
 
     for (const sid of spawnedBySource.get(id) || []) {
+      const spawned = todoMap.get(sid);
+      if (!spawned || spawned.nodeType !== 'goal') continue;
       const n = build(sid, depth + 1, new Set(visited));
       if (n) {
         n.relationType = 'source_from';
@@ -222,8 +232,8 @@ async function buildTree(
     }
 
     children.sort((a, b) => {
-      const ad = a.todo.status === 'done' ? 1 : 0;
-      const bd = b.todo.status === 'done' ? 1 : 0;
+      const ad = a.todo.goalStatus === 'achieved' || a.todo.goalStatus === 'abandoned' ? 1 : 0;
+      const bd = b.todo.goalStatus === 'achieved' || b.todo.goalStatus === 'abandoned' ? 1 : 0;
       if (ad !== bd) return ad - bd;
       return a.todo.title.localeCompare(b.todo.title);
     });
@@ -284,17 +294,23 @@ async function buildTree(
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-function StatusDot({ status }: { status: string }) {
-  if (status === 'done')
+function GoalStatusDot({ status }: { status?: string }) {
+  if (status === 'achieved')
+    return (
+      <span className="w-5 h-5 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-700 flex items-center justify-center shrink-0">
+        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+      </span>
+    );
+  if (status === 'active')
     return (
       <span className="w-5 h-5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center shrink-0">
         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
       </span>
     );
-  if (status === 'in_progress')
+  if (status === 'paused')
     return (
-      <span className="w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-300 dark:border-indigo-700 flex items-center justify-center shrink-0">
-        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+      <span className="w-5 h-5 rounded-full bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 flex items-center justify-center shrink-0">
+        <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
       </span>
     );
   return (
@@ -403,7 +419,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
 
   async function handleCreateChild(parentId: string) {
     if (!newChildTitle.trim()) return;
-    await createTodo(newChildTitle.trim(), { parentId });
+    await createGoal(newChildTitle.trim(), { parentId });
     setNewChildTitle('');
     setCreatingForId(null);
     setRefreshKey((k) => k + 1);
@@ -777,7 +793,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
           {allNodes.map((node) => {
             const isCurrent = node.todo.id === currentTodoId;
             const isRoot = node.todo.id === rootId;
-            const isDone = node.todo.status === 'done';
+            const isDone = node.todo.goalStatus === 'achieved' || node.todo.goalStatus === 'abandoned';
             const isMain = node.isMainPath;
             const isSideBranch = !isMain && !isRoot && node.depth === 1;
             const w = isRoot ? ROOT_W : NODE_W;
@@ -890,14 +906,14 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                         />
                       )}
 
-                      {/* Status dot */}
-                      <StatusDot status={node.todo.status} />
+                      {/* Goal status dot */}
+                      <GoalStatusDot status={node.todo.goalStatus} />
 
                       {/* Title */}
                       <span
                         className={`text-[13px] font-medium truncate flex-1 min-w-0 leading-tight ${
                           isDone
-                            ? 'text-slate-400 dark:text-slate-500 line-through'
+                            ? 'text-slate-400 dark:text-slate-500'
                             : isRoot
                               ? 'text-indigo-800 dark:text-indigo-300'
                               : isMain
@@ -908,8 +924,8 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                         {node.todo.title}
                       </span>
 
-                      {/* Done checkmark */}
-                      {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                      {/* Achieved checkmark */}
+                      {node.todo.goalStatus === 'achieved' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
 
                       {/* Current badge */}
                       {isCurrent && !isRoot && (
@@ -971,7 +987,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                               if (e.key === 'Enter') handleCreateChild(node.todo.id);
                               if (e.key === 'Escape') setCreatingForId(null);
                             }}
-                            placeholder="New sub-todo..."
+                            placeholder="New sub-goal..."
                             className="flex-1 min-w-0 px-2 py-1 rounded text-[11px] bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                           <button
@@ -1250,7 +1266,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                   {allNodes.map((node) => {
                     const isCurrent = node.todo.id === currentTodoId;
                     const isRoot = node.todo.id === rootId;
-                    const isDone = node.todo.status === 'done';
+                    const isDone = node.todo.goalStatus === 'achieved' || node.todo.goalStatus === 'abandoned';
                     const isMain = node.isMainPath;
                     const isSideBranch = !isMain && !isRoot && node.depth === 1;
                     const w = isRoot ? ROOT_W : NODE_W;
@@ -1363,12 +1379,12 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                                 />
                               )}
 
-                              <StatusDot status={node.todo.status} />
+                              <GoalStatusDot status={node.todo.goalStatus} />
 
                               <span
                                 className={`text-[13px] font-medium truncate flex-1 min-w-0 leading-tight ${
                                   isDone
-                                    ? 'text-slate-400 dark:text-slate-500 line-through'
+                                    ? 'text-slate-400 dark:text-slate-500'
                                     : isRoot
                                       ? 'text-indigo-800 dark:text-indigo-300'
                                       : isMain
@@ -1379,7 +1395,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                                 {node.todo.title}
                               </span>
 
-                              {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                              {node.todo.goalStatus === 'achieved' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
 
                               {isCurrent && !isRoot && (
                                 <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider shrink-0 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded-md">
@@ -1434,7 +1450,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
                                       if (e.key === 'Enter') handleCreateChild(node.todo.id);
                                       if (e.key === 'Escape') setCreatingForId(null);
                                     }}
-                                    placeholder="New sub-todo..."
+                                    placeholder="New sub-goal..."
                                     className="flex-1 min-w-0 px-2 py-1 rounded text-[11px] bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                   />
                                   <button

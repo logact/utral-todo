@@ -10,22 +10,28 @@ import {
   CornerDownRight,
   Repeat,
   Play,
-  Target,
   Activity,
   Pencil,
   X,
   Save,
+  Target,
+  Plus,
+  Link2,
+  Trash2,
+  Check,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
-import { getTodo, updateTodo, updateTodoStatus } from '../db/todos';
+import { getTodo, updateTodo, updateTodoStatus, getAllTodos } from '../db/todos';
 import { getSpawnedTodos, getTemplateForInstance } from '../db/relations';
 import { getAllProjects } from '../db/projects';
 import { formatDuration, formatDateShort } from '../utils/date';
 import { BranchView } from '../components/BranchView';
 import { TraceView } from '../components/TraceView';
-import { JourneyPath } from '../components/JourneyPath';
 import { useTodoLogs } from '../hooks/useTodoLogs';
-import { getAllActionEdgesForTodo, createActionEdge, deleteActionEdge } from '../db/actionEdges';
-import type { Todo, RepeatRule, ActionEdge, Priority, Project } from '../types';
+import { getActionEdgesForTodo, createActionEdge, deleteActionEdge, updateActionEdge } from '../db/actionEdges';
+import { GoalDetail } from './GoalDetail';
+import type { Todo, RepeatRule, ActionEdge, ActionEdgeType, Priority, Project, TaskPattern } from '../types';
 
 function ProjectBadge({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
@@ -54,24 +60,6 @@ function ProjectBadge({ projectId }: { projectId: string }) {
   );
 }
 
-function findUltimateGoalId(startId: string, edges: ActionEdge[]): string {
-  const outgoingMap = new Map<string, string[]>();
-  for (const e of edges) {
-    if (!outgoingMap.has(e.fromTodoId)) outgoingMap.set(e.fromTodoId, []);
-    outgoingMap.get(e.fromTodoId)!.push(e.toTodoId);
-  }
-  let current = startId;
-  const visited = new Set<string>();
-  while (visited.size < edges.length + 1) {
-    if (visited.has(current)) break;
-    visited.add(current);
-    const parents = outgoingMap.get(current);
-    if (!parents || parents.length === 0) break;
-    current = parents[0];
-  }
-  return current;
-}
-
 export function TodoDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -81,9 +69,11 @@ export function TodoDetail() {
 
   // Edit mode — default to open for the two-column layout
   const [isEditing, setIsEditing] = useState(true);
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<Priority>('medium');
+  const [editPattern, setEditPattern] = useState<TaskPattern>('task');
   const [editEstimatedMinutes, setEditEstimatedMinutes] = useState(60);
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState('');
@@ -104,9 +94,16 @@ export function TodoDetail() {
   const editFormInitRef = useRef(false);
 
   const [spawnedTodos, setSpawnedTodos] = useState<Todo[]>([]);
-  const [actionEdges, setActionEdges] = useState<ActionEdge[]>([]);
-  const [goalTodo, setGoalTodo] = useState<Todo | null>(null);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
+
+  // Linked goals (outgoing action edges to goals)
+  const [linkedGoals, setLinkedGoals] = useState<{ edge: ActionEdge; goal: Todo }[]>([]);
+  const [allGoals, setAllGoals] = useState<Todo[]>([]);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [selectedGoalId, setSelectedGoalId] = useState('');
+  const [selectedEdgeType, setSelectedEdgeType] = useState<ActionEdgeType>('pre_do');
+  const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null);
+  const [editEdgeType, setEditEdgeType] = useState<ActionEdgeType>('pre_do');
 
   // Repeat
   const [templateTodo, setTemplateTodo] = useState<Todo | null>(null);
@@ -114,18 +111,15 @@ export function TodoDetail() {
   const { logs, isLoading: isLoadingLogs } = useTodoLogs(id ?? '');
   const totalMinutesSpent = logs.reduce((sum, l) => sum + (l.minutesSpent ?? 0), 0);
 
-  const loadActionEdges = useCallback(async (todoId: string) => {
-    const edges = await getAllActionEdgesForTodo(todoId);
-    setActionEdges(edges);
-    const goalId = findUltimateGoalId(todoId, edges);
-    if (goalId !== todoId) {
-      const g = await getTodo(goalId);
-      setGoalTodo(g ?? null);
-    } else {
-      const current = await getTodo(todoId);
-      setGoalTodo(current ?? null);
-    }
-  }, []);
+  async function loadLinkedGoals(todoId: string) {
+    const edgesData = await getActionEdgesForTodo(todoId);
+    const goalEdges = edgesData.outgoing;
+    const goals = await Promise.all(goalEdges.map((e) => getTodo(e.toTodoId)));
+    const linked = goalEdges
+      .map((edge, i) => ({ edge, goal: goals[i] }))
+      .filter((g): g is { edge: ActionEdge; goal: Todo } => g.goal != null && g.goal.nodeType === 'goal');
+    setLinkedGoals(linked);
+  }
 
   const loadTodo = useCallback(async () => {
     if (!id) return;
@@ -134,33 +128,41 @@ export function TodoDetail() {
     if (t) {
       setTodo(t);
 
-      const [spawned, tmpl, projects] = await Promise.all([
+      const [spawned, tmpl, projects, allTodos] = await Promise.all([
         getSpawnedTodos(t.id),
         getTemplateForInstance(t.id),
         getAllProjects(),
+        getAllTodos(),
       ]);
       setSpawnedTodos(spawned);
       setTemplateTodo(tmpl ?? null);
       setAllProjects(projects);
+      setAllGoals(allTodos.filter((todo) => todo.nodeType === 'goal'));
 
-      await loadActionEdges(t.id);
+      await loadLinkedGoals(t.id);
     }
     setIsLoadingTodo(false);
-  }, [id, loadActionEdges]);
+  }, [id]);
 
-  const handleCreateEdge = useCallback(async (fromTodoId: string, toTodoId: string, type: 'insight' | 'try' | 'pre_do') => {
-    await createActionEdge(fromTodoId, toTodoId, type);
-    if (id) await loadActionEdges(id);
-  }, [id, loadActionEdges]);
+  async function handleAddGoalLink() {
+    if (!id || !selectedGoalId) return;
+    await createActionEdge(id, selectedGoalId, selectedEdgeType);
+    await loadLinkedGoals(id);
+    setShowAddGoal(false);
+    setSelectedGoalId('');
+    setSelectedEdgeType('pre_do');
+  }
 
-  const handleDeleteEdge = useCallback(async (edgeId: string) => {
+  async function handleUnbindGoal(edgeId: string) {
     await deleteActionEdge(edgeId);
-    if (id) await loadActionEdges(id);
-  }, [id, loadActionEdges]);
+    if (id) await loadLinkedGoals(id);
+  }
 
-  const handleEdgesChange = useCallback(async () => {
-    if (id) await loadActionEdges(id);
-  }, [id, loadActionEdges]);
+  async function handleUpdateEdgeType(edgeId: string) {
+    await updateActionEdge(edgeId, { type: editEdgeType });
+    setEditingEdgeId(null);
+    if (id) await loadLinkedGoals(id);
+  }
 
   useEffect(() => {
     loadTodo();
@@ -192,13 +194,6 @@ export function TodoDetail() {
     );
   }
 
-  async function toggleGoal() {
-    if (!id || !todo) return;
-    const newVal = !todo.isGoal;
-    await updateTodo(id, { isGoal: newVal });
-    setTodo((prev) => (prev ? { ...prev, isGoal: newVal } : prev));
-  }
-
   function formatRepeatRule(rule: RepeatRule): string {
     if (rule.type === 'daily') return 'Every day';
     if (rule.type === 'weekly' && rule.weekDays) {
@@ -214,8 +209,9 @@ export function TodoDetail() {
   function initEditForm(t: Todo) {
     setEditTitle(t.title);
     setEditDescription(t.description);
-    setEditPriority(t.priority);
-    setEditEstimatedMinutes(t.estimatedMinutes);
+    setEditPriority(t.priority ?? 'medium');
+    setEditPattern(t.pattern ?? 'task');
+    setEditEstimatedMinutes(t.estimatedMinutes ?? 60);
     setEditTags([...t.tags]);
     setEditTagInput('');
     setEditProjectId(t.projectId ?? '');
@@ -271,6 +267,7 @@ export function TodoDetail() {
       title: editTitle.trim(),
       description: editDescription.trim(),
       priority: editPriority,
+      pattern: editPattern,
       estimatedMinutes: editEstimatedMinutes,
       tags: editTags,
       projectId: editProjectId || undefined,
@@ -361,6 +358,16 @@ export function TodoDetail() {
     );
   }
 
+  // Branch by nodeType
+  if (todo.nodeType === 'goal') {
+    return (
+      <GoalDetail
+        goal={todo}
+        onUpdate={(updates) => setTodo((prev) => (prev ? { ...prev, ...updates } : prev))}
+      />
+    );
+  }
+
   const isDone = todo.status === 'done';
 
   const headerCard = (
@@ -403,7 +410,7 @@ export function TodoDetail() {
           <div className="flex items-center gap-3 mt-3 flex-wrap">
             <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
               <Clock className="w-3.5 h-3.5" />
-              Est. {formatDuration(todo.estimatedMinutes)}
+              Est. {formatDuration(todo.estimatedMinutes ?? 60)}
               {totalMinutesSpent > 0 && (
                 <span className="text-slate-400 dark:text-slate-500">
                   {' '}· Logged {formatDuration(totalMinutesSpent)}
@@ -424,6 +431,11 @@ export function TodoDetail() {
             {todo.priority === 'low' && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                 Low
+              </span>
+            )}
+            {todo.pattern === 'cognitive' && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400">
+                Cognitive
               </span>
             )}
             {todo.tags.map((tag) => (
@@ -463,18 +475,178 @@ export function TodoDetail() {
 
   const sharedSections = (
     <>
-      {/* Road to Goal */}
-      {goalTodo && (
-        <JourneyPath
-          goalTodo={goalTodo}
-          highlightTodoId={todo.id}
-          edges={actionEdges}
-          onNodeClick={(todoId) => navigate(`/todo/${todoId}`)}
-          onCreateEdge={handleCreateEdge}
-          onDeleteEdge={handleDeleteEdge}
-          onEdgesChange={handleEdgesChange}
-        />
-      )}
+      {/* Road to Goal — Linked Goals */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-indigo-500" />
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Road to Goal</h2>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{linkedGoals.length}</span>
+          </div>
+          <button
+            onClick={() => {
+              setShowAddGoal(true);
+              setSelectedGoalId('');
+              setSelectedEdgeType('pre_do');
+            }}
+            className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Goal
+          </button>
+        </div>
+
+        {linkedGoals.length === 0 && !showAddGoal && (
+          <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">
+            No goals linked. Add a goal to show how this task contributes to the bigger picture.
+          </p>
+        )}
+
+        {linkedGoals.length > 0 && (
+          <div className="space-y-2">
+            {linkedGoals.map(({ edge, goal }) => {
+              const isEditing = editingEdgeId === edge.id;
+              const goalStatusColor =
+                goal.goalStatus === 'achieved'
+                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border-blue-200 dark:border-blue-800'
+                  : goal.goalStatus === 'paused'
+                    ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                    : goal.goalStatus === 'abandoned'
+                      ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                      : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800';
+              return (
+                <div
+                  key={edge.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+                >
+                  <Target className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => navigate(`/todo/${goal.id}`)}
+                        className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 truncate"
+                      >
+                        {goal.title}
+                      </button>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${goalStatusColor}`}>
+                        {goal.goalStatus ?? 'active'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={editEdgeType}
+                        onChange={(e) => setEditEdgeType(e.target.value as ActionEdgeType)}
+                        className="text-xs px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                      >
+                        <option value="insight">insight</option>
+                        <option value="try">try</option>
+                        <option value="pre_do">pre_do</option>
+                      </select>
+                      <button
+                        onClick={() => handleUpdateEdgeType(edge.id)}
+                        className="p-1 rounded hover:bg-emerald-100 text-emerald-600"
+                        title="Save"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setEditingEdgeId(null)}
+                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                        {edge.type}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingEdgeId(edge.id);
+                          setEditEdgeType(edge.type);
+                        }}
+                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-500 transition-colors"
+                        title="Change relation type"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => handleUnbindGoal(edge.id)}
+                        className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-900/30 text-slate-400 hover:text-rose-500 transition-colors"
+                        title="Unbind"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add goal form */}
+        {showAddGoal && (
+          <div className="mt-3 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Select Goal</label>
+              <select
+                value={selectedGoalId}
+                onChange={(e) => setSelectedGoalId(e.target.value)}
+                className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Choose a goal...</option>
+                {allGoals
+                  .filter((g) => !linkedGoals.some((lg) => lg.goal.id === g.id))
+                  .map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+              </select>
+              {allGoals.filter((g) => !linkedGoals.some((lg) => lg.goal.id === g.id)).length === 0 && (
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">All available goals are already linked.</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Relation Type</label>
+              <select
+                value={selectedEdgeType}
+                onChange={(e) => setSelectedEdgeType(e.target.value as ActionEdgeType)}
+                className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="pre_do">pre_do — prerequisite action</option>
+                <option value="try">try — experimental approach</option>
+                <option value="insight">insight — learning-driven</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAddGoal(false);
+                  setSelectedGoalId('');
+                }}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddGoalLink}
+                disabled={!selectedGoalId}
+                className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Link2 className="w-3 h-3" />
+                Link Goal
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Goal Tree */}
       <BranchView currentTodoId={todo.id} />
@@ -554,9 +726,9 @@ export function TodoDetail() {
                   >
                     {spawned.title}
                   </span>
-                  {spawned.estimatedMinutes > 0 && (
+                  {(spawned.estimatedMinutes ?? 0) > 0 && (
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                      {formatDuration(spawned.estimatedMinutes)}
+                      {formatDuration(spawned.estimatedMinutes ?? 60)}
                     </span>
                   )}
                   {spawned.status === 'in_progress' && (
@@ -599,7 +771,7 @@ export function TodoDetail() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
             Priority
@@ -612,6 +784,19 @@ export function TodoDetail() {
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+            Pattern
+          </label>
+          <select
+            value={editPattern}
+            onChange={(e) => setEditPattern(e.target.value as TaskPattern)}
+            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="task">Task</option>
+            <option value="cognitive">Cognitive</option>
           </select>
         </div>
         <div>
@@ -835,22 +1020,6 @@ export function TodoDetail() {
         )}
       </div>
 
-      {/* Goal toggle */}
-      <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={todo.isGoal}
-            onChange={toggleGoal}
-            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-          />
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-            <Target className="w-4 h-4" />
-            This is a goal
-          </span>
-        </label>
-      </div>
-
       <div className="flex items-center justify-end gap-2 pt-2">
         <button
           onClick={cancelEditing}
@@ -883,29 +1052,29 @@ export function TodoDetail() {
         </button>
 
         <div className="flex items-center gap-2">
+          {isEditing && (
+            <button
+              onClick={() => setIsLeftPanelOpen((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title={isLeftPanelOpen ? 'Collapse left panel' : 'Expand left panel'}
+            >
+              {isLeftPanelOpen ? (
+                <PanelLeftClose className="w-4 h-4" />
+              ) : (
+                <PanelLeftOpen className="w-4 h-4" />
+              )}
+              {isLeftPanelOpen ? 'Collapse' : 'Expand'}
+            </button>
+          )}
           {!isEditing && (
-            <>
-              <button
-                onClick={startEditing}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                title="Edit todo"
-              >
-                <Pencil className="w-4 h-4" />
-                Edit
-              </button>
-              <button
-                onClick={toggleGoal}
-                className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
-                  todo.isGoal
-                    ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={todo.isGoal ? 'This is a goal' : 'Set as goal'}
-              >
-                <Target className="w-4 h-4" />
-                {todo.isGoal ? 'Goal' : 'Set Goal'}
-              </button>
-            </>
+            <button
+              onClick={startEditing}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Edit todo"
+            >
+              <Pencil className="w-4 h-4" />
+              Edit
+            </button>
           )}
           {isDone && (
             <button
@@ -943,17 +1112,24 @@ export function TodoDetail() {
       )}
 
       {isEditing ? (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
-          {/* Left column — main content */}
-          <div className="space-y-6 min-w-0">
-            {headerCard}
-            {sharedSections}
+        isLeftPanelOpen ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
+            {/* Left column — main content */}
+            <div className="space-y-6 min-w-0">
+              {headerCard}
+              {sharedSections}
+            </div>
+            {/* Right column — sticky edit panel */}
+            <div className="lg:sticky lg:top-4">
+              {editPanel}
+            </div>
           </div>
-          {/* Right column — sticky edit panel */}
-          <div className="lg:sticky lg:top-4">
+        ) : (
+          /* Left panel hidden — show only edit panel */
+          <div className="max-w-2xl">
             {editPanel}
           </div>
-        </div>
+        )
       ) : (
         <div className="space-y-6">
           {headerCard}

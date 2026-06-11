@@ -1,9 +1,85 @@
 import { db } from './database';
 import { onLocalChange } from './syncEngine';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
-import type { Todo, TodoStatus, Priority, RepeatRule } from '../types';
+import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern } from '../types';
 
 export async function createTodo(
+  title: string,
+  options?: {
+    nodeType?: NodeType;
+    pattern?: TaskPattern;
+    parentId?: string;
+    projectId?: string;
+    description?: string;
+    priority?: Priority;
+    estimatedMinutes?: number;
+    dueDate?: Date;
+    scheduledDate?: Date;
+    scheduledEndDate?: Date;
+    tags?: string[];
+    repeatRule?: RepeatRule;
+    order?: number;
+    status?: TodoStatus;
+    motivation?: string;
+    successCriteria?: string;
+    targetDate?: Date;
+    goalStatus?: GoalStatus;
+  }
+): Promise<Todo> {
+  const now = new Date();
+  const nodeType = options?.nodeType || 'task';
+  const isTaskNode = nodeType === 'task';
+
+  const todo: Todo = {
+    id: crypto.randomUUID(),
+    nodeType,
+    pattern: isTaskNode ? (options?.pattern ?? 'task') : undefined,
+    title,
+    description: options?.description ?? '',
+    status: isTaskNode ? (options?.status ?? 'pending') : undefined,
+    priority: isTaskNode ? (options?.priority ?? 'medium') : undefined,
+    estimatedMinutes: isTaskNode ? (options?.estimatedMinutes ?? 60) : undefined,
+    tags: options?.tags ?? [],
+    createdAt: now,
+    updatedAt: now,
+    projectId: options?.projectId,
+    parentId: options?.parentId,
+    dueDate: options?.dueDate,
+    scheduledDate: options?.scheduledDate,
+    scheduledEndDate: options?.scheduledEndDate,
+    repeatRule: options?.repeatRule,
+    order: options?.order ?? 0,
+    motivation: nodeType === 'goal' ? options?.motivation : undefined,
+    successCriteria: nodeType === 'goal' ? options?.successCriteria : undefined,
+    targetDate: options?.targetDate,
+    goalStatus: nodeType === 'goal' ? (options?.goalStatus ?? 'active') : undefined,
+  };
+  await db.todos.add(todo);
+  onLocalChange('todos', 'create', todo.id).catch(() => {});
+  return todo;
+}
+
+export async function createGoal(
+  title: string,
+  options?: {
+    parentId?: string;
+    projectId?: string;
+    description?: string;
+    tags?: string[];
+    order?: number;
+    motivation?: string;
+    successCriteria?: string;
+    targetDate?: Date;
+    goalStatus?: GoalStatus;
+  }
+): Promise<Todo> {
+  return createTodo(title, {
+    nodeType: 'goal',
+    ...options,
+  });
+}
+
+export async function createTask(
   title: string,
   options?: {
     parentId?: string;
@@ -17,33 +93,13 @@ export async function createTodo(
     tags?: string[];
     repeatRule?: RepeatRule;
     order?: number;
-    isGoal?: boolean;
     status?: TodoStatus;
   }
 ): Promise<Todo> {
-  const now = new Date();
-  const todo: Todo = {
-    id: crypto.randomUUID(),
-    title,
-    description: options?.description ?? '',
-    status: options?.status ?? 'pending',
-    priority: options?.priority ?? 'medium',
-    estimatedMinutes: options?.estimatedMinutes ?? 60,
-    tags: options?.tags ?? [],
-    createdAt: now,
-    updatedAt: now,
-    projectId: options?.projectId,
-    parentId: options?.parentId,
-    dueDate: options?.dueDate,
-    scheduledDate: options?.scheduledDate,
-    scheduledEndDate: options?.scheduledEndDate,
-    repeatRule: options?.repeatRule,
-    order: options?.order ?? 0,
-    isGoal: options?.isGoal,
-  };
-  await db.todos.add(todo);
-  onLocalChange('todos', 'create', todo.id).catch(() => {});
-  return todo;
+  return createTodo(title, {
+    nodeType: 'task',
+    ...options,
+  });
 }
 
 export async function getAllTodos(): Promise<Todo[]> {
@@ -56,6 +112,18 @@ export async function getRootTodos(): Promise<Todo[]> {
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
   const todos = await db.todos.where('parentId').equals(parentId).toArray();
+  return todos.sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}
+
+export async function getSubGoals(parentId: string): Promise<Todo[]> {
+  const todos = await db.todos
+    .where('parentId')
+    .equals(parentId)
+    .and((t) => t.nodeType === 'goal')
+    .toArray();
   return todos.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -91,6 +159,11 @@ export async function traceParentChain(todoId: string): Promise<Todo[]> {
   }
 
   return chain;
+}
+
+export async function traceGoalChain(todoId: string): Promise<Todo[]> {
+  const chain = await traceParentChain(todoId);
+  return chain.filter((t) => t.nodeType === 'goal');
 }
 
 export async function getTodoDescendants(todoId: string): Promise<Todo[]> {
@@ -269,7 +342,7 @@ export async function getTodaysTodos(): Promise<Todo[]> {
   const realTodos = await db.todos
     .where('scheduledDate')
     .between(today, tomorrow)
-    .and((t) => t.status !== 'done')
+    .and((t) => t.status !== 'done' && t.nodeType === 'task')
     .toArray();
 
   const virtualTodos = await getVirtualTodosForDate(today);
@@ -305,7 +378,7 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
 
 export async function getUnscheduledTodos(): Promise<Todo[]> {
   return db.todos
-    .filter((t) => !t.scheduledDate && t.status !== 'done')
+    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.nodeType === 'task')
     .toArray();
 }
 
@@ -315,17 +388,37 @@ export async function getOverdueTodos(): Promise<Todo[]> {
   return db.todos
     .where('dueDate')
     .below(now)
-    .and((t) => t.status !== 'done')
+    .and((t) => t.status !== 'done' && t.nodeType === 'task')
     .toArray();
 }
 
 export async function getInProgressTodos(): Promise<Todo[]> {
-  return db.todos.where('status').equals('in_progress').toArray();
+  return db.todos
+    .where('status')
+    .equals('in_progress')
+    .and((t) => t.nodeType === 'task')
+    .toArray();
 }
 
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
   return db.todos
-    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high')
+    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high' && t.nodeType === 'task')
+    .toArray();
+}
+
+export async function getTodaysGoals(): Promise<Todo[]> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return db.todos
+    .filter((t) =>
+      t.nodeType === 'goal' &&
+      t.targetDate != null &&
+      new Date(t.targetDate) >= today &&
+      new Date(t.targetDate) < tomorrow
+    )
     .toArray();
 }
 
@@ -334,7 +427,9 @@ export async function getTodosByTag(tag: string): Promise<Todo[]> {
 }
 
 export async function getRepeatTemplates(): Promise<Todo[]> {
-  return db.todos.filter((t) => t.repeatRule !== undefined).toArray();
+  return db.todos
+    .filter((t) => t.repeatRule !== undefined && t.nodeType === 'task')
+    .toArray();
 }
 
 export async function updateRepeatRule(

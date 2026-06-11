@@ -69,11 +69,11 @@ export function ProjectListView({ todos, onUpdateStatus }: ProjectListViewProps)
       switch (sortBy) {
         case 'status':
           const order = { in_progress: 0, pending: 1, done: 2 };
-          cmp = (order[a.status] ?? 1) - (order[b.status] ?? 1);
+          cmp = (order[a.status ?? 'pending'] ?? 1) - (order[b.status ?? 'pending'] ?? 1);
           break;
         case 'priority':
           const pOrder = { high: 0, medium: 1, low: 2 };
-          cmp = (pOrder[a.priority] ?? 1) - (pOrder[b.priority] ?? 1);
+          cmp = (pOrder[a.priority ?? 'medium'] ?? 1) - (pOrder[b.priority ?? 'medium'] ?? 1);
           break;
         case 'dueDate':
           cmp = (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity);
@@ -180,12 +180,13 @@ function TodoRow({
   const children = childrenMap.get(todo.id) || [];
   const hasChildren = children.length > 0;
   const isExpanded = expandedIds.has(todo.id);
-  const StatusIcon = STATUS_ICON[todo.status];
+  const StatusIcon = STATUS_ICON[todo.status ?? 'pending'];
 
   const cycleStatus = () => {
+    const status = todo.status ?? 'pending';
     const next: TodoStatus =
-      todo.status === 'pending' ? 'in_progress' :
-      todo.status === 'in_progress' ? 'done' : 'pending';
+      status === 'pending' ? 'in_progress' :
+      status === 'in_progress' ? 'done' : 'pending';
     onUpdateStatus(todo.id, next);
   };
 
@@ -194,7 +195,7 @@ function TodoRow({
       <div
         className={clsx(
           'grid grid-cols-[1fr_100px_80px_100px_100px_60px] gap-2 px-4 py-2.5 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors',
-          todo.status === 'done' && 'opacity-60'
+          (todo.status ?? 'pending') === 'done' && 'opacity-60'
         )}
       >
         <div className="flex items-center gap-2 min-w-0" style={{ paddingLeft: depth * 20 }}>
@@ -210,7 +211,7 @@ function TodoRow({
           )}
           <button
             onClick={cycleStatus}
-            className={clsx('flex-shrink-0', STATUS_CLASS[todo.status])}
+            className={clsx('flex-shrink-0', STATUS_CLASS[todo.status ?? 'pending'])}
             title="Click to cycle status"
           >
             <StatusIcon className="w-4 h-4" />
@@ -219,18 +220,18 @@ function TodoRow({
             to={`/todo/${todo.id}`}
             className={clsx(
               'truncate text-sm hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors',
-              todo.status === 'done' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-slate-100'
+              (todo.status ?? 'pending') === 'done' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-slate-100'
             )}
             title={todo.title}
           >
             {todo.title}
           </Link>
         </div>
-        <span className={clsx('text-xs', STATUS_CLASS[todo.status])}>
-          {todo.status.replace('_', ' ')}
+        <span className={clsx('text-xs', STATUS_CLASS[todo.status ?? 'pending'])}>
+          {(todo.status ?? 'pending').replace('_', ' ')}
         </span>
-        <span className={clsx('text-xs', PRIORITY_CLASS[todo.priority])}>
-          {todo.priority}
+        <span className={clsx('text-xs', PRIORITY_CLASS[todo.priority ?? 'medium'])}>
+          {todo.priority ?? 'medium'}
         </span>
         <span className="text-xs text-slate-500 dark:text-slate-400">
           {todo.dueDate ? new Date(todo.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '-'}

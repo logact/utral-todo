@@ -100,7 +100,7 @@ export async function materializeInstance(
       id,
       templateId: template.id,
       date: new Date(date),
-      status: instance.status,
+      status: instance.status ?? 'pending',
       materializedTodoId: instance.id,
       createdAt: now,
       updatedAt: now,

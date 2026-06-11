@@ -143,11 +143,11 @@ function TreeNodeItem({
         {/* Status toggle (top level only) or just display */}
         {isTopLevel ? (
           <button onClick={handleToggleDone} className="shrink-0 mt-1">
-            <StatusDot status={todo.status} />
+            <StatusDot status={todo.status ?? 'pending'} />
           </button>
         ) : (
           <div className="shrink-0 mt-1">
-            <StatusDot status={todo.status} />
+            <StatusDot status={todo.status ?? 'pending'} />
           </div>
         )}
 
@@ -168,9 +168,9 @@ function TreeNodeItem({
             >
               {todo.title}
             </span>
-            {todo.estimatedMinutes > 0 && (
+            {(todo.estimatedMinutes ?? 0) > 0 && (
               <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
-                {formatDuration(todo.estimatedMinutes)}
+                {formatDuration(todo.estimatedMinutes ?? 60)}
               </span>
             )}
             {children.length > 0 && isExpanded && (

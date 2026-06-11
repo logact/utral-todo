@@ -182,7 +182,7 @@ export function BigMap() {
   const pendingCount = todos.filter((t) => t.status === 'pending').length;
   const inProgressCount = todos.filter((t) => t.status === 'in_progress').length;
   const doneCount = todos.filter((t) => t.status === 'done').length;
-  const goalCount = layoutResult.nodes.filter((n) => n.isGoal).length;
+  const goalCount = layoutResult.nodes.filter((n) => n.todo.nodeType === 'goal').length;
 
   if (isLoading) {
     return (

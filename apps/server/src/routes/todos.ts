@@ -21,16 +21,30 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-async function addIsGoal(todos: Todo[]): Promise<Array<Todo & { isGoal: boolean }>> {
-  const roadmaps = await prisma.roadmap.findMany();
-  const goalIds = new Set(roadmaps.map((r) => r.goalTodoId));
-  return todos.map((t) => ({ ...t, isGoal: goalIds.has(t.id) }));
+function validateNodeType(body: Record<string, unknown>): void {
+  const nodeType = body.nodeType as string | undefined;
+  if (!nodeType) return;
+
+  if (nodeType === 'goal') {
+    if (body.status) throw new Error('Goal cannot have task status');
+    if (body.scheduledDate) throw new Error('Goal cannot be scheduled');
+    if (body.priority) throw new Error('Goal cannot have priority');
+    if (body.estimatedMinutes) throw new Error('Goal cannot have estimatedMinutes');
+  }
 }
 
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const { projectId, parentId, root, date, tag, unscheduled, overdue, unassigned, repeatTemplates } = req.query;
+  const { projectId, parentId, root, nodeType, date, tag, unscheduled, overdue, unassigned, repeatTemplates } = req.query;
+
+  if (nodeType) {
+    const todos = await prisma.todo.findMany({
+      where: { nodeType: String(nodeType) },
+      orderBy: { order: 'asc' },
+    });
+    return res.json(todos);
+  }
 
   if (projectId) {
     const todos = await prisma.todo.findMany({ where: { projectId: String(projectId) }, orderBy: { order: 'asc' } });
@@ -118,14 +132,26 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { title, description, priority, estimatedMinutes, tags, projectId, parentId, dueDate, scheduledDate, scheduledEndDate, repeatRule, order, isGoal } = req.body;
+  const {
+    title, description, nodeType, pattern, priority, estimatedMinutes, tags,
+    projectId, parentId, dueDate, scheduledDate, scheduledEndDate,
+    repeatRule, order,
+    motivation, successCriteria, targetDate, goalStatus,
+  } = req.body;
 
-  // If parentId is set, inherit projectId from parent
+  validateNodeType(req.body);
+
+  const resolvedNodeType = nodeType || 'task';
+
+  // If parentId is set, inherit projectId from parent and validate goal parent
   let finalProjectId = projectId;
-  if (parentId && !projectId) {
+  if (parentId) {
     const parent = await prisma.todo.findUnique({ where: { id: parentId } });
     if (parent) {
-      finalProjectId = parent.projectId;
+      if (!projectId) finalProjectId = parent.projectId;
+      if (resolvedNodeType === 'goal' && parent.nodeType !== 'goal') {
+        return res.status(400).json({ error: 'Goal parent must be a goal' });
+      }
     }
   }
 
@@ -138,13 +164,16 @@ router.post('/', async (req, res) => {
     finalOrder = (maxOrder._max.order ?? 0) + 1;
   }
 
+  const isTaskNode = resolvedNodeType === 'task';
   const todo = await prisma.todo.create({
     data: {
       title,
+      nodeType: resolvedNodeType,
+      pattern: isTaskNode ? (pattern || 'task') : null,
       description: description ?? '',
-      status: 'pending',
-      priority: priority ?? 'medium',
-      estimatedMinutes: estimatedMinutes ?? 60,
+      status: isTaskNode ? (req.body.status || 'pending') : null,
+      priority: isTaskNode ? (priority ?? 'medium') : null,
+      estimatedMinutes: isTaskNode ? (estimatedMinutes ?? 60) : null,
       tags: tags ?? [],
       projectId: finalProjectId ?? null,
       parentId: parentId ?? null,
@@ -153,19 +182,12 @@ router.post('/', async (req, res) => {
       scheduledEndDate: scheduledEndDate ? new Date(scheduledEndDate) : null,
       repeatRule: repeatRule ?? null,
       order: finalOrder ?? 0,
-      isGoal: isGoal === true,
+      motivation: resolvedNodeType === 'goal' ? motivation : null,
+      successCriteria: resolvedNodeType === 'goal' ? successCriteria : null,
+      targetDate: targetDate ? new Date(targetDate) : null,
+      goalStatus: resolvedNodeType === 'goal' ? (goalStatus || 'active') : null,
     },
   });
-
-  if (isGoal === true) {
-    const existing = await prisma.roadmap.findUnique({ where: { goalTodoId: todo.id } });
-    if (!existing) {
-      const roadmap = await prisma.roadmap.create({
-        data: { goalTodoId: todo.id, phases: [] },
-      });
-      await logChange(req, 'roadmap', 'create', roadmap.id, roadmap);
-    }
-  }
 
   await logChange(req, 'todo', 'create', todo.id, todo);
   res.status(201).json(todo);
@@ -264,28 +286,38 @@ router.get('/:id/template', async (req, res) => {
 });
 
 router.patch('/:id', async (req, res) => {
-  const { isGoal, scheduledEndDate, ...data } = req.body;
+  const { nodeType, pattern, scheduledEndDate, targetDate, motivation, successCriteria, goalStatus, ...data } = req.body;
+
+  validateNodeType(req.body);
+
+  // Validate that a goal's parent must be a goal
+  if (req.body.parentId) {
+    const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+    const isGoal = req.body.nodeType === 'goal' || (!req.body.nodeType && existingTodo?.nodeType === 'goal');
+    if (isGoal) {
+      const parent = await prisma.todo.findUnique({ where: { id: req.body.parentId } });
+      if (parent && parent.nodeType !== 'goal') {
+        return res.status(400).json({ error: 'Goal parent must be a goal' });
+      }
+    }
+  }
+
   const updateData: Prisma.TodoUpdateInput = { ...data };
   if (scheduledEndDate !== undefined) updateData.scheduledEndDate = scheduledEndDate ? new Date(scheduledEndDate) : null;
-  if (isGoal !== undefined) updateData.isGoal = isGoal;
+  if (targetDate !== undefined) updateData.targetDate = targetDate ? new Date(targetDate) : null;
+  if (motivation !== undefined) updateData.motivation = motivation;
+  if (successCriteria !== undefined) updateData.successCriteria = successCriteria;
+  if (goalStatus !== undefined) updateData.goalStatus = goalStatus;
+  if (pattern !== undefined) updateData.pattern = pattern;
+
+  if (nodeType !== undefined) {
+    updateData.nodeType = nodeType;
+  }
 
   const todo = await prisma.todo.update({
     where: { id: req.params.id },
     data: updateData,
   });
-
-  if (isGoal === true) {
-    const existing = await prisma.roadmap.findUnique({ where: { goalTodoId: req.params.id } });
-    if (!existing) {
-      const roadmap = await prisma.roadmap.create({
-        data: { goalTodoId: req.params.id, phases: [] },
-      });
-      await logChange(req, 'roadmap', 'create', roadmap.id, roadmap);
-    }
-  } else if (isGoal === false) {
-    await prisma.roadmap.deleteMany({ where: { goalTodoId: req.params.id } });
-    await logChange(req, 'roadmap', 'delete', req.params.id);
-  }
 
   await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
@@ -398,6 +430,8 @@ router.post('/sync-repeats', async (req, res) => {
       if (!hasInstance) {
         const instance = await prisma.todo.create({
           data: {
+            nodeType: 'task',
+            pattern: template.pattern ?? 'task',
             title: template.title,
             description: template.description,
             priority: template.priority,

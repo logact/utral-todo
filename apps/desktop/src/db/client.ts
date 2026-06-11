@@ -1,4 +1,4 @@
-import type { Todo, TodoRelation, TodoLog, RepeatRule, Project, Roadmap, RoadmapPhase, ActionEdge, Pluse, TimerSession } from '../types';
+import type { Todo, TodoRelation, TodoLog, RepeatRule, Project, ActionEdge, Pluse, TimerSession, Roadmap } from '../types';
 
 export function parseDate(value: unknown): Date | undefined {
   if (value === null || value === undefined) return undefined;
@@ -20,16 +20,18 @@ export function parseRepeatRule(data: unknown): RepeatRule | undefined {
 
 export function parseTodo(data: unknown): Todo {
   const t = data as Record<string, unknown>;
+  const nodeType = (t.nodeType as string) || (t.isGoal ? 'goal' : 'task');
   return {
     id: t.id as string,
+    nodeType: nodeType as Todo['nodeType'],
     projectId: t.projectId as string | undefined,
     parentId: t.parentId as string | undefined,
     title: t.title as string,
     description: t.description as string,
-    status: t.status as Todo['status'],
-    priority: t.priority as Todo['priority'],
-    estimatedMinutes: t.estimatedMinutes as number,
-    tags: t.tags as string[],
+    status: (t.status as Todo['status']) ?? 'pending',
+    priority: (t.priority as Todo['priority']) ?? 'medium',
+    estimatedMinutes: (t.estimatedMinutes as number) ?? 60,
+    tags: (t.tags as string[]) ?? [],
     createdAt: parseDate(t.createdAt)!,
     updatedAt: parseDate(t.updatedAt) ?? parseDate(t.createdAt)!,
     dueDate: parseDate(t.dueDate),
@@ -39,7 +41,11 @@ export function parseTodo(data: unknown): Todo {
     completedAt: parseDate(t.completedAt),
     repeatRule: parseRepeatRule(t.repeatRule),
     order: (t.order as number) ?? 0,
-    isGoal: t.isGoal as boolean | undefined,
+    motivation: t.motivation as string | undefined,
+    successCriteria: t.successCriteria as string | undefined,
+    targetDate: parseDate(t.targetDate),
+    goalStatus: t.goalStatus as Todo['goalStatus'],
+    pattern: (t.pattern as Todo['pattern']) ?? 'task',
   };
 }
 
@@ -80,17 +86,6 @@ export function parseProject(data: unknown): Project {
     deadline: parseDate(p.deadline),
     createdAt: parseDate(p.createdAt)!,
     updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
-  };
-}
-
-export function parseRoadmap(data: unknown): Roadmap {
-  const r = data as Record<string, unknown>;
-  return {
-    id: r.id as string,
-    goalTodoId: r.goalTodoId as string,
-    phases: (r.phases as RoadmapPhase[]) ?? [],
-    createdAt: parseDate(r.createdAt)!,
-    updatedAt: parseDate(r.updatedAt)!,
   };
 }
 
@@ -150,6 +145,26 @@ export function parseTimerSession(data: unknown): TimerSession {
     status: s.status as TimerSession['status'],
     createdAt: parseDate(s.createdAt)!,
     updatedAt: parseDate(s.updatedAt)!,
+  };
+}
+
+export function parseRoadmap(data: unknown): Roadmap {
+  const r = data as Record<string, unknown>;
+  const phasesRaw = r.phases as Array<Record<string, unknown>> | undefined;
+  const phases: Roadmap['phases'] = (phasesRaw ?? []).map((p) => ({
+    id: p.id as string,
+    title: p.title as string,
+    order: (p.order as number) ?? 0,
+    todoIds: (p.todoIds as string[]) ?? [],
+    startAt: parseDate(p.startAt),
+    endAt: parseDate(p.endAt),
+  }));
+  return {
+    id: r.id as string,
+    goalTodoId: r.goalTodoId as string,
+    phases,
+    createdAt: parseDate(r.createdAt)!,
+    updatedAt: parseDate(r.updatedAt) ?? parseDate(r.createdAt)!,
   };
 }
 

@@ -15,7 +15,7 @@ export async function createTodo(
     tags?: string[];
     repeatRule?: RepeatRule;
     order?: number;
-    isGoal?: boolean;
+    nodeType?: 'goal' | 'todo';
     status?: TodoStatus;
   }
 ): Promise<Todo> {
@@ -36,7 +36,8 @@ export async function createTodo(
     scheduledDate: options?.scheduledDate,
     repeatRule: options?.repeatRule,
     order: options?.order ?? 0,
-    isGoal: options?.isGoal,
+    nodeType: options?.nodeType ?? 'todo',
+    pattern: 'task',
   };
   await db.todos.add(todo);
   await triggerSync('todos', 'create', todo.id);

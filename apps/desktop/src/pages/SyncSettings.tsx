@@ -83,7 +83,6 @@ export function SyncSettings() {
       projects: await db.projects.toArray(),
       relations: await db.relations.toArray(),
       todoLogs: await db.todoLogs.toArray(),
-      roadmaps: await db.roadmaps.toArray(),
       actionEdges: await db.actionEdges.toArray(),
       pluses: await db.pluses.toArray(),
       timerSessions: await db.timerSessions.toArray(),
@@ -107,7 +106,6 @@ export function SyncSettings() {
       if (data.projects) await db.projects.bulkPut(data.projects);
       if (data.relations) await db.relations.bulkPut(data.relations);
       if (data.todoLogs) await db.todoLogs.bulkPut(data.todoLogs);
-      if (data.roadmaps) await db.roadmaps.bulkPut(data.roadmaps);
       if (data.actionEdges) await db.actionEdges.bulkPut(data.actionEdges);
       if (data.pluses) await db.pluses.bulkPut(data.pluses);
       if (data.timerSessions) await db.timerSessions.bulkPut(data.timerSessions);

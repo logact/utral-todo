@@ -265,12 +265,17 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
       }
     }
 
-    const relevantTodos = todos.filter(t => connectedIds.has(t.id));
+    const relevantTodos = todos.filter(
+      t => connectedIds.has(t.id) && (t.id === goalTodo.id || t.nodeType === 'task')
+    );
     const nodes: GraphNode[] = relevantTodos.map(t => ({
       todo: t,
       x: 0, y: 0, depth: 0,
     }));
-    const relevantEdges = allEdges.filter(e => connectedIds.has(e.fromTodoId) && connectedIds.has(e.toTodoId));
+    const relevantNodeIds = new Set(relevantTodos.map(t => t.id));
+    const relevantEdges = allEdges.filter(
+      e => relevantNodeIds.has(e.fromTodoId) && relevantNodeIds.has(e.toTodoId)
+    );
 
     const width = containerRef.current?.clientWidth || MIN_SVG_W;
     const result = layoutGraph(nodes, relevantEdges, goalTodo.id, width);
@@ -587,7 +592,7 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
 
           {/* Nodes */}
           {graphNodes.map(node => {
-            const isGoal = node.todo.isGoal === true || node.todo.id === goalTodo.id;
+            const isGoal = node.todo.nodeType === 'goal' || node.todo.id === goalTodo.id;
             const isHighlight = highlightTodoId === node.todo.id;
             const isDone = node.todo.status === 'done';
             const w = isGoal ? GOAL_W : NODE_W;
@@ -636,15 +641,15 @@ export function JourneyPath({ goalTodo, edges, highlightTodoId, onCreateEdge, on
                   {isGoal ? (
                     <Target className="w-4 h-4 text-indigo-500 shrink-0" />
                   ) : (
-                    <StatusDot status={node.todo.status} />
+                    <StatusDot status={node.todo.status ?? 'pending'} />
                   )}
                   <span className={`text-[13px] font-medium truncate flex-1 min-w-0 leading-tight ${
                     isDone ? 'text-slate-400 dark:text-slate-500 line-through' : isHighlight
                       ? 'text-amber-900 dark:text-amber-300' : isGoal
                       ? 'text-indigo-900 dark:text-indigo-200' : 'text-slate-800 dark:text-slate-200'
                   }`}>{node.todo.title}</span>
-                  {node.todo.estimatedMinutes > 0 && !isGoal && (
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{formatDuration(node.todo.estimatedMinutes)}</span>
+                  {(node.todo.estimatedMinutes ?? 60) > 0 && !isGoal && (
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{formatDuration(node.todo.estimatedMinutes ?? 60)}</span>
                   )}
                   {isGoal && (
                     <span className="flex items-center gap-1 text-[10px] font-bold text-white dark:text-indigo-100 uppercase tracking-wider shrink-0 bg-indigo-500 dark:bg-indigo-600 px-2 py-0.5 rounded">

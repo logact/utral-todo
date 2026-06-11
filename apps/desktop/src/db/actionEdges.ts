@@ -57,6 +57,14 @@ export async function getAllActionEdgesForTodo(todoId: string): Promise<ActionEd
   return all.filter((e) => connected.has(e.fromTodoId) && connected.has(e.toTodoId));
 }
 
+export async function updateActionEdge(
+  id: string,
+  updates: Partial<Pick<ActionEdge, 'type'>>
+): Promise<void> {
+  await db.actionEdges.update(id, { ...updates, updatedAt: new Date() });
+  onLocalChange('actionEdges', 'update', id).catch(() => {});
+}
+
 export async function deleteActionEdge(id: string): Promise<void> {
   await db.actionEdges.delete(id);
   onLocalChange('actionEdges', 'delete', id).catch(() => {});

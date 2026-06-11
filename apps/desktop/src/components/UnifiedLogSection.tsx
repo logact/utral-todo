@@ -270,7 +270,7 @@ function MagicInputBar({
                       )}
                       <span className="truncate">{todo.title}</span>
                       <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 ml-auto">
-                        {formatDuration(todo.estimatedMinutes)}
+                        {formatDuration(todo.estimatedMinutes ?? 60)}
                       </span>
                     </div>
                   </button>
@@ -298,7 +298,7 @@ function MagicInputBar({
   // Node mode content
   const sortedNodes = [...graphNodes].sort((a, b) => {
     const statusOrder: Record<TodoStatus, number> = { pending: 0, in_progress: 1, done: 2 };
-    if (statusOrder[a.status] !== statusOrder[b.status]) return statusOrder[a.status] - statusOrder[b.status];
+    if (statusOrder[a.status ?? 'pending'] !== statusOrder[b.status ?? 'pending']) return statusOrder[a.status ?? 'pending'] - statusOrder[b.status ?? 'pending'];
     return a.title.localeCompare(b.title);
   });
 

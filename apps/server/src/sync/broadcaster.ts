@@ -165,22 +165,6 @@ export async function applyChange(
       }
       break;
     }
-    case 'roadmap': {
-      if (operation === 'delete') {
-        await prisma.roadmap.delete({ where: { id: recordId } }).catch((err) => {
-          console.error(`[sync] Failed to delete roadmap ${recordId}:`, err);
-        });
-      } else {
-        const data = payload as Record<string, unknown>;
-        const existing = await prisma.roadmap.findUnique({ where: { id: recordId } });
-        if (existing) {
-          await prisma.roadmap.update({ where: { id: recordId }, data: data as never });
-        } else {
-          await prisma.roadmap.create({ data: data as never });
-        }
-      }
-      break;
-    }
     case 'actionEdge': {
       if (operation === 'delete') {
         await prisma.actionEdge.delete({ where: { id: recordId } }).catch((err) => {
@@ -241,6 +225,22 @@ export async function applyChange(
           await prisma.repeatOccurrence.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.repeatOccurrence.create({ data: data as never });
+        }
+      }
+      break;
+    }
+    case 'roadmap': {
+      if (operation === 'delete') {
+        await prisma.roadmap.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete roadmap ${recordId}:`, err);
+        });
+      } else {
+        const data = payload as Record<string, unknown>;
+        const existing = await prisma.roadmap.findUnique({ where: { id: recordId } });
+        if (existing) {
+          await prisma.roadmap.update({ where: { id: recordId }, data: data as never });
+        } else {
+          await prisma.roadmap.create({ data: data as never });
         }
       }
       break;

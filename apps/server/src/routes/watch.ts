@@ -48,9 +48,9 @@ router.get('/today', async (_req, res) => {
     const watchTodos: WatchTodo[] = allTodos.map((t) => ({
       id: t.id,
       title: t.title,
-      status: t.status as WatchTodo['status'],
+      status: (t.status ?? 'pending') as WatchTodo['status'],
       projectColor: (t.projectId ? projectMap.get(t.projectId) : '#6366f1') ?? '#6366f1',
-      estimatedMinutes: t.estimatedMinutes,
+      estimatedMinutes: t.estimatedMinutes ?? 60,
     }));
 
     const response: WatchTodayResponse = { todos: watchTodos };

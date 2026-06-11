@@ -95,6 +95,27 @@ function ProjectBadge({ project }: { project: Project }) {
 }
 
 type FilterTab = 'all' | 'in_progress' | 'pending' | 'done';
+type NodeTypeFilter = 'all' | 'task' | 'goal';
+
+function getDisplayStatus(todo: Todo): string {
+  if (todo.nodeType === 'goal') return todo.goalStatus ?? 'active';
+  return todo.status ?? 'pending';
+}
+
+function isInProgress(todo: Todo): boolean {
+  if (todo.nodeType === 'goal') return todo.goalStatus === 'active';
+  return todo.status === 'in_progress';
+}
+
+function isPending(todo: Todo): boolean {
+  if (todo.nodeType === 'goal') return todo.goalStatus === 'paused';
+  return todo.status === 'pending';
+}
+
+function isDone(todo: Todo): boolean {
+  if (todo.nodeType === 'goal') return todo.goalStatus === 'achieved' || todo.goalStatus === 'abandoned';
+  return todo.status === 'done';
+}
 
 /* ─── Sortable Todo Row ─── */
 
@@ -132,8 +153,9 @@ function SortableTodoRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const isDone = todo.status === 'done';
-  const isInProgress = todo.status === 'in_progress';
+  const displayStatus = getDisplayStatus(todo);
+  const isDoneStatus = isDone(todo);
+  const isActiveStatus = isInProgress(todo);
   const project = todo.projectId
     ? projects.find((p) => p.id === todo.projectId)
     : undefined;
@@ -144,7 +166,7 @@ function SortableTodoRow({
       style={style}
       className={`flex items-start gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group ${
         isDragging ? 'bg-indigo-50 dark:bg-indigo-950/20 z-50' : ''
-      } ${todo.isGoal ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''}`}
+      } ${todo.nodeType === 'goal' ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''}`}
     >
       {/* Drag handle */}
       {isDragEnabled && !selectMode && (
@@ -177,12 +199,12 @@ function SortableTodoRow({
       {/* Status toggle (hidden in select mode) */}
       {!selectMode && (
         <button
-          onClick={() => onToggle(todo.id, todo.status)}
+          onClick={() => onToggle(todo.id, todo.status ?? 'pending')}
           className="mt-0.5 shrink-0"
         >
-          {isDone ? (
+          {isDoneStatus ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-          ) : isInProgress ? (
+          ) : isActiveStatus ? (
             <div className="w-4 h-4 rounded-full border-2 border-indigo-500 flex items-center justify-center">
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
             </div>
@@ -196,7 +218,7 @@ function SortableTodoRow({
         <button
           onClick={() => onOpen(todo.id)}
           className={`text-sm font-medium text-left truncate block w-full ${
-            isDone
+            isDoneStatus
               ? 'text-slate-400 dark:text-slate-500 line-through'
               : 'text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors'
           }`}
@@ -221,7 +243,7 @@ function SortableTodoRow({
           {todo.dueDate && (
             <span
               className={`flex items-center gap-1 text-[11px] ${
-                new Date(todo.dueDate) < new Date() && !isDone
+                new Date(todo.dueDate) < new Date() && !isDoneStatus
                   ? 'text-rose-500 dark:text-rose-400'
                   : 'text-slate-400 dark:text-slate-500'
               }`}
@@ -230,13 +252,22 @@ function SortableTodoRow({
               {formatDate(todo.dueDate)}
             </span>
           )}
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            {formatDuration(todo.estimatedMinutes)}
-          </span>
-          <PriorityBadge priority={todo.priority} />
-          {todo.isGoal && (
+          {(todo.estimatedMinutes ?? 0) > 0 && (
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              {formatDuration(todo.estimatedMinutes ?? 60)}
+            </span>
+          )}
+          {todo.nodeType === 'task' && todo.priority && (
+            <PriorityBadge priority={todo.priority} />
+          )}
+          {todo.nodeType === 'goal' && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">
               Goal
+            </span>
+          )}
+          {displayStatus !== 'pending' && displayStatus !== 'active' && displayStatus !== 'in_progress' && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+              {displayStatus}
             </span>
           )}
           {project && <ProjectBadge project={project} />}
@@ -264,9 +295,10 @@ function SortableTodoRow({
 
 export function Todos() {
   const navigate = useNavigate();
-  const { todos, isLoading, setStatus, reorder, refresh, remove } = useTodos();
+  const { todos, isLoading, setStatus, reorder, refresh, remove, update } = useTodos();
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [nodeTypeFilter, setNodeTypeFilter] = useState<NodeTypeFilter>('all');
 
   // Bulk selection state
   const [selectMode, setSelectMode] = useState(false);
@@ -294,8 +326,19 @@ export function Todos() {
   const filteredTodos = useMemo(() => {
     let result = todos;
 
+    // Node type filter
+    if (nodeTypeFilter !== 'all') {
+      result = result.filter((t) => t.nodeType === nodeTypeFilter || (!t.nodeType && nodeTypeFilter === 'task'));
+    }
+
+    // Status filter (adapted per node type)
     if (activeTab !== 'all') {
-      result = result.filter((t) => t.status === activeTab);
+      result = result.filter((t) => {
+        if (activeTab === 'in_progress') return isInProgress(t);
+        if (activeTab === 'pending') return isPending(t);
+        if (activeTab === 'done') return isDone(t);
+        return true;
+      });
     }
 
     if (search.trim()) {
@@ -307,14 +350,13 @@ export function Todos() {
       );
     }
 
-    // Todos are already sorted by order from the server
     return result;
-  }, [todos, activeTab, search]);
+  }, [todos, activeTab, search, nodeTypeFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, search]);
+  }, [activeTab, search, nodeTypeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTodos.length / itemsPerPage));
   const paginatedTodos = useMemo(() => {
@@ -323,16 +365,35 @@ export function Todos() {
   }, [filteredTodos, currentPage]);
 
   const counts = useMemo(() => {
-    const all = todos.length;
-    const inProgress = todos.filter((t) => t.status === 'in_progress').length;
-    const pending = todos.filter((t) => t.status === 'pending').length;
-    const done = todos.filter((t) => t.status === 'done').length;
+    const base = nodeTypeFilter === 'all'
+      ? todos
+      : todos.filter((t) => t.nodeType === nodeTypeFilter || (!t.nodeType && nodeTypeFilter === 'task'));
+    const all = base.length;
+    const inProgress = base.filter((t) => isInProgress(t)).length;
+    const pending = base.filter((t) => isPending(t)).length;
+    const done = base.filter((t) => isDone(t)).length;
     return { all, inProgress, pending, done };
-  }, [todos]);
+  }, [todos, nodeTypeFilter]);
 
-  async function toggleTodo(todoId: string, currentStatus: TodoStatus) {
+  async function toggleTodo(todoId: string, _currentStatus: TodoStatus) {
+    const todo = todos.find((t) => t.id === todoId);
+    if (!todo) return;
+
+    if (todo.nodeType === 'goal') {
+      const current = todo.goalStatus ?? 'active';
+      const next: Record<string, string> = {
+        active: 'paused',
+        paused: 'achieved',
+        achieved: 'active',
+        abandoned: 'active',
+      };
+      await update(todoId, { goalStatus: next[current] as 'active' | 'paused' | 'achieved' | 'abandoned' });
+      await refresh();
+      return;
+    }
+
     const newStatus: TodoStatus =
-      currentStatus === 'done' ? 'pending' : currentStatus === 'in_progress' ? 'done' : 'in_progress';
+      todo.status === 'done' ? 'pending' : todo.status === 'in_progress' ? 'done' : 'in_progress';
     await setStatus(todoId, newStatus);
   }
 
@@ -471,6 +532,35 @@ export function Todos() {
         )}
       </div>
 
+      {/* Node type filter */}
+      <div className="flex items-center gap-2">
+        {([
+          { key: 'all' as NodeTypeFilter, label: 'All' },
+          { key: 'task' as NodeTypeFilter, label: 'Tasks' },
+          { key: 'goal' as NodeTypeFilter, label: 'Goals' },
+        ]).map((nt) => {
+          const count = nt.key === 'all'
+            ? todos.length
+            : todos.filter((t) => t.nodeType === nt.key || (!t.nodeType && nt.key === 'task')).length;
+          return (
+            <button
+              key={nt.key}
+              onClick={() => setNodeTypeFilter(nt.key)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                nodeTypeFilter === nt.key
+                  ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              {nt.label}
+              <span className={`ml-1.5 text-[11px] ${nodeTypeFilter === nt.key ? 'text-slate-300 dark:text-slate-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">
         {tabs.map((tab) => (
@@ -532,17 +622,19 @@ export function Todos() {
             <ListTodo className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
             <p className="mt-3 text-sm text-slate-400 dark:text-slate-500">
               {search
-                ? 'No todos match your search'
+                ? 'No items match your search'
                 : activeTab === 'all'
-                ? 'No todos yet'
-                : `No ${activeTab.replace('_', ' ')} todos`}
+                ? nodeTypeFilter === 'all'
+                  ? 'No items yet'
+                  : `No ${nodeTypeFilter}s yet`
+                : `No ${activeTab.replace('_', ' ')} items`}
             </p>
             {!search && activeTab !== 'done' && (
               <button
                 onClick={() => navigate('/todo/new')}
                 className="mt-2 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-medium"
               >
-                Create your first todo
+                Create your first {nodeTypeFilter === 'all' ? 'item' : nodeTypeFilter}
               </button>
             )}
           </div>

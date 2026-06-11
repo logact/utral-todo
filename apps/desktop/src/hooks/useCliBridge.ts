@@ -6,7 +6,6 @@ import * as todosDb from '../db/todos';
 import * as projectsDb from '../db/projects';
 import * as relationsDb from '../db/relations';
 import * as todoLogsDb from '../db/todoLogs';
-import * as roadmapsDb from '../db/roadmaps';
 import * as actionEdgesDb from '../db/actionEdges';
 import * as plusesDb from '../db/pluse';
 import * as timerSessionsDb from '../db/timerSessions';
@@ -56,7 +55,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
             ? (args.tags as string[])
             : String(args.tags).split(',').map((t) => t.trim())
           : undefined,
-        isGoal: args.isGoal ? true : undefined,
         repeatRule: args.repeatRule ? JSON.parse(String(args.repeatRule)) : undefined,
       });
       return { success: true, data: serializeForJson(todo) };
@@ -71,7 +69,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       if (args.dueDate !== undefined) updates.dueDate = new Date(String(args.dueDate));
       if (args.estimatedMinutes !== undefined) updates.estimatedMinutes = Number(args.estimatedMinutes);
       if (args.tags !== undefined) updates.tags = String(args.tags).split(',').map((t) => t.trim());
-      if (args.isGoal !== undefined) updates.isGoal = args.isGoal === true || args.isGoal === 'true';
       if (args.repeatRule !== undefined) updates.repeatRule = args.repeatRule ? JSON.parse(String(args.repeatRule)) : null;
       if (args.order !== undefined) updates.order = Number(args.order);
       await todosDb.updateTodo(String(args.id), updates as never);
@@ -264,45 +261,6 @@ async function handleTodoLogs(action: string, args: Record<string, unknown>) {
   }
 }
 
-// ─── Roadmaps ───────────────────────────────────────────────────────────────
-
-async function handleRoadmaps(action: string, args: Record<string, unknown>) {
-  switch (action) {
-    case 'list': {
-      const roadmaps = await roadmapsDb.getAllRoadmaps();
-      return { success: true, data: roadmaps.map(serializeForJson) };
-    }
-    case 'get': {
-      const roadmap = await db.roadmaps.get(String(args.id));
-      return { success: true, data: roadmap ? serializeForJson(roadmap) : null };
-    }
-    case 'create': {
-      const roadmap = await roadmapsDb.createRoadmap(String(args.goalTodoId));
-      if (args.phases) {
-        await roadmapsDb.updateRoadmapPhases(roadmap.id, JSON.parse(String(args.phases)));
-      }
-      return { success: true, data: serializeForJson(roadmap) };
-    }
-    case 'update': {
-      const updates: Partial<Record<string, unknown>> = {};
-      if (args.goalTodoId !== undefined) updates.goalTodoId = String(args.goalTodoId);
-      if (args.phases !== undefined) updates.phases = JSON.parse(String(args.phases));
-      await roadmapsDb.updateRoadmap(String(args.id), updates);
-      return { success: true };
-    }
-    case 'set-phases': {
-      await roadmapsDb.updateRoadmapPhases(String(args.id), JSON.parse(String(args.phases)));
-      return { success: true };
-    }
-    case 'delete': {
-      await roadmapsDb.deleteRoadmap(String(args.id));
-      return { success: true };
-    }
-    default:
-      return { error: `Unknown action: ${action}` };
-  }
-}
-
 // ─── Action Edges ───────────────────────────────────────────────────────────
 
 async function handleActionEdges(action: string, args: Record<string, unknown>) {
@@ -467,7 +425,6 @@ async function handleAllData(action: string) {
     await db.todos.clear();
     await db.relations.clear();
     await db.todoLogs.clear();
-    await db.roadmaps.clear();
     await db.actionEdges.clear();
     await db.pluses.clear();
     await db.projects.clear();
@@ -483,7 +440,6 @@ async function handleStats() {
   const allTodos = await db.todos.toArray();
   const allProjects = await db.projects.toArray();
   const allRelations = await db.relations.toArray();
-  const allRoadmaps = await db.roadmaps.toArray();
   const allPluses = await db.pluses.toArray();
   const allTimers = await db.timerSessions.toArray();
 
@@ -507,7 +463,7 @@ async function handleStats() {
 
   const byStatus: Record<string, number> = {};
   for (const t of allTodos) {
-    byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+    byStatus[t.status ?? 'pending'] = (byStatus[t.status ?? 'pending'] || 0) + 1;
   }
 
   return {
@@ -516,7 +472,6 @@ async function handleStats() {
       todos: { total: allTodos.length, byStatus, today: todayCount, overdue: overdueCount },
       projects: { total: allProjects.length },
       relations: { total: allRelations.length },
-      roadmaps: { total: allRoadmaps.length },
       pluses: { total: allPluses.length },
       timerSessions: { active: activeTimers },
     },
@@ -552,9 +507,6 @@ export function useCliBridge() {
               break;
             case 'todo-logs':
               result = await handleTodoLogs(action, args);
-              break;
-            case 'roadmaps':
-              result = await handleRoadmaps(action, args);
               break;
             case 'action-edges':
               result = await handleActionEdges(action, args);

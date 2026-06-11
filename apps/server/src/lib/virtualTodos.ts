@@ -5,13 +5,14 @@ import type { Todo as PrismaTodo, RepeatOccurrence as PrismaOccurrence } from '@
 
 export interface VirtualTodo {
   id: string;
+  nodeType: string;
   projectId: string | null;
   parentId: string | null;
   title: string;
   description: string;
-  status: string;
-  priority: string;
-  estimatedMinutes: number;
+  status: string | null;
+  priority: string | null;
+  estimatedMinutes: number | null;
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -22,12 +23,16 @@ export interface VirtualTodo {
   completedAt: Date | null;
   repeatRule: any;
   order: number;
-  isGoal: boolean;
+  motivation?: string | null;
+  successCriteria?: string | null;
+  targetDate?: Date | null;
+  goalStatus?: string | null;
 }
 
 function toTodoLike(template: PrismaTodo): VirtualTodo {
   return {
     id: template.id,
+    nodeType: template.nodeType,
     projectId: template.projectId,
     parentId: template.parentId,
     title: template.title,
@@ -45,7 +50,10 @@ function toTodoLike(template: PrismaTodo): VirtualTodo {
     completedAt: template.completedAt,
     repeatRule: template.repeatRule ? (typeof template.repeatRule === 'string' ? JSON.parse(template.repeatRule) : template.repeatRule) : undefined,
     order: template.order,
-    isGoal: template.isGoal,
+    motivation: template.motivation,
+    successCriteria: template.successCriteria,
+    targetDate: template.targetDate,
+    goalStatus: template.goalStatus,
   };
 }
 

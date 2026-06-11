@@ -37,7 +37,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/source-chain/:id', async (req, res) => {
   const chain: Array<{
     id: string; projectId: string | null; parentId: string | null; title: string;
-    description: string; status: string; priority: string; estimatedMinutes: number;
+    description: string; status: string | null; priority: string | null; estimatedMinutes: number | null;
     tags: unknown; createdAt: Date; dueDate: Date | null; scheduledDate: Date | null;
     completedAt: Date | null; repeatRule: unknown | null;
   }> = [];

@@ -20,7 +20,6 @@ export interface LayoutNode {
   y: number;
   depth: number;
   componentId: string;
-  isGoal: boolean;
   hasParent: boolean;
 }
 
@@ -77,10 +76,10 @@ class UnionFind {
 /* ------------------------------------------------------------------ */
 
 function getNodeSize(todoId: string, goalId: string | null) {
-  const isGoal = todoId === goalId;
+  const isGoalNode = todoId === goalId;
   return {
-    w: isGoal ? GOAL_W : NODE_W,
-    h: isGoal ? GOAL_H : NODE_H,
+    w: isGoalNode ? GOAL_W : NODE_W,
+    h: isGoalNode ? GOAL_H : NODE_H,
   };
 }
 
@@ -91,7 +90,7 @@ function computeBounds(nodes: LayoutNode[]): { width: number; height: number } {
   let minY = Infinity;
   let maxY = -Infinity;
   for (const n of nodes) {
-    const { w, h } = getNodeSize(n.todo.id, n.isGoal ? n.todo.id : null);
+    const { w, h } = getNodeSize(n.todo.id, n.todo.nodeType === 'goal' ? n.todo.id : null);
     minX = Math.min(minX, n.x - w / 2);
     maxX = Math.max(maxX, n.x + w / 2);
     minY = Math.min(minY, n.y - h / 2);
@@ -191,7 +190,6 @@ function hierarchicalLayout(
         y: d * LEVEL_H + h / 2,
         depth: d,
         componentId: goalId,
-        isGoal: ids[i] === goalId,
         hasParent: !!todo.parentId,
       });
     }
@@ -263,7 +261,6 @@ function miniTreeLayout(rootTodo: Todo, descendants: Todo[]): LayoutNode[] {
         y: d * LEVEL_H + NODE_H / 2,
         depth: d,
         componentId: `group-${rootTodo.id}`,
-        isGoal: false,
         hasParent: !!todo.parentId,
       });
     }

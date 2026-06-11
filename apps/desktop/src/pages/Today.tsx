@@ -36,6 +36,7 @@ import {
   Target,
   CalendarCheck,
   GripVertical,
+  Flag,
 } from 'lucide-react';
 import { useTodayData } from '../hooks/useTodos';
 import { getInProgressTodos, reorderTodos, getAllTodos } from '../db/todos';
@@ -694,6 +695,51 @@ function PriorityBadge({ priority }: { priority: Priority }) {
   );
 }
 
+const goalStatusConfig: Record<
+  string,
+  { label: string; bg: string; text: string; darkBg: string; darkText: string }
+> = {
+  active: {
+    label: 'Active',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-600',
+    darkBg: 'dark:bg-emerald-950/30',
+    darkText: 'dark:text-emerald-400',
+  },
+  paused: {
+    label: 'Paused',
+    bg: 'bg-amber-50',
+    text: 'text-amber-600',
+    darkBg: 'dark:bg-amber-950/30',
+    darkText: 'dark:text-amber-400',
+  },
+  achieved: {
+    label: 'Done',
+    bg: 'bg-blue-50',
+    text: 'text-blue-600',
+    darkBg: 'dark:bg-blue-950/30',
+    darkText: 'dark:text-blue-400',
+  },
+  abandoned: {
+    label: 'Dropped',
+    bg: 'bg-slate-100',
+    text: 'text-slate-500',
+    darkBg: 'dark:bg-slate-800',
+    darkText: 'dark:text-slate-400',
+  },
+};
+
+function GoalStatusBadge({ status }: { status: string }) {
+  const cfg = goalStatusConfig[status] ?? goalStatusConfig.active;
+  return (
+    <span
+      className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text} ${cfg.darkBg} ${cfg.darkText} shrink-0`}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
 function CompactTodoRow({
   todo,
   selected,
@@ -728,7 +774,7 @@ function CompactTodoRow({
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onToggle(todo.id, todo.status);
+          onToggle(todo.id, todo.status ?? 'pending');
         }}
         className="mt-0.5 shrink-0"
       >
@@ -759,10 +805,10 @@ function CompactTodoRow({
             </span>
           )}
           <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            {formatDuration(todo.estimatedMinutes)}
+            {formatDuration(todo.estimatedMinutes ?? 60)}
           </span>
-          <PriorityBadge priority={todo.priority} />
-          {todo.isGoal && (
+          <PriorityBadge priority={todo.priority ?? 'medium'} />
+          {todo.nodeType === 'goal' && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">
               Goal
             </span>
@@ -800,7 +846,7 @@ const sectionConfig: Record<SectionType, { label: string; icon: typeof Zap; colo
 };
 
 function getAccent(todo: Todo, section: SectionType): 'none' | 'urgent' | 'focus' | 'goal' {
-  if (todo.isGoal) return 'goal';
+  if (todo.nodeType === 'goal') return 'goal';
   if (section === 'in_progress') return 'focus';
   if (section === 'overdue') return 'urgent';
   return 'none';
@@ -876,6 +922,7 @@ export function Today() {
     overdue,
     inProgress,
     suggested,
+    todayGoals,
     isLoading: todosLoading,
     setStatus,
     schedule,
@@ -1132,6 +1179,35 @@ export function Today() {
           )}
         </div>
 
+        {/* Today's Goals */}
+        {todayGoals.length > 0 && (
+          <div className="shrink-0 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+              <Flag className="w-4 h-4 text-amber-500" />
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Today&apos;s Goals
+              </h2>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-auto">
+                {todayGoals.length}
+              </span>
+            </div>
+            <div className="px-3 py-2 space-y-1.5">
+              {todayGoals.map((goal) => (
+                <button
+                  key={goal.id}
+                  onClick={() => navigate(`/todo/${goal.id}`)}
+                  className="w-full flex items-center gap-2 text-left group"
+                >
+                  <span className="flex-1 min-w-0 text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    {goal.title}
+                  </span>
+                  <GoalStatusBadge status={goal.goalStatus ?? 'active'} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Today's Todo List */}
         <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col min-h-0">
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
@@ -1206,9 +1282,9 @@ export function Today() {
                               </Link>
                               <div className="flex items-center gap-2 mt-0.5">
                                 <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                                  {formatDuration(todo.estimatedMinutes)}
+                                  {formatDuration(todo.estimatedMinutes ?? 60)}
                                 </span>
-                                <PriorityBadge priority={todo.priority} />
+                                <PriorityBadge priority={todo.priority ?? 'medium'} />
                               </div>
                             </div>
                             <button

@@ -228,7 +228,7 @@ const TodoItemRow = memo(function TodoItemRow({
             <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
           )}
           <span className="text-xs text-slate-400 dark:text-slate-500">
-            {formatDuration(todo.estimatedMinutes)}
+            {formatDuration(todo.estimatedMinutes ?? 60)}
           </span>
         </div>
       </div>
@@ -260,7 +260,7 @@ const DayDetailPanel = memo(function DayDetailPanel({
   editingTimeTodoId: string | null;
   setEditingTimeTodoId: (id: string | null) => void;
 }) {
-  const totalMinutes = dayTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
+  const totalMinutes = dayTodos.reduce((s, t) => s + (t.estimatedMinutes ?? 60), 0);
 
   const periods: TimeOfDay[] = ['morning', 'afternoon', 'evening'];
   const grouped = useMemo(() => {
@@ -360,7 +360,7 @@ export function Schedule() {
         const d = new Date(t.scheduledDate);
         return d.getFullYear() === year && d.getMonth() === m;
       });
-      const totalMinutes = monthTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
+      const totalMinutes = monthTodos.reduce((s, t) => s + (t.estimatedMinutes ?? 60), 0);
       return { monthDate, grid, monthTodos, totalMinutes };
     });
   }, [viewDate, todos]);
@@ -463,7 +463,7 @@ export function Schedule() {
             const isToday = date.toDateString() === todayStr;
             const isSelected = selectedDate.toDateString() === date.toDateString();
             const dayTodos = getForDate(date);
-            const totalMinutes = dayTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
+            const totalMinutes = dayTodos.reduce((s, t) => s + (t.estimatedMinutes ?? 60), 0);
 
             return (
               <button
@@ -555,7 +555,7 @@ export function Schedule() {
             const isToday = date.toDateString() === todayStr;
             const isSelected = selectedDate.toDateString() === date.toDateString();
             const dayTodos = getForDate(date);
-            const totalMinutes = dayTodos.reduce((s, t) => s + t.estimatedMinutes, 0);
+            const totalMinutes = dayTodos.reduce((s, t) => s + (t.estimatedMinutes ?? 60), 0);
 
             return (
               <button
@@ -771,7 +771,7 @@ export function Schedule() {
                         {todo.title}
                       </p>
                       <span className="text-xs text-slate-400 dark:text-slate-500">
-                        {formatDuration(todo.estimatedMinutes)}
+                        {formatDuration(todo.estimatedMinutes ?? 60)}
                       </span>
                     </div>
                     {renderScheduleControls(todo.id)}
@@ -802,7 +802,7 @@ export function Schedule() {
                           {todo.scheduledDate && formatTime(todo.scheduledDate)}
                         </span>
                         <span className="text-xs text-slate-400 dark:text-slate-500">
-                          {formatDuration(todo.estimatedMinutes)}
+                          {formatDuration(todo.estimatedMinutes ?? 60)}
                         </span>
                       </div>
                     </div>

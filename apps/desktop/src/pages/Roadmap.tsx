@@ -43,13 +43,13 @@ function formatPhaseDuration(startAt?: Date, endAt?: Date): string {
   return `${hours}h`;
 }
 
-function StatusIcon({ status }: { status: TodoStatus }) {
+function StatusIcon({ status }: { status?: TodoStatus }) {
   if (status === 'done') return <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />;
   if (status === 'in_progress') return <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />;
   return <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />;
 }
 
-function StatusBadge({ status }: { status: TodoStatus }) {
+function StatusBadge({ status }: { status?: TodoStatus }) {
   if (status === 'done')
     return (
       <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
@@ -86,7 +86,7 @@ function PhaseCard({
   phase: import('../types').RoadmapPhase;
   index: number;
   totalPhases: number;
-  todoMap: Map<string, { title: string; status: TodoStatus; estimatedMinutes: number }>;
+  todoMap: Map<string, { title: string; status?: TodoStatus; estimatedMinutes?: number }>;
   availableTodos: import('../types').Todo[];
   onUpdateTitle: (id: string, title: string) => void;
   onRemove: (id: string) => void;
@@ -102,7 +102,7 @@ function PhaseCard({
 
   const todosInPhase = phase.todoIds
     .map((id) => ({ id, ...todoMap.get(id) }))
-    .filter((t) => t.title) as { id: string; title: string; status: TodoStatus; estimatedMinutes: number }[];
+    .filter((t) => t.title) as { id: string; title: string; status?: TodoStatus; estimatedMinutes?: number }[];
 
   const doneCount = todosInPhase.filter((t) => t.status === 'done').length;
 
@@ -217,10 +217,10 @@ function PhaseCard({
               {todo.title}
             </span>
             <div className="flex items-center gap-1.5 shrink-0">
-              {todo.estimatedMinutes > 0 && (
+              {(todo.estimatedMinutes ?? 0) > 0 && (
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-0.5">
                   <Clock className="w-3 h-3" />
-                  {formatDuration(todo.estimatedMinutes)}
+                  {formatDuration(todo.estimatedMinutes ?? 0)}
                 </span>
               )}
               <StatusBadge status={todo.status} />
@@ -296,7 +296,7 @@ function PhaseCard({
   );
 }
 
-export function Roadmap() {
+export function RoadmapPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const {
@@ -319,7 +319,7 @@ export function Roadmap() {
   const todoMap = useMemo(() => {
     const map = new Map<
       string,
-      { title: string; status: TodoStatus; estimatedMinutes: number }
+      { title: string; status?: TodoStatus; estimatedMinutes?: number }
     >();
     for (const t of todos) {
       map.set(t.id, {

@@ -42,9 +42,9 @@ router.get('/today', async (_req, res) => {
       return {
         id: t.id,
         title: t.title,
-        status: t.status as MobileTodo['status'],
-        priority: t.priority as MobileTodo['priority'],
-        estimatedMinutes: t.estimatedMinutes,
+        status: (t.status ?? 'pending') as MobileTodo['status'],
+        priority: (t.priority ?? 'medium') as MobileTodo['priority'],
+        estimatedMinutes: t.estimatedMinutes ?? 60,
         projectId: t.projectId ?? undefined,
         projectTitle: project?.title,
         projectColor: project?.color,
@@ -84,9 +84,9 @@ router.get('/inbox', async (_req, res) => {
       return {
         id: t.id,
         title: t.title,
-        status: t.status as MobileTodo['status'],
-        priority: t.priority as MobileTodo['priority'],
-        estimatedMinutes: t.estimatedMinutes,
+        status: (t.status ?? 'pending') as MobileTodo['status'],
+        priority: (t.priority ?? 'medium') as MobileTodo['priority'],
+        estimatedMinutes: t.estimatedMinutes ?? 60,
         projectId: t.projectId ?? undefined,
         projectTitle: project?.title,
         projectColor: project?.color,
@@ -114,6 +114,7 @@ router.post('/todos/quick', async (req, res) => {
     const maxOrder = await prisma.todo.aggregate({ _max: { order: true } });
     const todo = await prisma.todo.create({
       data: {
+        nodeType: 'task',
         title,
         description: '',
         status: 'pending',
