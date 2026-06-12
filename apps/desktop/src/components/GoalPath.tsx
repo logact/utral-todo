@@ -3,6 +3,7 @@ import {
   Flag, MapPin, Circle, CheckCircle2, Target, ListTodo,
 } from 'lucide-react';
 import { getSubTodos } from '../db/todos';
+import { getOrderedSuccessors, getOrderedPredecessors, getTasksForGoal } from '../db/relations';
 import { formatDuration } from '../utils/date';
 import type { Todo } from '../types';
 
@@ -36,10 +37,6 @@ function TaskStatusDot({ status }: { status?: string }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Node Type Badge                                                    */
-/* ------------------------------------------------------------------ */
-
 function NodeTypeBadge({ nodeType }: { nodeType: string }) {
   if (nodeType === 'goal')
     return (
@@ -51,40 +48,52 @@ function NodeTypeBadge({ nodeType }: { nodeType: string }) {
   return null;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main Component                                                     */
-/* ------------------------------------------------------------------ */
-
 export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
   if (chain.length === 0) return null;
 
   const [subTodosMap, setSubTodosMap] = useState<Map<string, Todo[]>>(new Map());
+  const [orderedGoalsMap, setOrderedGoalsMap] = useState<Map<string, Todo[]>>(new Map());
+  const [achievingTasksMap, setAchievingTasksMap] = useState<Map<string, Todo[]>>(new Map());
 
-  // IDs in the chain (to avoid showing duplicate sub-todos)
   const chainIds = new Set(chain.map((t) => t.id));
 
-  // Fetch sub-todos for each node in the chain
-  const loadSubTodos = useCallback(async () => {
-    const map = new Map<string, Todo[]>();
+  const loadExtras = useCallback(async () => {
+    const subMap = new Map<string, Todo[]>();
+    const orderedMap = new Map<string, Todo[]>();
+    const tasksMap = new Map<string, Todo[]>();
+
     for (const todo of chain) {
       const subs = await getSubTodos(todo.id);
-      // Filter out sub-todos that are already in the chain
       const filtered = subs.filter((s) => !chainIds.has(s.id));
-      if (filtered.length > 0) {
-        map.set(todo.id, filtered);
+      if (filtered.length > 0) subMap.set(todo.id, filtered);
+
+      if (todo.nodeType === 'goal') {
+        const successors = await getOrderedSuccessors(todo.id);
+        const predecessors = await getOrderedPredecessors(todo.id);
+        const ordered = [...predecessors, ...successors].filter(
+          (g, i, arr) => !chainIds.has(g.id) && arr.findIndex((x) => x.id === g.id) === i
+        );
+        if (ordered.length > 0) orderedMap.set(todo.id, ordered);
+
+        const tasks = await getTasksForGoal(todo.id);
+        if (tasks.length > 0) tasksMap.set(todo.id, tasks);
       }
     }
-    setSubTodosMap(map);
+
+    setSubTodosMap(subMap);
+    setOrderedGoalsMap(orderedMap);
+    setAchievingTasksMap(tasksMap);
   }, [chain, currentId]);
 
   useEffect(() => {
-    loadSubTodos();
-  }, [loadSubTodos]);
+    loadExtras();
+  }, [loadExtras]);
 
-  // Compute progress across all visible items (chain + sub-todos)
   const allVisibleTodos = [
     ...chain,
     ...Array.from(subTodosMap.values()).flat(),
+    ...Array.from(orderedGoalsMap.values()).flat(),
+    ...Array.from(achievingTasksMap.values()).flat(),
   ];
   const taskTodos = allVisibleTodos.filter((t) => t.nodeType === 'task');
   const doneCount = taskTodos.filter((t) => t.status === 'done').length;
@@ -117,6 +126,8 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
             const isGoal = todo.nodeType === 'goal';
             const isDone = todo.status === 'done' || todo.goalStatus === 'achieved' || todo.goalStatus === 'abandoned';
             const subs = subTodosMap.get(todo.id) ?? [];
+            const orderedGoals = orderedGoalsMap.get(todo.id) ?? [];
+            const achievingTasks = achievingTasksMap.get(todo.id) ?? [];
 
             return (
               <div key={todo.id} className="relative">
@@ -207,6 +218,90 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
                     </div>
                   </button>
                 </div>
+
+                {/* Ordered goals (goal -> goal) */}
+                {orderedGoals.length > 0 && (
+                  <div className="relative ml-[31px] pl-5 pb-2 border-l border-slate-200 dark:border-slate-700">
+                    <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                      Ordered goals
+                    </p>
+                    {orderedGoals.map((goal) => {
+                      const goalDone = goal.goalStatus === 'achieved' || goal.goalStatus === 'abandoned';
+                      return (
+                        <div key={goal.id} className="relative">
+                          <div className="absolute left-[-21px] top-3.5 w-4 h-px bg-slate-200 dark:bg-slate-700" />
+                          <button
+                            onClick={() => onNodeClick?.(goal.id)}
+                            className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-md transition-colors ${
+                              goalDone
+                                ? 'opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                            }`}
+                          >
+                            <Target className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            <span
+                              className={`text-sm truncate ${
+                                goalDone
+                                  ? 'text-slate-400 dark:text-slate-500 line-through'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              {goal.title}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Tasks that achieve this goal (task -> goal) */}
+                {achievingTasks.length > 0 && (
+                  <div className="relative ml-[31px] pl-5 pb-2 border-l border-slate-200 dark:border-slate-700">
+                    <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                      Achieved by
+                    </p>
+                    {achievingTasks.map((task) => {
+                      const taskDone = task.status === 'done';
+                      const taskInProgress = task.status === 'in_progress';
+                      return (
+                        <div key={task.id} className="relative">
+                          <div className="absolute left-[-21px] top-3.5 w-4 h-px bg-slate-200 dark:bg-slate-700" />
+                          <button
+                            onClick={() => onNodeClick?.(task.id)}
+                            className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-md transition-colors ${
+                              taskDone
+                                ? 'opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                            }`}
+                          >
+                            {taskDone ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            ) : taskInProgress ? (
+                              <Circle className="w-3.5 h-3.5 text-indigo-400 shrink-0 fill-indigo-400" />
+                            ) : (
+                              <ListTodo className="w-3.5 h-3.5 text-slate-300 dark:text-slate-500 shrink-0" />
+                            )}
+                            <span
+                              className={`text-sm truncate ${
+                                taskDone
+                                  ? 'text-slate-400 dark:text-slate-500 line-through'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                            {(task.estimatedMinutes ?? 0) > 0 && (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
+                                {formatDuration(task.estimatedMinutes ?? 60)}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Sub-todos under this chain node */}
                 {subs.length > 0 && (

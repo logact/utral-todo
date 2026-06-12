@@ -165,29 +165,31 @@ router.post('/', async (req, res) => {
   }
 
   const isTaskNode = resolvedNodeType === 'task';
-  const todo = await prisma.todo.create({
-    data: {
-      title,
-      nodeType: resolvedNodeType,
-      pattern: isTaskNode ? (pattern || 'task') : null,
-      description: description ?? '',
-      status: isTaskNode ? (req.body.status || 'pending') : null,
-      priority: isTaskNode ? (priority ?? 'medium') : null,
-      estimatedMinutes: isTaskNode ? (estimatedMinutes ?? 60) : null,
-      tags: tags ?? [],
-      projectId: finalProjectId ?? null,
-      parentId: parentId ?? null,
-      dueDate: dueDate ? new Date(dueDate) : null,
-      scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
-      scheduledEndDate: scheduledEndDate ? new Date(scheduledEndDate) : null,
-      repeatRule: repeatRule ?? null,
-      order: finalOrder ?? 0,
-      motivation: resolvedNodeType === 'goal' ? motivation : null,
-      successCriteria: resolvedNodeType === 'goal' ? successCriteria : null,
-      targetDate: targetDate ? new Date(targetDate) : null,
-      goalStatus: resolvedNodeType === 'goal' ? (goalStatus || 'active') : null,
-    },
-  });
+  const isGoalNode = resolvedNodeType === 'goal';
+
+  const todoData = {
+    title,
+    nodeType: resolvedNodeType,
+    pattern: isTaskNode ? (pattern || 'task') : null,
+    description: description ?? '',
+    status: isTaskNode ? (req.body.status || 'pending') : null,
+    priority: isTaskNode ? (priority ?? 'medium') : null,
+    estimatedMinutes: isTaskNode ? (estimatedMinutes ?? 60) : null,
+    tags: tags ?? [],
+    projectId: finalProjectId ?? null,
+    parentId: parentId ?? null,
+    dueDate: dueDate ? new Date(dueDate) : null,
+    scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+    scheduledEndDate: scheduledEndDate ? new Date(scheduledEndDate) : null,
+    repeatRule: repeatRule ?? null,
+    order: finalOrder ?? 0,
+    motivation: isGoalNode ? motivation : null,
+    successCriteria: isGoalNode ? successCriteria : null,
+    targetDate: targetDate ? new Date(targetDate) : null,
+    goalStatus: isGoalNode ? (goalStatus || 'active') : null,
+  };
+
+  const todo = await prisma.todo.create({ data: todoData as never });
 
   await logChange(req, 'todo', 'create', todo.id, todo);
   res.status(201).json(todo);
@@ -302,7 +304,7 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
-  const updateData: Prisma.TodoUpdateInput = { ...data };
+  const updateData: Record<string, unknown> = { ...data };
   if (scheduledEndDate !== undefined) updateData.scheduledEndDate = scheduledEndDate ? new Date(scheduledEndDate) : null;
   if (targetDate !== undefined) updateData.targetDate = targetDate ? new Date(targetDate) : null;
   if (motivation !== undefined) updateData.motivation = motivation;
@@ -316,7 +318,7 @@ router.patch('/:id', async (req, res) => {
 
   const todo = await prisma.todo.update({
     where: { id: req.params.id },
-    data: updateData,
+    data: updateData as never,
   });
 
   await logChange(req, 'todo', 'update', todo.id, todo);

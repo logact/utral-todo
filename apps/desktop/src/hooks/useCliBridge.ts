@@ -9,7 +9,7 @@ import * as todoLogsDb from '../db/todoLogs';
 import * as actionEdgesDb from '../db/actionEdges';
 import * as plusesDb from '../db/pluse';
 import * as timerSessionsDb from '../db/timerSessions';
-import type { TodoLog } from '../types';
+import type { TodoLog, ActionEdgeType } from '../types';
 
 interface CliRequestEvent {
   req_id: string;
@@ -273,7 +273,7 @@ async function handleActionEdges(action: string, args: Record<string, unknown>) 
       const edge = await actionEdgesDb.createActionEdge(
         String(args.fromTodoId),
         String(args.toTodoId),
-        (args.type as 'insight' | 'try' | 'pre_do') ?? 'insight'
+        (args.type as ActionEdgeType) ?? 'pre_do'
       );
       return { success: true, data: serializeForJson(edge) };
     }

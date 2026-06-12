@@ -1,4 +1,4 @@
-import { Lightbulb, Wrench, ArrowRight, Circle } from 'lucide-react';
+import { ArrowRight, GitBranch, Target, Circle } from 'lucide-react';
 import { EDGE_COLORS } from './BigMapConstants';
 
 export function BigMapLegend() {
@@ -10,16 +10,16 @@ export function BigMapLegend() {
           Edges
         </p>
         <div className="flex items-center gap-2">
-          <Lightbulb className="w-3 h-3" style={{ color: EDGE_COLORS.insight }} />
-          <span className="text-[11px] text-slate-600 dark:text-slate-400">Insight</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Wrench className="w-3 h-3" style={{ color: EDGE_COLORS.try }} />
-          <span className="text-[11px] text-slate-600 dark:text-slate-400">Try</span>
-        </div>
-        <div className="flex items-center gap-2">
           <ArrowRight className="w-3 h-3" style={{ color: EDGE_COLORS.pre_do }} />
-          <span className="text-[11px] text-slate-600 dark:text-slate-400">Pre-do</span>
+          <span className="text-[11px] text-slate-600 dark:text-slate-400">predo</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-3 h-3" style={{ color: EDGE_COLORS.parent_child }} />
+          <span className="text-[11px] text-slate-600 dark:text-slate-400">parent-children</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Target className="w-3 h-3" style={{ color: EDGE_COLORS.to_achieve }} />
+          <span className="text-[11px] text-slate-600 dark:text-slate-400">to achieve</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-6 h-0 border-t border-dashed border-slate-400" />

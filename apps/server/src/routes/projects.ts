@@ -10,7 +10,7 @@ router.get('/', async (_req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { title, description, color, deadline } = req.body;
+  const { title, description, color, deadline, mainGoalId } = req.body;
   const project = await prisma.project.create({
     data: {
       title,
@@ -18,6 +18,7 @@ router.post('/', async (req, res) => {
       color,
       status: 'active',
       deadline: deadline ? new Date(deadline) : null,
+      mainGoalId: mainGoalId || null,
     },
   });
   await logChange(req, 'project', 'create', project.id, project);

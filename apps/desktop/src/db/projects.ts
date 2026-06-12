@@ -8,6 +8,7 @@ export async function createProject(
     description?: string;
     color?: string;
     deadline?: Date;
+    mainGoalId?: string;
   }
 ): Promise<Project> {
   const now = new Date();
@@ -20,6 +21,7 @@ export async function createProject(
     createdAt: now,
     updatedAt: now,
     deadline: options?.deadline,
+    mainGoalId: options?.mainGoalId,
   };
   await db.projects.add(project);
   onLocalChange('projects', 'create', project.id).catch(() => {});
@@ -44,6 +46,7 @@ export async function updateProject(
   if (updates.color !== undefined) body.color = updates.color;
   if (updates.status !== undefined) body.status = updates.status;
   if (updates.deadline !== undefined) body.deadline = updates.deadline;
+  if (updates.mainGoalId !== undefined) body.mainGoalId = updates.mainGoalId;
   await db.projects.update(id, body);
   onLocalChange('projects', 'update', id).catch(() => {});
 }

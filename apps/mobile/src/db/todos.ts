@@ -15,7 +15,7 @@ export async function createTodo(
     tags?: string[];
     repeatRule?: RepeatRule;
     order?: number;
-    nodeType?: 'goal' | 'todo';
+    nodeType?: 'goal' | 'task';
     status?: TodoStatus;
   }
 ): Promise<Todo> {
@@ -36,7 +36,7 @@ export async function createTodo(
     scheduledDate: options?.scheduledDate,
     repeatRule: options?.repeatRule,
     order: options?.order ?? 0,
-    nodeType: options?.nodeType ?? 'todo',
+    nodeType: options?.nodeType ?? 'task',
     pattern: 'task',
   };
   await db.todos.add(todo);
@@ -61,7 +61,6 @@ export async function getTodaysTodos(): Promise<Todo[]> {
   return db.todos
     .where('scheduledDate')
     .between(today, tomorrow, true, false)
-    .and((t) => t.status !== 'done')
     .toArray();
 }
 

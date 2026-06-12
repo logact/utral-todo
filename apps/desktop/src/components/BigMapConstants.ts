@@ -1,37 +1,79 @@
-import { Lightbulb, Wrench, ArrowRight } from 'lucide-react';
-import type { ActionEdgeType } from '../types';
+import { ArrowRight, GitBranch, Target, ListOrdered } from 'lucide-react';
+import type { ActionEdgeTypeAll, TodoRelationType } from '../types';
 
-export const NODE_W = 176;
-export const NODE_H = 48;
-export const GOAL_W = 200;
-export const GOAL_H = 52;
-export const LEVEL_H = 110;
+export const NODE_W = 64;
+export const NODE_H = 28;
+export const GOAL_W = 80;
+export const GOAL_H = 32;
+export const LEVEL_H = 80;
 export const NODE_GAP = 24;
 export const TOP_PAD = 36;
 export const MIN_SVG_W = 600;
 
-export const EDGE_COLORS: Record<ActionEdgeType, string> = {
-  insight: '#f59e0b',
-  try: '#3b82f6',
+// Circle node rendering sizes
+export const NODE_CIRCLE_SIZE = 20;
+export const GOAL_CIRCLE_SIZE = 24;
+
+export const EDGE_COLORS: Record<ActionEdgeTypeAll, string> = {
   pre_do: '#8b5cf6',
+  parent_child: '#64748b',
+  to_achieve: '#f59e0b',
+  // Legacy
+  insight: '#94a3b8',
+  try: '#94a3b8',
 };
 
-export const EDGE_LABELS: Record<ActionEdgeType, string> = {
-  insight: 'Insight',
-  try: 'Try',
-  pre_do: 'Pre-do',
+export const EDGE_LABELS: Record<ActionEdgeTypeAll, string> = {
+  pre_do: 'predo',
+  parent_child: 'parent-children',
+  to_achieve: 'to achieve',
+  // Legacy
+  insight: 'Legacy',
+  try: 'Legacy',
 };
 
 export const EDGE_ICONS = {
-  insight: Lightbulb,
-  try: Wrench,
   pre_do: ArrowRight,
+  parent_child: GitBranch,
+  to_achieve: Target,
+  // Legacy
+  insight: ListOrdered,
+  try: ListOrdered,
 };
 
-export const EDGE_DASH = {
-  insight: 'none',
-  try: '5,4',
+export const EDGE_DASH: Record<ActionEdgeTypeAll, string> = {
   pre_do: '8,4',
+  parent_child: '5,4',
+  to_achieve: 'none',
+  // Legacy
+  insight: '8,4',
+  try: '8,4',
+};
+
+export type RoadRelationType = Extract<TodoRelationType, 'parent_of' | 'achieves' | 'ordered_before'>;
+
+export const ROAD_EDGE_COLORS: Record<RoadRelationType, string> = {
+  parent_of: '#94a3b8',
+  achieves: '#6366f1',
+  ordered_before: '#10b981',
+};
+
+export const ROAD_EDGE_LABELS: Record<RoadRelationType, string> = {
+  parent_of: 'Parent',
+  achieves: 'Achieves',
+  ordered_before: 'Order',
+};
+
+export const ROAD_EDGE_ICONS = {
+  parent_of: GitBranch,
+  achieves: Target,
+  ordered_before: ListOrdered,
+};
+
+export const ROAD_EDGE_DASH: Record<RoadRelationType, string | undefined> = {
+  parent_of: '5,3',
+  achieves: undefined,
+  ordered_before: '8,4',
 };
 
 export const COMPONENT_PAD_X = 80;

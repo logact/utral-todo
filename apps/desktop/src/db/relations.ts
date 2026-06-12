@@ -44,6 +44,124 @@ export async function getRelationsForTodo(todoId: string): Promise<{
   };
 }
 
+export async function getRoadToGoalRelations(): Promise<TodoRelation[]> {
+  const all = await db.relations.toArray();
+  return all.filter((r) =>
+    ['parent_of', 'source_from', 'achieves', 'ordered_before'].includes(r.type)
+  );
+}
+
+export async function getRoadRelationsForTodo(todoId: string): Promise<TodoRelation[]> {
+  const all = await db.relations.toArray();
+  return all.filter(
+    (r) =>
+      ['parent_of', 'source_from', 'achieves', 'ordered_before'].includes(r.type) &&
+      (r.fromTodoId === todoId || r.toTodoId === todoId)
+  );
+}
+
+export async function getChildGoals(goalId: string): Promise<Todo[]> {
+  const relations = await db.relations
+    .where('fromTodoId')
+    .equals(goalId)
+    .and((r) => r.type === 'parent_of' || r.type === 'source_from')
+    .toArray();
+  const result: Todo[] = [];
+  for (const rel of relations) {
+    const todo = await db.todos.get(rel.toTodoId);
+    if (todo && todo.nodeType === 'goal') result.push(todo);
+  }
+  return result;
+}
+
+export async function getParentGoal(goalId: string): Promise<Todo | undefined> {
+  const relations = await db.relations
+    .where('toTodoId')
+    .equals(goalId)
+    .and((r) => r.type === 'parent_of' || r.type === 'source_from')
+    .toArray();
+  if (relations.length === 0) return undefined;
+  return db.todos.get(relations[0].fromTodoId);
+}
+
+export async function getPreAchieveGoals(goalId: string): Promise<Todo[]> {
+  const relations = await db.relations
+    .where('toTodoId')
+    .equals(goalId)
+    .and((r) => r.type === 'ordered_before')
+    .toArray();
+  const result: Todo[] = [];
+  for (const rel of relations) {
+    const todo = await db.todos.get(rel.fromTodoId);
+    if (todo && todo.nodeType === 'goal') result.push(todo);
+  }
+  return result;
+}
+
+export async function getTasksForGoal(goalId: string): Promise<Todo[]> {
+  const relations = await db.relations
+    .where('toTodoId')
+    .equals(goalId)
+    .and((r) => r.type === 'achieves')
+    .toArray();
+  const result: Todo[] = [];
+  for (const rel of relations) {
+    const todo = await db.todos.get(rel.fromTodoId);
+    if (todo && todo.nodeType === 'task') result.push(todo);
+  }
+  return result;
+}
+
+export async function getGoalsForTask(taskId: string): Promise<Todo[]> {
+  const relations = await db.relations
+    .where('fromTodoId')
+    .equals(taskId)
+    .and((r) => r.type === 'achieves')
+    .toArray();
+  const result: Todo[] = [];
+  for (const rel of relations) {
+    const todo = await db.todos.get(rel.toTodoId);
+    if (todo && todo.nodeType === 'goal') result.push(todo);
+  }
+  return result;
+}
+
+export async function getOrderedSuccessors(todoId: string): Promise<Todo[]> {
+  const relations = await db.relations
+    .where('fromTodoId')
+    .equals(todoId)
+    .and((r) => r.type === 'ordered_before')
+    .toArray();
+  const result: Todo[] = [];
+  for (const rel of relations) {
+    const todo = await db.todos.get(rel.toTodoId);
+    if (todo) result.push(todo);
+  }
+  return result;
+}
+
+export async function getOrderedPredecessors(todoId: string): Promise<Todo[]> {
+  const relations = await db.relations
+    .where('toTodoId')
+    .equals(todoId)
+    .and((r) => r.type === 'ordered_before')
+    .toArray();
+  const result: Todo[] = [];
+  for (const rel of relations) {
+    const todo = await db.todos.get(rel.fromTodoId);
+    if (todo) result.push(todo);
+  }
+  return result;
+}
+
+export async function updateRelation(
+  id: string,
+  updates: Partial<Pick<TodoRelation, 'type'>>
+): Promise<void> {
+  await db.relations.update(id, { ...updates, updatedAt: new Date() });
+  onLocalChange('relations', 'update', id).catch(() => {});
+}
+
 export async function deleteRelation(id: string): Promise<void> {
   await db.relations.delete(id);
   onLocalChange('relations', 'delete', id).catch(() => {});
@@ -57,6 +175,7 @@ export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void
   }
 }
 
+// Walks backward through parent_of / source_for goals, then through achieves task->goal.
 export async function traceSourceChain(todoId: string): Promise<Todo[]> {
   const chain: Todo[] = [];
   const visited = new Set<string>();
@@ -66,14 +185,25 @@ export async function traceSourceChain(todoId: string): Promise<Todo[]> {
     visited.add(currentId);
     const todo = await db.todos.get(currentId);
     if (!todo) break;
-
-    const relations = await db.relations.where('toTodoId').equals(currentId).and((r) => r.type === 'source_from').toArray();
-    if (relations.length === 0) {
-      chain.unshift(todo);
-      break;
-    }
     chain.unshift(todo);
-    currentId = relations[0].fromTodoId;
+
+    if (todo.nodeType === 'goal') {
+      const relations = await db.relations
+        .where('toTodoId')
+        .equals(currentId)
+        .and((r) => r.type === 'source_from' || r.type === 'parent_of')
+        .toArray();
+      if (relations.length === 0) break;
+      currentId = relations[0].fromTodoId;
+    } else {
+      const relations = await db.relations
+        .where('toTodoId')
+        .equals(currentId)
+        .and((r) => r.type === 'achieves')
+        .toArray();
+      if (relations.length === 0) break;
+      currentId = relations[0].fromTodoId;
+    }
   }
 
   return chain;

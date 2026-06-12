@@ -1,0 +1,15 @@
+{
+  "createdAt": "2026-06-12T02:45:40.748Z",
+  "updatedAt": "2026-06-12T02:57:20.293Z",
+  "title": "❯ let refactor the `road to goal` 1.the node has - goal(what we want) - task(the actionable task to achieve the task) 2.the relateion has - goal-goal:parent->child - task-goal:task to achive - goal-go",
+  "isCustomTitle": false,
+  "agents": {
+    "main": {
+      "homedir": "/Users/logact/.kimi-code/sessions/wd_utral-todo_d05ecdfebe76/session_52cf453e-e742-4961-9780-cbc21cdf7e9a/agents/main",
+      "type": "main",
+      "parentAgentId": null
+    }
+  },
+  "custom": {},
+  "lastPrompt": "❯ let refactor the `road to goal` 1.the node has - goal(what we want) - task(the actionable task to achieve the task) 2.the relateion has - goal-goal:parent->child - task-goal:task to achive - goal-goal:achieve by order - task-task:achieve by order"
+}

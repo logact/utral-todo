@@ -687,7 +687,7 @@ async function listActionEdges() {
 async function createActionEdge(args: Record<string, string | boolean>) {
   const fromTodoId = String(args.fromTodoId ?? '');
   const toTodoId = String(args.toTodoId ?? '');
-  const type = String(args.type ?? 'insight');
+  const type = String(args.type ?? 'pre_do');
   if (!fromTodoId || !toTodoId) return fail('fromTodoId and toTodoId are required');
   if (fromTodoId === toTodoId) return fail('Cannot create an edge from a todo to itself');
 
@@ -1150,7 +1150,7 @@ Entities & Actions:
 
   action-edges
     list
-    create --fromTodoId=... --toTodoId=... --type=insight|try|pre_do
+    create --fromTodoId=... --toTodoId=... --type=pre_do|parent_child|to_achieve
     delete <id>
     for-todo <todoId>
 

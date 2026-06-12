@@ -1,12 +1,14 @@
 # Utral Todo — pnpm Monorepo
 
-This repo contains four apps and a shared types package:
+This repo contains five apps and a shared types package:
 
 ```
 ├── apps/
+│   ├── cli/        # Commander-based REST API CLI
 │   ├── desktop/    # Tauri + Vite + React + Dexie
 │   ├── ios/        # SwiftUI iOS app
 │   ├── iwatch/     # SwiftUI watchOS companion
+│   ├── mobile/     # Mobile web / React app
 │   └── server/     # Express + Prisma + SQLite
 └── packages/
     └── types/      # Shared TypeScript interfaces
@@ -35,11 +37,14 @@ pnpm dev:all
 
 | Script | Purpose |
 |--------|---------|
+| `pnpm cli` | Run the CLI against the local server |
+| `pnpm dev:cli` | CLI dev mode with TypeScript watch |
 | `pnpm dev:desktop` | Desktop UI only (Vite) |
 | `pnpm dev:server` | API server only with auto-reload |
 | `pnpm dev:all` | Server + UI concurrently |
 | `pnpm tauri:dev` | Desktop UI inside Tauri window |
 | `pnpm tauri:build` | Build Tauri desktop installer |
+| `pnpm build:cli` | Build CLI to `apps/cli/dist/` |
 | `pnpm build:desktop` | Build desktop UI to `apps/desktop/dist/` |
 | `pnpm build:server` | Compile server to `apps/server/dist/` |
 | `pnpm db:generate` | Generate Prisma client |

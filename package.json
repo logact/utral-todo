@@ -8,6 +8,7 @@
     "dev:desktop": "pnpm --filter desktop dev",
     "dev:mobile": "pnpm --filter mobile dev",
     "dev:server": "pnpm --filter server dev",
+    "dev:cli": "pnpm --filter cli dev",
     "dev:all": "concurrently \"pnpm dev:server\" \"pnpm dev:desktop\" --names server,vite --prefix-colors cyan,green",
     "dev:ios": "concurrently \"pnpm dev:server\" \"pnpm dev:mobile\" --names server,mobile --prefix-colors cyan,green",
     "tauri:dev": "pnpm --filter desktop tauri:dev",
@@ -15,6 +16,7 @@
     "build": "pnpm -r build",
     "build:desktop": "pnpm --filter desktop build",
     "build:server": "pnpm --filter server build",
+    "build:cli": "pnpm --filter cli build",
     "db:generate": "pnpm --filter server db:generate",
     "db:migrate": "pnpm --filter server db:migrate",
     "db:push": "pnpm --filter server db:push",
@@ -22,7 +24,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r exec rm -rf dist node_modules/.cache",
-    "cli": "node packages/cli/dist/index.js"
+    "cli": "node apps/cli/dist/index.js"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",

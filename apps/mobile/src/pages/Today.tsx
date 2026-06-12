@@ -851,9 +851,11 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
               Current Focus
             </span>
           </div>
-          <p className="text-[15px] font-medium text-slate-900 dark:text-slate-100">
-            {currentTodo.title}
-          </p>
+          <Link to={`/todo/${currentTodo.id}`}>
+            <p className="text-[15px] font-medium text-slate-900 dark:text-slate-100">
+              {currentTodo.title}
+            </p>
+          </Link>
           <div className="flex items-center gap-2">
             <button
               onClick={() => toggleStatus(currentTodo)}

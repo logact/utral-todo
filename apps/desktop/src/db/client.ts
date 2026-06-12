@@ -1,4 +1,4 @@
-import type { Todo, TodoRelation, TodoLog, RepeatRule, Project, ActionEdge, Pluse, TimerSession, Roadmap } from '../types';
+import type { Todo, TodoRelation, TodoLog, RepeatRule, Project, ActionEdge, Pluse, TimerSession, Roadmap, Plan } from '../types';
 
 export function parseDate(value: unknown): Date | undefined {
   if (value === null || value === undefined) return undefined;
@@ -26,6 +26,7 @@ export function parseTodo(data: unknown): Todo {
     nodeType: nodeType as Todo['nodeType'],
     projectId: t.projectId as string | undefined,
     parentId: t.parentId as string | undefined,
+    activePlanId: t.activePlanId as string | undefined,
     title: t.title as string,
     description: t.description as string,
     status: (t.status as Todo['status']) ?? 'pending',
@@ -165,6 +166,18 @@ export function parseRoadmap(data: unknown): Roadmap {
     phases,
     createdAt: parseDate(r.createdAt)!,
     updatedAt: parseDate(r.updatedAt) ?? parseDate(r.createdAt)!,
+  };
+}
+
+export function parsePlan(data: unknown): Plan {
+  const p = data as Record<string, unknown>;
+  return {
+    id: p.id as string,
+    goalTodoId: p.goalTodoId as string,
+    title: (p.title as string) || 'Untitled Plan',
+    todoIds: (p.todoIds as string[]) ?? [],
+    createdAt: parseDate(p.createdAt)!,
+    updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
   };
 }
 

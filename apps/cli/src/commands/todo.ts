@@ -89,7 +89,7 @@ export function registerTodoCommand(program: Command) {
     .option("--scheduled <date>", "scheduled date (ISO)")
     .option("--scheduled-end <date>", "scheduled end date (ISO)")
     .option("--repeat-rule <rule>", "repeat rule JSON")
-    .option("--node-type <type>", "node type (goal/todo)", "todo")
+    .option("--node-type <type>", "node type (goal/task)", "task")
     .action(async (opts) => {
       const body: Record<string, unknown> = {
         title: opts.title,
@@ -103,7 +103,7 @@ export function registerTodoCommand(program: Command) {
         scheduledDate: opts.scheduled ?? null,
         scheduledEndDate: opts.scheduledEnd ?? null,
         repeatRule: opts.repeatRule ? JSON.parse(opts.repeatRule) : null,
-        nodeType: opts.nodeType === 'goal' ? 'goal' : 'todo',
+        nodeType: opts.nodeType === 'goal' ? 'goal' : 'task',
       };
       const res = await api.post<Todo>("/api/todos", body);
       const data = handleResponse(res);
@@ -124,7 +124,7 @@ export function registerTodoCommand(program: Command) {
     .option("--due <date>", "new due date")
     .option("--scheduled <date>", "new scheduled date")
     .option("--scheduled-end <date>", "new scheduled end date")
-    .option("--node-type <type>", "node type (goal/todo)")
+    .option("--node-type <type>", "node type (goal/task)")
     .action(async (id: string, opts) => {
       const body: Record<string, unknown> = {};
       if (opts.title !== undefined) body.title = opts.title;

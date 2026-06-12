@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Kanban, GanttChart, List, FolderKanban, Plus, X, CheckSquare, Square, Search, CalendarRange } from 'lucide-react';
+import { ArrowLeft, Kanban, GanttChart, List, FolderKanban, Plus, X, CheckSquare, Square, Search, CalendarRange, Target } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useProject } from '../hooks/useProjects';
 import { ProjectKanban } from '../components/project/ProjectKanban';
 import { ProjectGantt } from '../components/project/ProjectGantt';
 import { ProjectListView } from '../components/project/ProjectListView';
-import { getAllTodos, bulkUpdateTodoProject } from '../db/todos';
+import { ProjectGoalTree } from '../components/project/ProjectGoalTree';
+import { getAllTodos, bulkUpdateTodoProject, getTodo } from '../db/todos';
 import type { Todo } from '../types';
 
-type ViewMode = 'kanban' | 'gantt' | 'list';
+type ViewMode = 'kanban' | 'gantt' | 'list' | 'goals';
 
 const views: { id: ViewMode; label: string; icon: typeof Kanban }[] = [
   { id: 'kanban', label: 'Kanban', icon: Kanban },
   { id: 'gantt', label: 'Gantt', icon: GanttChart },
   { id: 'list', label: 'List', icon: List },
+  { id: 'goals', label: 'Goals', icon: Target },
 ];
 
 function ImportTodosModal({
@@ -283,7 +285,19 @@ export function ProjectDetail() {
   const [scheduleStart, setScheduleStart] = useState('');
   const [scheduleEnd, setScheduleEnd] = useState('');
   const [taskSearch, setTaskSearch] = useState('');
-  const { project, todos, stats, isLoading, updateTodoStatusLocal, updateTodoLocal, refresh } = useProject(id);
+  const [mainGoalTitle, setMainGoalTitle] = useState<string>('');
+  const { project, todos, stats, isLoading, updateTodoStatusLocal, updateTodoLocal, refresh, updateProjectData } = useProject(id);
+
+  // Load main goal title when project changes
+  useEffect(() => {
+    if (project?.mainGoalId) {
+      getTodo(project.mainGoalId).then((goal) => {
+        setMainGoalTitle(goal?.title ?? '');
+      });
+    } else {
+      setMainGoalTitle('');
+    }
+  }, [project?.mainGoalId]);
 
   const filteredTodos = todos.filter((todo) => {
     const q = taskSearch.trim().toLowerCase();
@@ -352,6 +366,16 @@ export function ProjectDetail() {
               <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{project.title}</h1>
               {project.description && (
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{project.description}</p>
+              )}
+              {project.mainGoalId && mainGoalTitle && (
+                <button
+                  onClick={() => navigate(`/todo/${project.mainGoalId}`)}
+                  className="inline-flex items-center gap-1.5 mt-1.5 text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                >
+                  <Target className="w-3 h-3" />
+                  <span className="font-medium">Main Goal:</span>
+                  <span className="truncate max-w-[240px]">{mainGoalTitle}</span>
+                </button>
               )}
             </div>
           </div>
@@ -490,6 +514,23 @@ export function ProjectDetail() {
             projectColor={project.color}
             onUpdateStatus={updateTodoStatusLocal}
             onUpdateTodo={updateTodoLocal}
+          />
+        )}
+        {view === 'goals' && (
+          <ProjectGoalTree
+            projectId={project.id}
+            mainGoalId={project.mainGoalId}
+            projectColor={project.color}
+            goals={todos}
+            onSetMainGoal={(goalId) => {
+              updateProjectData({ mainGoalId: goalId });
+              if (goalId) {
+                getTodo(goalId).then((goal) => setMainGoalTitle(goal?.title ?? ''));
+              } else {
+                setMainGoalTitle('');
+              }
+            }}
+            onRefresh={refresh}
           />
         )}
       </div>

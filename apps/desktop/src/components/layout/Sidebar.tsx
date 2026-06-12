@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, CalendarCheck, CalendarDays, Settings, Network, Timer, ChevronLeft, ChevronRight, ChevronDown, ListTodo, FolderKanban, Zap, Cloud, Target, CheckSquare, Map as MapIcon } from 'lucide-react';
+import { Plus, CalendarCheck, CalendarDays, Settings, Network, Timer, ChevronLeft, ChevronRight, ChevronDown, ListTodo, FolderKanban, Zap, Cloud, Target, CheckSquare, Map as MapIcon, Flag } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const navItems = [
   { path: '/', icon: CalendarCheck, label: 'Today' },
   { path: '/todos', icon: ListTodo, label: 'Todos' },
+  { path: '/goals', icon: Flag, label: 'Goals' },
   { path: '/projects', icon: FolderKanban, label: 'Projects' },
   { path: '/schedule', icon: CalendarDays, label: 'Schedule' },
   { path: '/pluses', icon: Timer, label: 'Pluse' },

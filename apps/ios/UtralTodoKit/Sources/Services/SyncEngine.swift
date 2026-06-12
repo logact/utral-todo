@@ -548,7 +548,7 @@ public final class SyncEngine: ObservableObject {
                 id: recordId,
                 fromTodoId: (json["fromTodoId"] as? String) ?? "",
                 toTodoId: (json["toTodoId"] as? String) ?? "",
-                type: (json["type"] as? String) ?? "insight"
+                type: (json["type"] as? String) ?? "pre_do"
             )
             if let updatedAt = remoteUpdatedAt { edge.updatedAt = updatedAt }
             modelContext.insert(edge)

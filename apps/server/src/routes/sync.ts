@@ -120,10 +120,10 @@ router.post('/', async (req, res) => {
     relations: payload.relations?.length ?? 0,
     todoLogs: payload.todoLogs?.length ?? 0,
     actionEdges: payload.actionEdges?.length ?? 0,
-    roadmaps: payload.roadmaps?.length ?? 0,
     pluses: payload.pluses?.length ?? 0,
     timerSessions: payload.timerSessions?.length ?? 0,
     repeatOccurrences: payload.repeatOccurrences?.length ?? 0,
+    plans: payload.plans?.length ?? 0,
   });
 
   try {
@@ -179,6 +179,7 @@ router.post('/', async (req, res) => {
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
             deadline: toDate(item.deadline),
+            mainGoalId: (item.mainGoalId as string) || null,
           };
 
           const existing = await tx.project.findUnique({ where: { id } });
@@ -269,30 +270,6 @@ router.post('/', async (req, res) => {
         accepted.actionEdges = count;
       }
 
-      // Merge roadmaps
-      if (payload.roadmaps?.length) {
-        let count = 0;
-        for (const item of payload.roadmaps) {
-          const id = item.id as string;
-          const data = {
-            id,
-            goalTodoId: item.goalTodoId as string,
-            phases: JSON.stringify(item.phases ?? []),
-            createdAt: toDate(item.createdAt) ?? new Date(),
-            updatedAt: toDate(item.updatedAt) ?? new Date(),
-          };
-
-          const existing = await tx.roadmap.findUnique({ where: { id } });
-          if (existing) {
-            await tx.roadmap.update({ where: { id }, data });
-          } else {
-            await tx.roadmap.create({ data });
-          }
-          count++;
-        }
-        accepted.roadmaps = count;
-      }
-
       // Merge pluses
       if (payload.pluses?.length) {
         let count = 0;
@@ -379,6 +356,30 @@ router.post('/', async (req, res) => {
         }
         accepted.repeatOccurrences = count;
       }
+      // Merge plans
+      if (payload.plans?.length) {
+        let count = 0;
+        for (const item of payload.plans) {
+          const id = item.id as string;
+          const data = {
+            id,
+            goalTodoId: item.goalTodoId as string,
+            title: item.title as string,
+            todoIds: JSON.stringify(item.todoIds ?? []),
+            createdAt: toDate(item.createdAt) ?? new Date(),
+            updatedAt: toDate(item.updatedAt) ?? new Date(),
+          };
+
+          const existing = await tx.plan.findUnique({ where: { id } });
+          if (existing) {
+            await tx.plan.update({ where: { id }, data });
+          } else {
+            await tx.plan.create({ data });
+          }
+          count++;
+        }
+        accepted.plans = count;
+      }
     });
 
     console.log('[sync] Legacy push accepted:', accepted);
@@ -398,10 +399,10 @@ router.get('/', async (_req, res) => {
     const relations = await prisma.todoRelation.findMany();
     const todoLogs = await prisma.todoLog.findMany();
     const actionEdges = await prisma.actionEdge.findMany();
-    const roadmaps = await prisma.roadmap.findMany();
     const pluses = await prisma.pluse.findMany();
     const timerSessions = await prisma.timerSession.findMany();
     const repeatOccurrences = await prisma.repeatOccurrence.findMany();
+    const plans = await prisma.plan.findMany();
 
     res.json({
       todos: todos.map((t) => ({
@@ -416,10 +417,6 @@ router.get('/', async (_req, res) => {
         metadata: typeof l.metadata === 'string' ? JSON.parse(l.metadata) : l.metadata,
       })),
       actionEdges,
-      roadmaps: roadmaps.map((r) => ({
-        ...r,
-        phases: typeof r.phases === 'string' ? JSON.parse(r.phases) : r.phases,
-      })),
       pluses: pluses.map((p) => ({
         ...p,
         intervals: typeof p.intervals === 'string' ? JSON.parse(p.intervals) : p.intervals,
@@ -429,6 +426,10 @@ router.get('/', async (_req, res) => {
         intervals: typeof s.intervals === 'string' ? JSON.parse(s.intervals) : s.intervals,
       })),
       repeatOccurrences,
+      plans: plans.map((p) => ({
+        ...p,
+        todoIds: typeof p.todoIds === 'string' ? JSON.parse(p.todoIds) : p.todoIds,
+      })),
     });
   } catch (err) {
     console.error('Sync pull error:', err);

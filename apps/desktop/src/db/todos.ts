@@ -1,5 +1,6 @@
 import { db } from './database';
 import { onLocalChange } from './syncEngine';
+import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
 import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern } from '../types';
 
@@ -73,10 +74,15 @@ export async function createGoal(
     goalStatus?: GoalStatus;
   }
 ): Promise<Todo> {
-  return createTodo(title, {
+  const goal = await createTodo(title, {
     nodeType: 'goal',
     ...options,
   });
+
+  const plan = await createPlan(goal.id, 'Default Plan');
+  await updateTodo(goal.id, { activePlanId: plan.id });
+
+  return { ...goal, activePlanId: plan.id };
 }
 
 export async function createTask(
@@ -215,6 +221,25 @@ export async function bulkUpdateTodoProject(
 }
 
 export async function deleteTodo(id: string): Promise<void> {
+  const todo = await db.todos.get(id);
+
+  if (todo?.nodeType === 'goal') {
+    const goalPlans = await db.plans.where('goalTodoId').equals(id).toArray();
+    for (const plan of goalPlans) {
+      await db.plans.delete(plan.id);
+      onLocalChange('plans', 'delete', plan.id).catch(() => {});
+    }
+  } else {
+    const plans = await db.plans.toArray();
+    for (const plan of plans) {
+      if (plan.todoIds.includes(id)) {
+        const newTodoIds = plan.todoIds.filter((tid) => tid !== id);
+        await db.plans.update(plan.id, { todoIds: newTodoIds, updatedAt: new Date() });
+        onLocalChange('plans', 'update', plan.id).catch(() => {});
+      }
+    }
+  }
+
   await db.todos.delete(id);
   onLocalChange('todos', 'delete', id).catch(() => {});
 }
@@ -342,7 +367,7 @@ export async function getTodaysTodos(): Promise<Todo[]> {
   const realTodos = await db.todos
     .where('scheduledDate')
     .between(today, tomorrow)
-    .and((t) => t.status !== 'done' && t.nodeType === 'task')
+    .and((t) => t.nodeType === 'task')
     .toArray();
 
   const virtualTodos = await getVirtualTodosForDate(today);

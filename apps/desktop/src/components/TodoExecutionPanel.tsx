@@ -8,44 +8,28 @@ import {
   CornerDownRight,
   X,
   Repeat,
-  NotebookPen,
-  ChevronDown,
-  ChevronRight,
   Target,
   ArrowRight,
 } from 'lucide-react';
-import { getTodo, updateTodoStatus, getSubTodos, getSubGoals, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
-import { traceSourceChain, getSpawnedTodos, getTemplateForInstance } from '../db/relations';
+import { getTodo, updateTodo, updateTodoStatus, getSubGoals, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
+import {
+  traceSourceChain,
+  getSpawnedTodos,
+  getTemplateForInstance,
+  createRelation,
+  updateRelation,
+  deleteRelation,
+} from '../db/relations';
 import { useTodoLogs } from '../hooks/useTodoLogs';
 import {
   getAllActionEdgesForTodo,
   createActionEdge,
-  deleteActionEdge,
 } from '../db/actionEdges';
-import { formatDuration, formatTime, formatDateShort } from '../utils/date';
-import { BranchView } from './BranchView';
-import { JourneyPath } from './JourneyPath';
+import { formatDuration, formatDateShort } from '../utils/date';
+import { RoadToGoalGraph } from './RoadToGoalGraph';
 import { GoalPath } from './GoalPath';
 import { UnifiedLogSection } from './UnifiedLogSection';
-import type { Todo, RepeatRule, ActionEdge, ActionEdgeType, TodoStatus } from '../types';
-
-function findUltimateGoalId(startId: string, edges: ActionEdge[]): string {
-  const outgoingMap = new Map<string, string[]>();
-  for (const e of edges) {
-    if (!outgoingMap.has(e.fromTodoId)) outgoingMap.set(e.fromTodoId, []);
-    outgoingMap.get(e.fromTodoId)!.push(e.toTodoId);
-  }
-  let current = startId;
-  const visited = new Set<string>();
-  while (visited.size < edges.length + 1) {
-    if (visited.has(current)) break;
-    visited.add(current);
-    const parents = outgoingMap.get(current);
-    if (!parents || parents.length === 0) break;
-    current = parents[0];
-  }
-  return current;
-}
+import type { Todo, RepeatRule, ActionEdge, TodoStatus, TodoRelationType } from '../types';
 
 export function TodoExecutionPanel({
   todoId,
@@ -65,9 +49,7 @@ export function TodoExecutionPanel({
   onNodeClick?: (todoId: string) => void;
 }) {
   const [todo, setTodo] = useState<Todo | null>(null);
-  const [subTodos, setSubTodos] = useState<Todo[]>([]);
   const [subGoals, setSubGoals] = useState<Todo[]>([]);
-  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const [isLoadingTodo, setIsLoadingTodo] = useState(true);
 
   const [sourceChain, setSourceChain] = useState<Todo[]>([]);
@@ -93,10 +75,8 @@ export function TodoExecutionPanel({
     const t = await getTodo(todoId);
     if (t) {
       setTodo(t);
-      const subs = await getSubTodos(t.id);
       const goals = await getSubGoals(t.id);
       setSubGoals(goals);
-      setSubTodos(subs.filter((s) => s.nodeType !== 'goal'));
 
       const [chain, spawned, tmpl] = await Promise.all([
         traceSourceChain(t.id),
@@ -110,7 +90,9 @@ export function TodoExecutionPanel({
       const edges = await getAllActionEdgesForTodo(t.id);
       setActionEdges(edges);
 
-      const goalId = findUltimateGoalId(t.id, edges);
+      // Find the ultimate goal via the road-to-goal chain (achieves / parent_of).
+      const root = chain.find((x) => x.nodeType === 'goal');
+      const goalId = root?.id ?? t.id;
       if (goalId !== t.id) {
         const g = await getTodo(goalId);
         setGoalTodo(g ?? t);
@@ -118,7 +100,7 @@ export function TodoExecutionPanel({
         setGoalTodo(t);
       }
 
-      // Load graph nodes
+      // Load graph nodes (cognitive network via action edges)
       await loadGraphNodes(edges, goalId);
     }
     setIsLoadingTodo(false);
@@ -189,44 +171,12 @@ export function TodoExecutionPanel({
     });
   }
 
-  async function toggleSubTodo(subId: string, currentStatus: string) {
-    const newStatus = currentStatus === 'done' ? 'pending' : 'done';
-    await updateTodoStatus(subId, newStatus as 'pending' | 'done');
-    const sub = subTodos.find((s) => s.id === subId);
-    setSubTodos((prev) =>
-      prev.map((s) =>
-        s.id === subId
-          ? { ...s, status: newStatus as 'pending' | 'done', completedAt: newStatus === 'done' ? new Date() : undefined }
-          : s
-      )
-    );
-    if (newStatus === 'done' && sub) {
-      await addLog('step_complete', `Completed step: ${sub.title}`, {
-        metadata: { stepId: subId, stepTitle: sub.title },
-      });
-    }
-  }
-
   async function handleAddLog(
     type: 'progress' | 'thought' | 'blocker' | 'decision',
     content: string,
     minutesSpent?: number
   ) {
     await addLog(type, content, minutesSpent ? { minutesSpent } : undefined);
-  }
-
-  async function handleCreateEdge(fromTodoId: string, toTodoId: string, type: ActionEdgeType) {
-    await createActionEdge(fromTodoId, toTodoId, type);
-    const edges = await getAllActionEdgesForTodo(todoId);
-    setActionEdges(edges);
-    await loadGraphNodes(edges);
-  }
-
-  async function handleDeleteEdge(edgeId: string) {
-    await deleteActionEdge(edgeId);
-    const newEdges = actionEdges.filter((e) => e.id !== edgeId);
-    setActionEdges(newEdges);
-    await loadGraphNodes(newEdges);
   }
 
   async function handleUpdateRepeat() {
@@ -281,7 +231,7 @@ export function TodoExecutionPanel({
   async function handleCreateNode(title: string) {
     if (!goalTodo) return;
     const newTodo = await createTodo(title);
-    await createActionEdge(newTodo.id, goalTodo.id, 'pre_do');
+    await createActionEdge(goalTodo.id, newTodo.id, 'to_achieve');
     const edges = await getAllActionEdgesForTodo(todoId);
     setActionEdges(edges);
     await loadGraphNodes(edges);
@@ -298,6 +248,32 @@ export function TodoExecutionPanel({
     await addLog('system', 'Removed node from road', {
       metadata: { action: 'node_delete', nodeId },
     });
+  }
+
+  async function handleCreateRelation(fromTodoId: string, toTodoId: string, type: TodoRelationType) {
+    await createRelation(fromTodoId, toTodoId, type);
+  }
+
+  async function handleDeleteRelation(relationId: string) {
+    await deleteRelation(relationId);
+  }
+
+  async function handleUpdateRelation(relationId: string, type: TodoRelationType) {
+    await updateRelation(relationId, { type });
+  }
+
+  async function handleUpdateTodoGraph(updatedTodoId: string, updates: Partial<Todo>) {
+    await updateTodo(updatedTodoId, updates);
+    if (updatedTodoId === todoId) {
+      setTodo((prev) => (prev ? { ...prev, ...updates } : prev));
+    }
+  }
+
+  async function handleDeleteTodoGraph(deletedTodoId: string) {
+    await deleteTodo(deletedTodoId);
+    if (deletedTodoId === todoId) {
+      onNavigate?.('/');
+    }
   }
 
   function formatRepeatRule(rule: RepeatRule): string {
@@ -325,7 +301,6 @@ export function TodoExecutionPanel({
   }
 
   const isDone = todo.status === 'done';
-  const doneSubCount = subTodos.filter((s) => s.status === 'done').length;
   const breadcrumbChain = sourceChain.filter((t) => t.id !== todo.id);
 
   return (
@@ -487,32 +462,23 @@ export function TodoExecutionPanel({
       )}
 
       {/* Road to Goal */}
-      {goalTodo && (goalTodo.nodeType === 'goal' || actionEdges.length > 0) && (
-        <JourneyPath
-          goalTodo={goalTodo}
+      {todo && (
+        <RoadToGoalGraph
+          scope="neighborhood"
+          focusTodoId={goalTodo?.id ?? todo.id}
           highlightTodoId={todo.id}
-          edges={actionEdges}
-          onCreateEdge={handleCreateEdge}
-          onDeleteEdge={handleDeleteEdge}
+          layersAround={3}
+          mode="card"
+          title="Road to Goal"
+          editing
           onNodeClick={onNodeClick}
-          onEdgesChange={async () => {
-            const edges = await getAllActionEdgesForTodo(todoId);
-            setActionEdges(edges);
-            await loadGraphNodes(edges);
-            const goalId = findUltimateGoalId(todoId, edges);
-            if (goalId !== todoId) {
-              const g = await getTodo(goalId);
-              if (g) setGoalTodo(g);
-            } else {
-              const t = await getTodo(todoId);
-              if (t) setGoalTodo(t);
-            }
-          }}
+          onCreateRelation={handleCreateRelation}
+          onDeleteRelation={handleDeleteRelation}
+          onUpdateRelation={handleUpdateRelation}
+          onUpdateTodo={handleUpdateTodoGraph}
+          onDeleteTodo={handleDeleteTodoGraph}
         />
       )}
-
-      {/* Goal Tree */}
-      <BranchView currentTodoId={todo.id} />
 
       {/* Road to Goal - Timeline */}
       {sourceChain.length > 1 && (
@@ -679,91 +645,6 @@ export function TodoExecutionPanel({
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Plan */}
-      {subTodos.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <NotebookPen className="w-4 h-4 text-teal-500" />
-              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                Plan
-              </h2>
-            </div>
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              {doneSubCount} of {subTodos.length} done
-            </span>
-          </div>
-          <div className="space-y-2">
-            {subTodos.map((sub) => {
-              const subDone = sub.status === 'done';
-              return (
-                <div
-                  key={sub.id}
-                  className={`flex flex-col p-3 rounded-lg border transition-all ${
-                    subDone
-                      ? 'bg-slate-50 dark:bg-slate-800/50 border-transparent opacity-60'
-                      : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'
-                  } ${!subDone && sub.nodeType === 'goal' ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''}`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      onClick={() => toggleSubTodo(sub.id, sub.status ?? 'pending')}
-                      className="shrink-0"
-                    >
-                      {subDone ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 hover:text-indigo-400 transition-colors" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setExpandedStepId(expandedStepId === sub.id ? null : sub.id)}
-                      className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                    >
-                      {expandedStepId === sub.id ? (
-                        <ChevronDown className="w-4 h-4" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4" />
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <span
-                        className={`text-sm ${
-                          subDone
-                            ? 'text-slate-400 dark:text-slate-500 line-through'
-                            : 'text-slate-800 dark:text-slate-200'
-                        }`}
-                      >
-                        {sub.title}
-                      </span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {sub.nodeType === 'goal' && (
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">
-                            Goal
-                          </span>
-                        )}
-                        {sub.scheduledDate && (
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            {formatTime(sub.scheduledDate)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {expandedStepId === sub.id && sub.description && (
-                    <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-                      <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                        {sub.description}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
 

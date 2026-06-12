@@ -51,6 +51,16 @@ export function useBigMapViewport() {
     []
   );
 
+  const centerOn = useCallback(
+    (nodeX: number, nodeY: number, containerWidth: number, containerHeight: number, scale?: number) => {
+      const s = scale ?? viewportRef.current.scale;
+      const offsetX = containerWidth / 2 - nodeX * s;
+      const offsetY = containerHeight / 2 - nodeY * s;
+      setViewport({ scale: s, offsetX, offsetY });
+    },
+    []
+  );
+
   const reset = useCallback(() => {
     setViewport({ scale: 1, offsetX: 0, offsetY: 0 });
   }, []);
@@ -105,6 +115,7 @@ export function useBigMapViewport() {
     zoomIn,
     zoomOut,
     zoomToFit,
+    centerOn,
     reset,
     handleWheel,
     handleMouseDown,

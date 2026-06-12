@@ -1,7 +1,7 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import { db } from './database';
-import { parseTodo, parseRelation, parseLog, parseProject, parseActionEdge, parsePluse, parseTimerSession, parseRoadmap } from './client';
-import type { Todo, Project, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, Roadmap } from '../types';
+import { parseTodo, parseRelation, parseLog, parseProject, parseActionEdge, parsePluse, parseTimerSession, parseRoadmap, parsePlan } from './client';
+import type { Todo, Project, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, Roadmap, Plan } from '../types';
 
 export interface SyncConfig {
   serverUrl: string;
@@ -16,6 +16,7 @@ export interface SyncPayload {
   todoLogs: TodoLog[];
   actionEdges: ActionEdge[];
   roadmaps: Roadmap[];
+  plans: Plan[];
   pluses: Pluse[];
   timerSessions: TimerSession[];
 }
@@ -29,6 +30,7 @@ export interface SyncResult {
     todoLogs: number;
     actionEdges: number;
     roadmaps: number;
+    plans: number;
     pluses: number;
     timerSessions: number;
   };
@@ -39,6 +41,7 @@ export interface SyncResult {
     todoLogs: number;
     actionEdges: number;
     roadmaps: number;
+    plans: number;
     pluses: number;
     timerSessions: number;
   };
@@ -92,6 +95,7 @@ async function exportLocalData(): Promise<SyncPayload> {
     todoLogs: await db.todoLogs.toArray(),
     actionEdges: await db.actionEdges.toArray(),
     roadmaps: await db.roadmaps.toArray(),
+    plans: await db.plans.toArray(),
     pluses: await db.pluses.toArray(),
     timerSessions: await db.timerSessions.toArray(),
   };
@@ -105,8 +109,8 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
   console.log('[sync] starting legacy full sync to:', config.serverUrl);
   const result: SyncResult = {
     success: false,
-    pulled: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
-    pushed: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
+    pulled: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, plans: 0, pluses: 0, timerSessions: 0 },
+    pushed: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, plans: 0, pluses: 0, timerSessions: 0 },
   };
 
   try {
@@ -128,6 +132,7 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
         todoLogs: normalizeDates(localData.todoLogs),
         actionEdges: normalizeDates(localData.actionEdges),
         roadmaps: normalizeDates(localData.roadmaps),
+        plans: normalizeDates(localData.plans),
         pluses: normalizeDates(localData.pluses),
         timerSessions: normalizeDates(localData.timerSessions),
       }),
@@ -146,7 +151,7 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
     // 3. Merge remote data into local
     await db.transaction('rw', [
       db.todos, db.projects, db.relations, db.todoLogs,
-      db.actionEdges, db.roadmaps, db.pluses, db.timerSessions,
+      db.actionEdges, db.roadmaps, db.plans, db.pluses, db.timerSessions,
     ], async () => {
       // Merge strategy: remote overwrites local for same IDs
       // For todos: keep local-only items, overwrite with remote for matching IDs
@@ -226,6 +231,19 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           }
         }
         result.pulled.roadmaps = remoteData.roadmaps.length;
+      }
+
+      if (remoteData.plans?.length) {
+        for (const item of remoteData.plans) {
+          const plan = parsePlan(item);
+          const existing = await db.plans.get(plan.id);
+          if (existing) {
+            await db.plans.update(plan.id, { ...plan });
+          } else {
+            await db.plans.add(plan);
+          }
+        }
+        result.pulled.plans = remoteData.plans.length;
       }
 
       if (remoteData.pluses?.length) {

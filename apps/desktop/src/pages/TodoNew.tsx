@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, X, GitBranch, Repeat, Target, CheckSquare } from 'lucide-react';
-import { createTodo, getTodo, getAllTodos } from '../db/todos';
+import { createTodo, createGoal, getTodo, getAllTodos } from '../db/todos';
 import { createRelation } from '../db/relations';
 import { getAllProjects } from '../db/projects';
 import type { Todo, RepeatRule, Project, GoalStatus, TaskPattern } from '../types';
@@ -77,29 +77,31 @@ export function TodoNew() {
       }
     }
 
-    const todo = await createTodo(title.trim(), {
-      nodeType,
-      description: description.trim(),
-      parentId: parentId || undefined,
-      projectId: projectId || undefined,
-      tags,
-      ...(isGoal
-        ? {
-            motivation: motivation.trim() || undefined,
-            successCriteria: successCriteria.trim() || undefined,
-            targetDate: targetDate ? new Date(targetDate) : undefined,
-            goalStatus,
-          }
-        : {
-            priority,
-            pattern,
-            estimatedMinutes,
-            dueDate: dueDate ? new Date(dueDate) : undefined,
-            scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
-            scheduledEndDate: scheduledEndDate ? new Date(scheduledEndDate) : undefined,
-            repeatRule,
-          }),
-    });
+    const todo = isGoal
+      ? await createGoal(title.trim(), {
+          description: description.trim(),
+          parentId: parentId || undefined,
+          projectId: projectId || undefined,
+          tags,
+          motivation: motivation.trim() || undefined,
+          successCriteria: successCriteria.trim() || undefined,
+          targetDate: targetDate ? new Date(targetDate) : undefined,
+          goalStatus,
+        })
+      : await createTodo(title.trim(), {
+          nodeType,
+          description: description.trim(),
+          parentId: parentId || undefined,
+          projectId: projectId || undefined,
+          tags,
+          priority,
+          pattern,
+          estimatedMinutes,
+          dueDate: dueDate ? new Date(dueDate) : undefined,
+          scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+          scheduledEndDate: scheduledEndDate ? new Date(scheduledEndDate) : undefined,
+          repeatRule,
+        });
 
     if (sourceTodoId) {
       await createRelation(sourceTodoId, todo.id, 'source_from');

@@ -18,6 +18,8 @@ import { PluseList } from './pages/PluseList';
 import { PluseRun } from './pages/PluseRun';
 import { ProjectsList } from './pages/ProjectsList';
 import { ProjectDetail } from './pages/ProjectDetail';
+import { Goals } from './pages/Goals';
+import { GoalDetailPage } from './pages/GoalDetailPage';
 import { Roadmaps } from './pages/Roadmaps';
 import { RoadmapPage } from './pages/Roadmap';
 
@@ -167,6 +169,22 @@ export default function App() {
           element={
             <AppLayout>
               <ProjectDetail />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/goals"
+          element={
+            <AppLayout>
+              <Goals />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/goals/:id"
+          element={
+            <AppLayout>
+              <GoalDetailPage />
             </AppLayout>
           }
         />

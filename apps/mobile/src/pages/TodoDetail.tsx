@@ -206,7 +206,7 @@ export function TodoDetail() {
         >
           {todo.priority}
         </span>
-        {todo.estimatedMinutes > 0 && (
+        {(todo.estimatedMinutes ?? 0) > 0 && (
           <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
             {todo.estimatedMinutes} min
           </span>

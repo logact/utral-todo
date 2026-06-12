@@ -16,6 +16,7 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deadline    DateTime?
+  mainGoalId  String?
   todos       Todo[]
 }
 
@@ -46,6 +47,7 @@ model Todo {
   successCriteria  String?
   targetDate       DateTime?
   goalStatus       String?        // 'active' | 'paused' | 'achieved' | 'abandoned'
+  activePlanId     String?
 
   project          Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parent           Todo?          @relation("TodoChildren", fields: [parentId], references: [id], onDelete: Cascade)
@@ -108,11 +110,22 @@ model Roadmap {
   updatedAt  DateTime @updatedAt
 }
 
+model Plan {
+  id         String   @id @default(uuid())
+  goalTodoId String
+  title      String
+  todoIds    Json     // string[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([goalTodoId])
+}
+
 model ActionEdge {
   id         String   @id @default(uuid())
   fromTodoId String
   toTodoId   String
-  type       String   // 'insight' | 'try' | 'pre_do'
+  type       String   // 'pre_do' | 'parent_child' | 'to_achieve' (legacy: 'insight' | 'try')
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }

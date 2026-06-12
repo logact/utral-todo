@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, Project, TimerSession, RepeatOccurrence } from '../types';
+import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, Project, TimerSession, RepeatOccurrence, Roadmap, Plan } from '../types';
 
 export interface SyncQueueItem {
   id: string;
@@ -16,14 +16,13 @@ export interface SyncState {
   value: string;
 }
 
-import type { Roadmap } from '../types';
-
 const db = new Dexie('TodoScheduleDB') as Dexie & {
   todos: EntityTable<Todo, 'id'>;
   relations: EntityTable<TodoRelation, 'id'>;
   todoLogs: EntityTable<TodoLog, 'id'>;
   actionEdges: EntityTable<ActionEdge, 'id'>;
   roadmaps: EntityTable<Roadmap, 'id'>;
+  plans: EntityTable<Plan, 'id'>;
   pluses: EntityTable<Pluse, 'id'>;
   projects: EntityTable<Project, 'id'>;
   timerSessions: EntityTable<TimerSession, 'id'>;
@@ -495,12 +494,119 @@ db.version(32).stores({
   syncState: 'key',
 });
 
+db.version(33).stores({
+  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+});
+
+db.version(34).stores({
+  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, updatedAt',
+}).upgrade(async (tx) => {
+  const todos = await tx.table('todos').toArray();
+  const goals = todos.filter((t) => t.nodeType === 'goal');
+  for (const goal of goals) {
+    const planId = crypto.randomUUID();
+    const now = new Date();
+    await tx.table('plans').add({
+      id: planId,
+      goalTodoId: goal.id,
+      title: 'Default Plan',
+      todoIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await tx.table('todos').update(goal.id, { activePlanId: planId });
+  }
+});
+
+db.version(35).stores({
+  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, updatedAt',
+}).upgrade(async (tx) => {
+  const plans = await tx.table('plans').toArray();
+  for (const plan of plans) {
+    if (
+      plan.title === 'Default Plan' &&
+      Array.isArray(plan.todoIds) &&
+      plan.todoIds.length === 1 &&
+      plan.todoIds[0] === plan.goalTodoId
+    ) {
+      await tx.table('plans').update(plan.id, { todoIds: [], updatedAt: new Date() });
+    }
+  }
+});
+
+db.version(36).stores({
+  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, updatedAt',
+}).upgrade(async (tx) => {
+  const todos = await tx.table('todos').toArray();
+  const goals = todos.filter((t) => t.nodeType === 'goal');
+  for (const goal of goals) {
+    const existingPlans = await tx.table('plans').where('goalTodoId').equals(goal.id).toArray();
+    if (existingPlans.length > 0) continue;
+
+    const planId = crypto.randomUUID();
+    const now = new Date();
+    await tx.table('plans').add({
+      id: planId,
+      goalTodoId: goal.id,
+      title: 'Default Plan',
+      todoIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await tx.table('todos').update(goal.id, { activePlanId: planId });
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();
   await db.todoLogs.clear();
   await db.actionEdges.clear();
   await db.roadmaps.clear();
+  await db.plans.clear();
   await db.pluses.clear();
   await db.projects.clear();
   await db.timerSessions.clear();

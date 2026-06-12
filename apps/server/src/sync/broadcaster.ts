@@ -229,18 +229,18 @@ export async function applyChange(
       }
       break;
     }
-    case 'roadmap': {
+    case 'plan': {
       if (operation === 'delete') {
-        await prisma.roadmap.delete({ where: { id: recordId } }).catch((err) => {
-          console.error(`[sync] Failed to delete roadmap ${recordId}:`, err);
+        await prisma.plan.delete({ where: { id: recordId } }).catch((err) => {
+          console.error(`[sync] Failed to delete plan ${recordId}:`, err);
         });
       } else {
         const data = payload as Record<string, unknown>;
-        const existing = await prisma.roadmap.findUnique({ where: { id: recordId } });
+        const existing = await prisma.plan.findUnique({ where: { id: recordId } });
         if (existing) {
-          await prisma.roadmap.update({ where: { id: recordId }, data: data as never });
+          await prisma.plan.update({ where: { id: recordId }, data: data as never });
         } else {
-          await prisma.roadmap.create({ data: data as never });
+          await prisma.plan.create({ data: data as never });
         }
       }
       break;

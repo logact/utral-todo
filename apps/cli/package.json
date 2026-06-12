@@ -1,5 +1,6 @@
 {
-  "name": "utral-todo-cli",
+  "name": "cli",
+  "private": true,
   "version": "1.0.0",
   "type": "module",
   "bin": {
@@ -12,6 +13,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@utral/types": "workspace:*",
     "commander": "^13.0.0"
   },
   "devDependencies": {

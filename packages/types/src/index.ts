@@ -6,13 +6,19 @@ export type NodeType = 'goal' | 'task';
 export type TaskPattern = 'task' | 'cognitive';
 export type GoalStatus = 'active' | 'paused' | 'achieved' | 'abandoned';
 
-export type ActionEdgeType = 'insight' | 'try' | 'pre_do';
+export type ActionEdgeType = 'pre_do' | 'parent_child' | 'to_achieve';
+
+// Legacy action-edge types are preserved only for rendering old data.
+// New edges should use one of the semantic ActionEdgeType values above.
+export type ActionEdgeTypeLegacy = 'insight' | 'try';
+
+export type ActionEdgeTypeAll = ActionEdgeType | ActionEdgeTypeLegacy;
 
 export interface ActionEdge {
   id: string;
   fromTodoId: string;
   toTodoId: string;
-  type: ActionEdgeType;
+  type: ActionEdgeTypeAll;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,7 +40,32 @@ export interface Roadmap {
   updatedAt: Date;
 }
 
-export type TodoRelationType = 'depends_on' | 'blocked_by' | 'parent_of' | 'source_from' | 'assign_from';
+export interface Plan {
+  id: string;
+  goalTodoId: string;
+  title: string;
+  todoIds: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Road-to-goal relation types:
+//   parent_of      : goal -> goal (parent goal to child goal)
+//   achieves       : task -> goal (task contributes to / achieves a goal)
+//   ordered_before : goal -> goal or task -> task (sequential order)
+// Legacy / general:
+//   depends_on     : task -> task (dependency)
+//   blocked_by     : task -> task (blocker)
+//   source_from    : deprecated, replaced by parent_of for goals
+//   assign_from    : template -> instance (recurring task assignment)
+export type TodoRelationType =
+  | 'depends_on'
+  | 'blocked_by'
+  | 'parent_of'
+  | 'source_from'
+  | 'assign_from'
+  | 'achieves'
+  | 'ordered_before';
 
 export interface TodoRelation {
   id: string;
@@ -71,6 +102,7 @@ export interface TodoBase {
   description: string;
   projectId?: string;
   parentId?: string;
+  activePlanId?: string;
   tags: string[];
   order: number;
   createdAt: Date;
@@ -172,6 +204,7 @@ export interface Project {
   color: string;
   status: 'active' | 'archived';
   deadline?: Date;
+  mainGoalId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -183,6 +216,7 @@ export interface SyncPayload {
   todoLogs?: TodoLog[];
   actionEdges?: ActionEdge[];
   roadmaps?: Roadmap[];
+  plans?: Plan[];
   pluses?: Pluse[];
   timerSessions?: TimerSession[];
   repeatOccurrences?: RepeatOccurrence[];
@@ -213,6 +247,7 @@ export interface SyncResult {
     todoLogs: number;
     actionEdges: number;
     roadmaps: number;
+    plans: number;
     pluses: number;
     timerSessions: number;
   };
@@ -223,6 +258,7 @@ export interface SyncResult {
     todoLogs: number;
     actionEdges: number;
     roadmaps: number;
+    plans: number;
     pluses: number;
     timerSessions: number;
   };
