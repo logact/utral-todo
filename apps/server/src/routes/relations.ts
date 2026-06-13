@@ -96,7 +96,7 @@ router.delete('/:id', async (req, res) => {
 // and achieves relations backward for tasks.
 router.get('/source-chain/:id', async (req, res) => {
   const chain: Array<{
-    id: string; projectId: string | null; parentId: string | null; title: string;
+    id: string; parentId: string | null; title: string;
     description: string; status: string | null; priority: string | null; estimatedMinutes: number | null;
     tags: unknown; createdAt: Date; dueDate: Date | null; scheduledDate: Date | null;
     completedAt: Date | null; repeatRule: unknown | null;

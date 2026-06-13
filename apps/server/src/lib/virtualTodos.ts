@@ -6,7 +6,6 @@ import type { Todo as PrismaTodo, RepeatOccurrence as PrismaOccurrence } from '@
 export interface VirtualTodo {
   id: string;
   nodeType: string;
-  projectId: string | null;
   parentId: string | null;
   title: string;
   description: string;
@@ -33,7 +32,6 @@ function toTodoLike(template: PrismaTodo): VirtualTodo {
   return {
     id: template.id,
     nodeType: template.nodeType,
-    projectId: template.projectId,
     parentId: template.parentId,
     title: template.title,
     description: template.description,

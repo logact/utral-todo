@@ -36,18 +36,13 @@ function validateNodeType(body: Record<string, unknown>): void {
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const { projectId, parentId, root, nodeType, date, tag, unscheduled, overdue, unassigned, repeatTemplates } = req.query;
+  const { parentId, root, nodeType, date, tag, unscheduled, overdue, unassigned, repeatTemplates } = req.query;
 
   if (nodeType) {
     const todos = await prisma.todo.findMany({
       where: { nodeType: String(nodeType) },
       orderBy: { order: 'asc' },
     });
-    return res.json(todos);
-  }
-
-  if (projectId) {
-    const todos = await prisma.todo.findMany({ where: { projectId: String(projectId) }, orderBy: { order: 'asc' } });
     return res.json(todos);
   }
 
@@ -104,7 +99,7 @@ router.get('/', async (req, res) => {
   if (unassigned === 'true') {
     const todos = await prisma.todo.findMany({
       where: {
-        projectId: null,
+        parentId: null,
         status: { not: 'done' },
       },
       orderBy: { order: 'asc' },
@@ -134,7 +129,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     title, description, nodeType, pattern, priority, estimatedMinutes, tags,
-    projectId, parentId, dueDate, scheduledDate, scheduledEndDate,
+    parentId, dueDate, scheduledDate, scheduledEndDate,
     repeatRule, order,
     motivation, successCriteria, targetDate, goalStatus,
   } = req.body;
@@ -143,15 +138,11 @@ router.post('/', async (req, res) => {
 
   const resolvedNodeType = nodeType || 'task';
 
-  // If parentId is set, inherit projectId from parent and validate goal parent
-  let finalProjectId = projectId;
+  // Validate goal parent must be a goal
   if (parentId) {
     const parent = await prisma.todo.findUnique({ where: { id: parentId } });
-    if (parent) {
-      if (!projectId) finalProjectId = parent.projectId;
-      if (resolvedNodeType === 'goal' && parent.nodeType !== 'goal') {
-        return res.status(400).json({ error: 'Goal parent must be a goal' });
-      }
+    if (parent && resolvedNodeType === 'goal' && parent.nodeType !== 'goal') {
+      return res.status(400).json({ error: 'Goal parent must be a goal' });
     }
   }
 
@@ -176,7 +167,6 @@ router.post('/', async (req, res) => {
     priority: isTaskNode ? (priority ?? 'medium') : null,
     estimatedMinutes: isTaskNode ? (estimatedMinutes ?? 60) : null,
     tags: tags ?? [],
-    projectId: finalProjectId ?? null,
     parentId: parentId ?? null,
     dueDate: dueDate ? new Date(dueDate) : null,
     scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
@@ -234,7 +224,7 @@ router.get('/overdue', async (_req, res) => {
 router.get('/unassigned', async (_req, res) => {
   const todos = await prisma.todo.findMany({
     where: {
-      projectId: null,
+      parentId: null,
       status: { not: 'done' },
     },
     orderBy: { order: 'asc' },
@@ -439,7 +429,6 @@ router.post('/sync-repeats', async (req, res) => {
             priority: template.priority,
             estimatedMinutes: template.estimatedMinutes,
             tags: template.tags as string[],
-            projectId: template.projectId,
             scheduledDate: date,
             status: 'pending',
             order: 0,

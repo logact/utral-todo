@@ -6,7 +6,6 @@ export async function createTodo(
   title: string,
   options?: {
     parentId?: string;
-    projectId?: string;
     description?: string;
     priority?: Priority;
     estimatedMinutes?: number;
@@ -30,7 +29,6 @@ export async function createTodo(
     tags: options?.tags ?? [],
     createdAt: now,
     updatedAt: now,
-    projectId: options?.projectId,
     parentId: options?.parentId,
     dueDate: options?.dueDate,
     scheduledDate: options?.scheduledDate,
@@ -109,9 +107,8 @@ export async function deleteTodo(id: string): Promise<void> {
   await triggerSync('todos', 'delete', id);
 }
 
-export async function addTodo(options: { title: string; projectId?: string; scheduledDate?: Date }): Promise<Todo> {
+export async function addTodo(options: { title: string; scheduledDate?: Date }): Promise<Todo> {
   return createTodo(options.title, {
-    projectId: options.projectId,
     scheduledDate: options.scheduledDate,
   });
 }

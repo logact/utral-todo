@@ -31,30 +31,18 @@ router.get('/today', async (_req, res) => {
 
     const allTodos = [...realTodos, ...virtualTodos];
 
-    const projectIds = [...new Set(allTodos.map((t) => t.projectId).filter(Boolean))];
-    const projects = await prisma.project.findMany({
-      where: { id: { in: projectIds as string[] } },
-    });
-    const projectMap = new Map(projects.map((p) => [p.id, p]));
+    const mobileTodos: MobileTodo[] = allTodos.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: (t.status ?? 'pending') as MobileTodo['status'],
+      priority: (t.priority ?? 'medium') as MobileTodo['priority'],
+      estimatedMinutes: t.estimatedMinutes ?? 60,
+      scheduledDate: t.scheduledDate ?? undefined,
+      dueDate: t.dueDate ?? undefined,
+      order: t.order,
+    }));
 
-    const mobileTodos: MobileTodo[] = allTodos.map((t) => {
-      const project = t.projectId ? projectMap.get(t.projectId) : undefined;
-      return {
-        id: t.id,
-        title: t.title,
-        status: (t.status ?? 'pending') as MobileTodo['status'],
-        priority: (t.priority ?? 'medium') as MobileTodo['priority'],
-        estimatedMinutes: t.estimatedMinutes ?? 60,
-        projectId: t.projectId ?? undefined,
-        projectTitle: project?.title,
-        projectColor: project?.color,
-        scheduledDate: t.scheduledDate ?? undefined,
-        dueDate: t.dueDate ?? undefined,
-        order: t.order,
-      };
-    });
-
-    const response: MobileTodayResponse = { todos: mobileTodos, projects: projects as MobileTodayResponse['projects'] };
+    const response: MobileTodayResponse = { todos: mobileTodos };
     res.json(response);
   } catch (err) {
     console.error('Mobile today error:', err);
@@ -73,30 +61,18 @@ router.get('/inbox', async (_req, res) => {
       orderBy: { order: 'asc' },
     });
 
-    const projectIds = [...new Set(todos.map((t) => t.projectId).filter(Boolean))];
-    const projects = await prisma.project.findMany({
-      where: { id: { in: projectIds as string[] } },
-    });
-    const projectMap = new Map(projects.map((p) => [p.id, p]));
+    const mobileTodos: MobileTodo[] = todos.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: (t.status ?? 'pending') as MobileTodo['status'],
+      priority: (t.priority ?? 'medium') as MobileTodo['priority'],
+      estimatedMinutes: t.estimatedMinutes ?? 60,
+      scheduledDate: t.scheduledDate ?? undefined,
+      dueDate: t.dueDate ?? undefined,
+      order: t.order,
+    }));
 
-    const mobileTodos: MobileTodo[] = todos.map((t) => {
-      const project = t.projectId ? projectMap.get(t.projectId) : undefined;
-      return {
-        id: t.id,
-        title: t.title,
-        status: (t.status ?? 'pending') as MobileTodo['status'],
-        priority: (t.priority ?? 'medium') as MobileTodo['priority'],
-        estimatedMinutes: t.estimatedMinutes ?? 60,
-        projectId: t.projectId ?? undefined,
-        projectTitle: project?.title,
-        projectColor: project?.color,
-        scheduledDate: t.scheduledDate ?? undefined,
-        dueDate: t.dueDate ?? undefined,
-        order: t.order,
-      };
-    });
-
-    res.json({ todos: mobileTodos, projects: projects as MobileTodayResponse['projects'] });
+    res.json({ todos: mobileTodos });
   } catch (err) {
     console.error('Mobile inbox error:', err);
     res.status(500).json({ error: 'Failed to fetch inbox', details: String(err) });
@@ -105,7 +81,7 @@ router.get('/inbox', async (_req, res) => {
 
 // POST /api/mobile/todos/quick — Minimal todo creation
 router.post('/todos/quick', async (req, res) => {
-  const { title, projectId } = req.body;
+  const { title } = req.body;
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'title is required' });
   }
@@ -121,7 +97,6 @@ router.post('/todos/quick', async (req, res) => {
         priority: 'medium',
         estimatedMinutes: 60,
         tags: [],
-        projectId: projectId ?? null,
         order: (maxOrder._max.order ?? 0) + 1,
       },
     });

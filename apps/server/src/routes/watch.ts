@@ -30,7 +30,6 @@ router.get('/today', async (_req, res) => {
           title: true,
           status: true,
           estimatedMinutes: true,
-          projectId: true,
         },
       }),
       getVirtualTodosForDate(today),
@@ -38,18 +37,11 @@ router.get('/today', async (_req, res) => {
 
     const allTodos = [...realTodos, ...virtualTodos];
 
-    const projectIds = [...new Set(allTodos.map((t) => t.projectId).filter(Boolean))];
-    const projects = await prisma.project.findMany({
-      where: { id: { in: projectIds as string[] } },
-      select: { id: true, color: true },
-    });
-    const projectMap = new Map(projects.map((p) => [p.id, p.color]));
-
     const watchTodos: WatchTodo[] = allTodos.map((t) => ({
       id: t.id,
       title: t.title,
       status: (t.status ?? 'pending') as WatchTodo['status'],
-      projectColor: (t.projectId ? projectMap.get(t.projectId) : '#6366f1') ?? '#6366f1',
+      projectColor: '#6366f1',
       estimatedMinutes: t.estimatedMinutes ?? 60,
     }));
 

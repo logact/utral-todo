@@ -1,9 +1,8 @@
 import { db } from './database';
-import type { Todo, Project, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, Roadmap, SyncConfig } from '@utral/types';
+import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, Roadmap, SyncConfig } from '@utral/types';
 
 export interface SyncPayload {
   todos: Todo[];
-  projects: Project[];
   relations: TodoRelation[];
   todoLogs: TodoLog[];
   actionEdges: ActionEdge[];
@@ -16,7 +15,6 @@ export interface SyncResult {
   success: boolean;
   pulled: {
     todos: number;
-    projects: number;
     relations: number;
     todoLogs: number;
     actionEdges: number;
@@ -26,7 +24,6 @@ export interface SyncResult {
   };
   pushed: {
     todos: number;
-    projects: number;
     relations: number;
     todoLogs: number;
     actionEdges: number;
@@ -94,7 +91,6 @@ export async function syncFetch(path: string, options?: RequestInit): Promise<Re
 async function exportLocalData(): Promise<SyncPayload> {
   return {
     todos: await db.todos.toArray(),
-    projects: await db.projects.toArray(),
     relations: await db.relations.toArray(),
     todoLogs: await db.todoLogs.toArray(),
     actionEdges: await db.actionEdges.toArray(),
@@ -113,16 +109,16 @@ export async function syncAll(): Promise<SyncResult> {
   if (!config) {
     return {
       success: false,
-      pulled: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
-      pushed: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
+      pulled: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
+      pushed: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
       error: 'Sync not configured',
     };
   }
 
   const result: SyncResult = {
     success: false,
-    pulled: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
-    pushed: { todos: 0, projects: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
+    pulled: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
+    pushed: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, roadmaps: 0, pluses: 0, timerSessions: 0 },
   };
 
   try {
@@ -134,7 +130,6 @@ export async function syncAll(): Promise<SyncResult> {
       body: JSON.stringify({
         ...localData,
         todos: normalizeDates(localData.todos),
-        projects: normalizeDates(localData.projects),
         relations: normalizeDates(localData.relations),
         todoLogs: normalizeDates(localData.todoLogs),
         actionEdges: normalizeDates(localData.actionEdges),
@@ -156,7 +151,7 @@ export async function syncAll(): Promise<SyncResult> {
 
     // 3. Merge remote data into local
     await db.transaction('rw', [
-      db.todos, db.projects, db.relations, db.todoLogs,
+      db.todos, db.relations, db.todoLogs,
       db.actionEdges, db.roadmaps, db.pluses, db.timerSessions,
     ], async () => {
       for (const key of Object.keys(remoteData) as (keyof SyncPayload)[]) {
@@ -165,7 +160,6 @@ export async function syncAll(): Promise<SyncResult> {
 
         const table = {
           todos: db.todos,
-          projects: db.projects,
           relations: db.relations,
           todoLogs: db.todoLogs,
           actionEdges: db.actionEdges,

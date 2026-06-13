@@ -123,48 +123,13 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-// ─── Projects ───────────────────────────────────────────────────────────────
-
-async function listProjects(args: Record<string, string | boolean>) {
-  const res = await callCli('projects', 'list', args);
-  if (res.error) { console.error(res.error); return; }
-  const rows = (res.data as Record<string, unknown>[]) || [];
-  printOutput(rows.map((r) => pick(r, ['id', 'title', 'status', 'color', 'deadline', 'createdAt'])));
-}
-
-async function getProject(id: string) {
-  const res = await callCli('projects', 'get', { id });
-  if (res.error) { console.error(res.error); return; }
-  printOutput(res.data);
-}
-
-async function createProject(args: Record<string, string | boolean>) {
-  const res = await callCli('projects', 'create', args);
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Created project:', (res.data as Record<string, unknown>)?.id);
-  printOutput(res.data);
-}
-
-async function updateProject(id: string, args: Record<string, string | boolean>) {
-  const res = await callCli('projects', 'update', { ...args, id });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Updated project:', id);
-  printOutput(res.data);
-}
-
-async function deleteProject(id: string) {
-  const res = await callCli('projects', 'delete', { id });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Deleted project:', id);
-}
-
 // ─── Todos ──────────────────────────────────────────────────────────────────
 
 async function listTodos(args: Record<string, string | boolean>) {
   const res = await callCli('todos', 'list', args);
   if (res.error) { console.error(res.error); return; }
   const rows = (res.data as Record<string, unknown>[]) || [];
-  printOutput(rows.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate'])));
+  printOutput(rows.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate'])));
 }
 
 async function getTodo(id: string) {
@@ -218,19 +183,19 @@ async function unscheduleTodo(id: string) {
 async function todosToday() {
   const res = await callCli('todos', 'today', {});
   if (res.error) { console.error(res.error); return; }
-  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'dueDate'])));
 }
 
 async function todosUnscheduled() {
   const res = await callCli('todos', 'unscheduled', {});
   if (res.error) { console.error(res.error); return; }
-  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'dueDate'])));
 }
 
 async function todosOverdue() {
   const res = await callCli('todos', 'overdue', {});
   if (res.error) { console.error(res.error); return; }
-  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'dueDate'])));
 }
 
 async function todosInbox() {
@@ -242,7 +207,7 @@ async function todosInbox() {
 async function searchTodos(query: string) {
   const res = await callCli('todos', 'search', { query });
   if (res.error) { console.error(res.error); return; }
-  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate'])));
+  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate'])));
 }
 
 async function reorderTodo(id: string, args: Record<string, string | boolean>) {
@@ -255,12 +220,6 @@ async function bulkReorderTodos(args: Record<string, string | boolean>) {
   const res = await callCli('todos', 'reorder-bulk', { ids: args.ids });
   if (res.error) { console.error(res.error); return; }
   if (!quietMode) console.log('Reordered todos');
-}
-
-async function assignTodos(args: Record<string, string | boolean>) {
-  const res = await callCli('todos', 'assign', { ids: args.ids, projectId: args.projectId });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Assigned todos');
 }
 
 async function getSpawnedTodos(id: string) {
@@ -527,18 +486,11 @@ Global Flags:
 
 Entities & Actions:
 
-  projects
-    list [--status=active|archived]
-    get <id>
-    create --title="..." [--description=...] [--color=#3b82f6]
-    update <id> [--title=...] [--status=...] [--color=...]
-    delete <id>
-
   todos
-    list [--status=...] [--priority=...] [--projectId=...] [--tag=...]
+    list [--status=...] [--priority=...] [--tag=...]
     get <id>
-    create --title="..." [--priority=low|medium|high] [--projectId=...]
-    update <id> [--title=...] [--status=...] [--priority=...]
+    create --title="..." [--priority=low|medium|high] [--parentId=...]
+    update <id> [--title=...] [--status=...] [--priority=...] [--dueDate=...]
     delete <id>
     status <id> pending|in_progress|done
     schedule <id> --date=YYYY-MM-DD
@@ -550,7 +502,6 @@ Entities & Actions:
     search <query>
     reorder <id> --order=N
     reorder-bulk --ids=id1,id2,id3
-    assign --ids=id1,id2 --projectId=...
     spawned <id>
     instances <id>
     repeat-rule <id> --rule='{"type":"daily"}'
@@ -626,17 +577,6 @@ async function main() {
 
   try {
     switch (entity) {
-      case 'projects':
-        switch (action) {
-          case 'list': await listProjects(args); break;
-          case 'get': if (!id) fail('ID required'); await getProject(id); break;
-          case 'create': await createProject(args); break;
-          case 'update': if (!id) fail('ID required'); await updateProject(id, args); break;
-          case 'delete': if (!id) fail('ID required'); await deleteProject(id); break;
-          default: console.log(usage); process.exit(2);
-        }
-        break;
-
       case 'todos':
         switch (action) {
           case 'list': await listTodos(args); break;
@@ -654,7 +594,6 @@ async function main() {
           case 'search': if (!id) fail('Search query required'); await searchTodos(id); break;
           case 'reorder': if (!id) fail('ID required'); await reorderTodo(id, args); break;
           case 'reorder-bulk': await bulkReorderTodos(args); break;
-          case 'assign': await assignTodos(args); break;
           case 'spawned': if (!id) fail('ID required'); await getSpawnedTodos(id); break;
           case 'instances': if (!id) fail('ID required'); await getTodoInstances(id); break;
           case 'repeat-rule': if (!id) fail('ID required'); await setRepeatRule(id, args); break;

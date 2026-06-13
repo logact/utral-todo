@@ -74,7 +74,6 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
   if (event.operation === 'delete') {
     switch (event.table) {
       case 'todo': await db.todos.delete(event.recordId).catch(() => {}); break;
-      case 'project': await db.projects.delete(event.recordId).catch(() => {}); break;
       case 'todoRelation': await db.relations.delete(event.recordId).catch(() => {}); break;
       case 'todoLog': await db.todoLogs.delete(event.recordId).catch(() => {}); break;
       case 'actionEdge': await db.actionEdges.delete(event.recordId).catch(() => {}); break;
@@ -122,7 +121,6 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
 
   switch (event.table) {
     case 'todo': await applyToTable(db.todos as never); break;
-    case 'project': await applyToTable(db.projects as never); break;
     case 'todoRelation': await applyToTable(db.relations as never); break;
     case 'todoLog': await applyToTable(db.todoLogs as never); break;
     case 'actionEdge': await applyToTable(db.actionEdges as never); break;
@@ -168,7 +166,6 @@ export async function processQueue(): Promise<void> {
           const getRecord = async (): Promise<unknown | undefined> => {
             switch (item.table) {
               case 'todos': return db.todos.get(item.recordId);
-              case 'projects': return db.projects.get(item.recordId);
               case 'relations': return db.relations.get(item.recordId);
               case 'todoLogs': return db.todoLogs.get(item.recordId);
               case 'actionEdges': return db.actionEdges.get(item.recordId);
@@ -187,7 +184,6 @@ export async function processQueue(): Promise<void> {
           changes.push({
             id: item.id,
             table: item.table === 'todos' ? 'todo' :
-                   item.table === 'projects' ? 'project' :
                    item.table === 'relations' ? 'todoRelation' :
                    item.table === 'todoLogs' ? 'todoLog' :
                    item.table === 'actionEdges' ? 'actionEdge' :

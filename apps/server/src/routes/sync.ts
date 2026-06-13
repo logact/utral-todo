@@ -116,7 +116,6 @@ router.post('/', async (req, res) => {
 
   console.log(`[sync] Legacy push from ${deviceId || 'unknown device'}:`, {
     todos: payload.todos?.length ?? 0,
-    projects: payload.projects?.length ?? 0,
     relations: payload.relations?.length ?? 0,
     todoLogs: payload.todoLogs?.length ?? 0,
     actionEdges: payload.actionEdges?.length ?? 0,
@@ -150,7 +149,6 @@ router.post('/', async (req, res) => {
             completedAt: toDate(item.completedAt),
             repeatRule: item.repeatRule ? JSON.stringify(item.repeatRule) : Prisma.DbNull,
             order: (item.order as number) ?? 0,
-            projectId: (item.projectId as string) || null,
             parentId: (item.parentId as string) || null,
           };
 
@@ -163,34 +161,6 @@ router.post('/', async (req, res) => {
           count++;
         }
         accepted.todos = count;
-      }
-
-      // Merge projects
-      if (payload.projects?.length) {
-        let count = 0;
-        for (const item of payload.projects) {
-          const id = item.id as string;
-          const data = {
-            id,
-            title: item.title as string,
-            description: (item.description as string) || '',
-            status: (item.status as string) || 'active',
-            color: (item.color as string) || '#6366f1',
-            createdAt: toDate(item.createdAt) ?? new Date(),
-            updatedAt: toDate(item.updatedAt) ?? new Date(),
-            deadline: toDate(item.deadline),
-            mainGoalId: (item.mainGoalId as string) || null,
-          };
-
-          const existing = await tx.project.findUnique({ where: { id } });
-          if (existing) {
-            await tx.project.update({ where: { id }, data });
-          } else {
-            await tx.project.create({ data });
-          }
-          count++;
-        }
-        accepted.projects = count;
       }
 
       // Merge relations
@@ -399,7 +369,6 @@ router.get('/', async (_req, res) => {
   console.log('[sync] Legacy pull request');
   try {
     const todos = await prisma.todo.findMany();
-    const projects = await prisma.project.findMany();
     const relations = await prisma.todoRelation.findMany();
     const todoLogs = await prisma.todoLog.findMany();
     const actionEdges = await prisma.actionEdge.findMany();
@@ -414,7 +383,6 @@ router.get('/', async (_req, res) => {
         tags: typeof t.tags === 'string' ? JSON.parse(t.tags) : t.tags,
         repeatRule: typeof t.repeatRule === 'string' ? JSON.parse(t.repeatRule) : t.repeatRule,
       })),
-      projects,
       relations,
       todoLogs: todoLogs.map((l) => ({
         ...l,

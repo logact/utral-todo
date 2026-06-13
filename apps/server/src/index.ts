@@ -10,7 +10,6 @@ dotenv.config({ path: path.resolve(__dirname, '../.env.local'), override: true }
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
-import projectsRouter from './routes/projects.js';
 import todosRouter from './routes/todos.js';
 import relationsRouter from './routes/relations.js';
 import todoLogsRouter from './routes/todoLogs.js';
@@ -46,7 +45,6 @@ app.use(express.json());
 
 app.use('/api', requireAuth);
 
-app.use('/api/projects', projectsRouter);
 app.use('/api/todos', todosRouter);
 app.use('/api/relations', relationsRouter);
 app.use('/api/todo-logs', todoLogsRouter);
@@ -70,7 +68,6 @@ app.delete('/api/all-data', async (_req, res) => {
   await prisma.actionEdge.deleteMany();
   await prisma.pluse.deleteMany();
   await prisma.todo.deleteMany();
-  await prisma.project.deleteMany();
   res.status(204).send();
 });
 

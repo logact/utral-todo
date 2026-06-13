@@ -117,22 +117,6 @@ export async function applyChange(
       }
       break;
     }
-    case 'project': {
-      if (operation === 'delete') {
-        await prisma.project.delete({ where: { id: recordId } }).catch((err) => {
-          console.error(`[sync] Failed to delete project ${recordId}:`, err);
-        });
-      } else {
-        const data = payload as Record<string, unknown>;
-        const existing = await prisma.project.findUnique({ where: { id: recordId } });
-        if (existing) {
-          await prisma.project.update({ where: { id: recordId }, data: data as never });
-        } else {
-          await prisma.project.create({ data: data as never });
-        }
-      }
-      break;
-    }
     case 'todoRelation': {
       if (operation === 'delete') {
         await prisma.todoRelation.delete({ where: { id: recordId } }).catch((err) => {

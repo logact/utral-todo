@@ -183,64 +183,11 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-// ─── Projects ───────────────────────────────────────────────────────────────
-
-async function listProjects(args: Record<string, string | boolean>) {
-  const rows = await prisma.project.findMany({
-    where: args.status ? { status: String(args.status) } : undefined,
-    orderBy: { createdAt: 'desc' },
-  });
-  printOutput(
-    applyLimit(rows).map((r) =>
-      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'color', 'deadline', 'createdAt']),
-    ),
-  );
-}
-
-async function getProject(id: string, args: Record<string, string | boolean>) {
-  const include = args['with-todos'] ? { todos: true } : undefined;
-  const row = await prisma.project.findUnique({ where: { id }, include });
-  if (!row) return fail('Project not found');
-  printOutput(row);
-}
-
-async function createProject(args: Record<string, string | boolean>) {
-  const row = await prisma.project.create({
-    data: {
-      title: String(args.title ?? 'Untitled'),
-      description: String(args.description ?? ''),
-      status: String(args.status ?? 'active'),
-      color: String(args.color ?? '#3b82f6'),
-      deadline: args.deadline ? new Date(String(args.deadline)) : null,
-    },
-  });
-  if (!quietMode) console.log('Created project:', row.id);
-  printOutput(row);
-}
-
-async function updateProject(id: string, args: Record<string, string | boolean>) {
-  const data: Record<string, unknown> = {};
-  if (args.title !== undefined) data.title = String(args.title);
-  if (args.description !== undefined) data.description = String(args.description);
-  if (args.status !== undefined) data.status = String(args.status);
-  if (args.color !== undefined) data.color = String(args.color);
-  if (args.deadline !== undefined) data.deadline = args.deadline ? new Date(String(args.deadline)) : null;
-  const row = await prisma.project.update({ where: { id }, data });
-  if (!quietMode) console.log('Updated project:', row.id);
-  printOutput(row);
-}
-
-async function deleteProject(id: string) {
-  await prisma.project.delete({ where: { id } });
-  if (!quietMode) console.log('Deleted project:', id);
-}
-
 // ─── Todos ──────────────────────────────────────────────────────────────────
 
 async function listTodos(args: Record<string, string | boolean>) {
   const where: Record<string, unknown> = {};
   if (args.status) where.status = args.status;
-  if (args.projectId) where.projectId = args.projectId;
   if (args.priority) where.priority = args.priority;
   if (args.parentId) where.parentId = args.parentId;
   if (args.tag) {
@@ -251,7 +198,7 @@ async function listTodos(args: Record<string, string | boolean>) {
     });
     printOutput(
       applyLimit(filtered).map((r) =>
-        pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate']),
+        pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate']),
       ),
     );
     return;
@@ -260,7 +207,7 @@ async function listTodos(args: Record<string, string | boolean>) {
   const rows = await prisma.todo.findMany({ where, orderBy: { order: 'asc' } });
   printOutput(
     applyLimit(rows).map((r) =>
-      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate']),
+      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate']),
     ),
   );
 }
@@ -268,19 +215,13 @@ async function listTodos(args: Record<string, string | boolean>) {
 async function getTodo(id: string) {
   const row = await prisma.todo.findUnique({
     where: { id },
-    include: { project: true, logs: true },
+    include: { logs: true },
   });
   if (!row) return fail('Todo not found');
   printOutput(row);
 }
 
 async function createTodo(args: Record<string, string | boolean>) {
-  let finalProjectId = args.projectId ? String(args.projectId) : null;
-  if (args.parentId && !args.projectId) {
-    const parent = await prisma.todo.findUnique({ where: { id: String(args.parentId) } });
-    if (parent) finalProjectId = parent.projectId;
-  }
-
   const maxOrder = await prisma.todo.aggregate({ _max: { order: true } });
   const finalOrder = (maxOrder._max.order ?? 0) + 1;
 
@@ -291,7 +232,6 @@ async function createTodo(args: Record<string, string | boolean>) {
     priority: String(args.priority ?? 'medium'),
     estimatedMinutes: args.estimatedMinutes ? Number(args.estimatedMinutes) : 60,
     tags: args.tags ? (Array.isArray(args.tags) ? (args.tags as string[]) : String(args.tags).split(',').map((t) => t.trim())) : [],
-    projectId: finalProjectId,
     parentId: args.parentId ? String(args.parentId) : null,
     dueDate: args.dueDate ? new Date(String(args.dueDate)) : null,
     scheduledDate: args.scheduledDate ? new Date(String(args.scheduledDate)) : null,
@@ -311,7 +251,6 @@ async function updateTodo(id: string, args: Record<string, string | boolean>) {
   if (args.title !== undefined) data.title = String(args.title);
   if (args.description !== undefined) data.description = String(args.description);
   if (args.priority !== undefined) data.priority = String(args.priority);
-  if (args.projectId !== undefined) data.projectId = String(args.projectId) || null;
   if (args.parentId !== undefined) data.parentId = String(args.parentId) || null;
   if (args.dueDate !== undefined) data.dueDate = args.dueDate ? new Date(String(args.dueDate)) : null;
   if (args.estimatedMinutes !== undefined) data.estimatedMinutes = Number(args.estimatedMinutes);
@@ -374,7 +313,7 @@ async function todosToday() {
   });
   printOutput(
     rows.map((r) =>
-      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate']),
+      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate']),
     ),
   );
 }
@@ -386,7 +325,7 @@ async function todosUnscheduled() {
   });
   printOutput(
     rows.map((r) =>
-      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate']),
+      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate']),
     ),
   );
 }
@@ -399,14 +338,14 @@ async function todosOverdue() {
   });
   printOutput(
     rows.map((r) =>
-      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate']),
+      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate']),
     ),
   );
 }
 
 async function todosInbox() {
   const rows = await prisma.todo.findMany({
-    where: { projectId: null, status: { not: 'done' } },
+    where: { parentId: null, status: { not: 'done' } },
     orderBy: { order: 'asc' },
   });
   printOutput(
@@ -426,7 +365,7 @@ async function searchTodos(query: string) {
   );
   printOutput(
     applyLimit(rows).map((r) =>
-      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'projectId', 'dueDate', 'scheduledDate']),
+      pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate']),
     ),
   );
 }
@@ -445,16 +384,6 @@ async function bulkReorderTodos(args: Record<string, string | boolean>) {
     ids.map((id, index) => prisma.todo.update({ where: { id }, data: { order: index } })),
   );
   if (!quietMode) console.log('Reordered', ids.length, 'todos');
-}
-
-async function assignTodos(args: Record<string, string | boolean>) {
-  const ids = String(args.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const projectId = args.projectId ? String(args.projectId) : null;
-  if (ids.length === 0) return fail('No ids provided. Use --ids=id1,id2,id3');
-  await prisma.$transaction(
-    ids.map((id) => prisma.todo.update({ where: { id }, data: { projectId } })),
-  );
-  if (!quietMode) console.log('Assigned', ids.length, 'todos to project:', projectId ?? '(none)');
 }
 
 async function getSpawnedTodos(id: string) {
@@ -578,7 +507,6 @@ async function syncRepeatTodos(args: Record<string, string | boolean>) {
             priority: template.priority,
             estimatedMinutes: template.estimatedMinutes,
             tags: template.tags as string[],
-            projectId: template.projectId,
             scheduledDate: date,
             status: 'pending',
             order: 0,
@@ -906,7 +834,6 @@ async function deleteDevice(deviceId: string) {
 
 async function syncPull() {
   const todos = await prisma.todo.findMany();
-  const projects = await prisma.project.findMany();
   const relations = await prisma.todoRelation.findMany();
   const todoLogs = await prisma.todoLog.findMany();
   const actionEdges = await prisma.actionEdge.findMany();
@@ -919,7 +846,6 @@ async function syncPull() {
       tags: typeof t.tags === 'string' ? JSON.parse(t.tags) : t.tags,
       repeatRule: typeof t.repeatRule === 'string' ? JSON.parse(t.repeatRule) : t.repeatRule,
     })),
-    projects,
     relations,
     todoLogs: todoLogs.map((l) => ({
       ...l,
@@ -941,7 +867,6 @@ async function syncPull() {
 
 async function exportJson(args: Record<string, string | boolean>) {
   const todos = await prisma.todo.findMany();
-  const projects = await prisma.project.findMany();
   const relations = await prisma.todoRelation.findMany();
   const todoLogs = await prisma.todoLog.findMany();
   const actionEdges = await prisma.actionEdge.findMany();
@@ -950,7 +875,6 @@ async function exportJson(args: Record<string, string | boolean>) {
 
   const data = {
     todos,
-    projects,
     relations,
     todoLogs,
     actionEdges,
@@ -978,13 +902,6 @@ async function importJson(args: Record<string, string | boolean>) {
   const data = JSON.parse(content);
 
   await prisma.$transaction(async (tx) => {
-    if (data.projects?.length) {
-      for (const item of data.projects) {
-        const existing = await tx.project.findUnique({ where: { id: item.id } });
-        if (existing) await tx.project.update({ where: { id: item.id }, data: item });
-        else await tx.project.create({ data: item });
-      }
-    }
     if (data.todos?.length) {
       for (const item of data.todos) {
         const existing = await tx.todo.findUnique({ where: { id: item.id } });
@@ -1037,7 +954,6 @@ async function importJson(args: Record<string, string | boolean>) {
 async function showStats() {
   const todoCounts = await prisma.todo.groupBy({ by: ['status'], _count: { status: true } });
   const totalTodos = await prisma.todo.count();
-  const totalProjects = await prisma.project.count();
   const totalRelations = await prisma.todoRelation.count();
   const totalPluses = await prisma.pluse.count();
   const activeTimers = await prisma.timerSession.count({ where: { status: 'running' } });
@@ -1061,7 +977,6 @@ async function showStats() {
       today: todayCount,
       overdue: overdueCount,
     },
-    projects: { total: totalProjects },
     relations: { total: totalRelations },
     pluses: { total: totalPluses },
     timerSessions: { active: activeTimers },
@@ -1080,7 +995,6 @@ async function wipeAll() {
   await prisma.actionEdge.deleteMany();
   await prisma.pluse.deleteMany();
   await prisma.todo.deleteMany();
-  await prisma.project.deleteMany();
   await prisma.device.deleteMany();
   if (!quietMode) console.log('All data wiped.');
 }
@@ -1106,20 +1020,13 @@ Global Flags:
 
 Entities & Actions:
 
-  projects
-    list [--status=active|archived]
-    get <id> [--with-todos]
-    create --title="..." [--description=...] [--color=#3b82f6] [--deadline=YYYY-MM-DD]
-    update <id> [--title=...] [--status=...] [--color=...] [--deadline=...]
-    delete <id>
-
   todos
-    list [--status=...] [--priority=...] [--projectId=...] [--tag=...]
+    list [--status=...] [--priority=...] [--tag=...]
     get <id>
     create --title="..." [--description=...] [--priority=low|medium|high]
-         [--projectId=...] [--parentId=...] [--dueDate=YYYY-MM-DD] [--scheduledDate=YYYY-MM-DD]
+         [--parentId=...] [--dueDate=YYYY-MM-DD] [--scheduledDate=YYYY-MM-DD]
          [--tags=a,b,c] [--estimatedMinutes=N] [--nodeType=goal|todo]
-    update <id> [--title=...] [--status=...] [--priority=...] [--projectId=...] [--dueDate=...]
+    update <id> [--title=...] [--status=...] [--priority=...] [--dueDate=...]
     delete <id>
     status <id> pending|in_progress|done
     schedule <id> --date=YYYY-MM-DD
@@ -1131,7 +1038,6 @@ Entities & Actions:
     search <query>
     reorder <id> --order=N
     reorder-bulk --ids=id1,id2,id3
-    assign --ids=id1,id2 --projectId=...
     spawned <id>
     instances <id>
     repeat-rule <id> --rule='{"type":"daily"}'
@@ -1195,7 +1101,7 @@ Entities & Actions:
 Examples:
   pnpm cli todos today --format=json
   pnpm cli todos search "fix bug" --format=json --limit=5
-  pnpm cli todos create --title="New feature" --priority=high --projectId=abc123
+  pnpm cli todos create --title="New feature" --priority=high
   pnpm cli todos status abc123 done
   pnpm cli timer-sessions start abc123
   pnpm cli stats --format=json
@@ -1218,17 +1124,6 @@ async function main() {
 
   try {
     switch (entity) {
-      case 'projects':
-        switch (action) {
-          case 'list': await listProjects(args); break;
-          case 'get': if (!id) fail('ID required'); await getProject(id, args); break;
-          case 'create': await createProject(args); break;
-          case 'update': if (!id) fail('ID required'); await updateProject(id, args); break;
-          case 'delete': if (!id) fail('ID required'); await deleteProject(id); break;
-          default: console.log(usage); process.exit(2);
-        }
-        break;
-
       case 'todos':
         switch (action) {
           case 'list': await listTodos(args); break;
@@ -1246,7 +1141,6 @@ async function main() {
           case 'search': if (!id) fail('Search query required'); await searchTodos(id); break;
           case 'reorder': if (!id) fail('ID required'); await reorderTodo(id, args); break;
           case 'reorder-bulk': await bulkReorderTodos(args); break;
-          case 'assign': await assignTodos(args); break;
           case 'spawned': if (!id) fail('ID required'); await getSpawnedTodos(id); break;
           case 'instances': if (!id) fail('ID required'); await getTodoInstances(id); break;
           case 'repeat-rule': if (!id) fail('ID required'); await setRepeatRule(id, args); break;
