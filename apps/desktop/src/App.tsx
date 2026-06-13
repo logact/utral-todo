@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useCliBridge } from './hooks/useCliBridge';
 import { useSync } from './hooks/useSync';
 import { initIOSSync } from './db/iosSync';
+import { ensureRootGoal } from './db/todos';
 import { Sidebar } from './components/layout/Sidebar';
 import { QuickTodoModal } from './components/QuickTodoModal';
 import { TodoNew } from './pages/TodoNew';
@@ -57,6 +58,12 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 export default function App() {
   useCliBridge();
   useSync();
+
+  useEffect(() => {
+    ensureRootGoal().catch((err) => {
+      console.error('[App] Failed to ensure root goal:', err);
+    });
+  }, []);
 
   useEffect(() => {
     // Initialize iOS-specific sync when running inside the native shell

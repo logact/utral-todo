@@ -15,6 +15,7 @@ import todosRouter from './routes/todos.js';
 import relationsRouter from './routes/relations.js';
 import todoLogsRouter from './routes/todoLogs.js';
 import actionEdgesRouter from './routes/actionEdges.js';
+import plansRouter from './routes/plans.js';
 import plusesRouter from './routes/pluses.js';
 import timerSessionsRouter from './routes/timerSessions.js';
 import syncRouter from './routes/sync.js';
@@ -50,6 +51,7 @@ app.use('/api/todos', todosRouter);
 app.use('/api/relations', relationsRouter);
 app.use('/api/todo-logs', todoLogsRouter);
 app.use('/api/action-edges', actionEdgesRouter);
+app.use('/api/plans', plansRouter);
 app.use('/api/pluses', plusesRouter);
 app.use('/api/timer-sessions', timerSessionsRouter);
 app.use('/api/sync', syncRouter);
@@ -73,6 +75,42 @@ app.delete('/api/all-data', async (_req, res) => {
 });
 
 /* ---------- Data migrations ---------- */
+
+async function runPlanMigration(): Promise<void> {
+  const markerPath = path.resolve(__dirname, '../.migration-v37-plan-subgraph');
+  if (fs.existsSync(markerPath)) return;
+
+  const plans = await prisma.plan.findMany();
+  const edges = await prisma.actionEdge.findMany();
+  let migrated = 0;
+  for (const plan of plans) {
+    const existingEdgeIds = Array.isArray(plan.edgeIds)
+      ? (plan.edgeIds as string[])
+      : (typeof plan.edgeIds === 'string' ? JSON.parse(plan.edgeIds) : []);
+    if (existingEdgeIds.length > 0) continue;
+
+    const oldTodoIds = Array.isArray(plan.nodeIds)
+      ? (plan.nodeIds as string[])
+      : (typeof plan.nodeIds === 'string' ? JSON.parse(plan.nodeIds) : []);
+    const nodeIds = Array.isArray(oldTodoIds) ? [...oldTodoIds] : [];
+    const nodeIdSet = new Set(nodeIds);
+    const edgeIds = edges
+      .filter((e) => nodeIdSet.has(e.fromTodoId) && nodeIdSet.has(e.toTodoId))
+      .map((e) => e.id);
+
+    await prisma.plan.update({
+      where: { id: plan.id },
+      data: {
+        nodeIds: JSON.stringify(nodeIds),
+        edgeIds: JSON.stringify(edgeIds),
+      },
+    });
+    migrated++;
+  }
+
+  fs.writeFileSync(markerPath, new Date().toISOString());
+  console.log(`[migrate] Migrated ${migrated} plans to subgraph shape`);
+}
 
 async function runDataMigrations(): Promise<void> {
   const markerPath = path.resolve(__dirname, '../.migration-v1-pluse-seconds');
@@ -99,8 +137,10 @@ async function runDataMigrations(): Promise<void> {
 
 const PORT = process.env.PORT || 3001;
 
-runDataMigrations().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+runDataMigrations()
+  .then(() => runPlanMigration())
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   });
-});

@@ -600,6 +600,82 @@ db.version(36).stores({
   }
 });
 
+db.version(38).stores({
+  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  projects: 'id, status, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, isSystemPlan, updatedAt',
+}).upgrade(async (tx) => {
+  const todos = await tx.table('todos').toArray();
+  const relations = await tx.table('relations').toArray();
+  const plans = await tx.table('plans').toArray();
+
+  // Backfill isSystemPlan on existing plans
+  for (const plan of plans) {
+    if (plan.isSystemPlan === undefined) {
+      await tx.table('plans').update(plan.id, { isSystemPlan: false });
+    }
+  }
+
+  // Create root goal if it does not exist
+  const hasRoot = todos.some((t) => t.isRootGoal === true);
+  if (!hasRoot) {
+    const now = new Date();
+    const rootGoal = {
+      id: 'system:root-goal',
+      nodeType: 'goal',
+      title: 'Root Goal',
+      description: '',
+      isRootGoal: true,
+      goalStatus: 'active',
+      tags: [],
+      order: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await tx.table('todos').add(rootGoal);
+
+    const hasParent = new Set<string>();
+    for (const r of relations) {
+      if (r.type === 'parent_of' || r.type === 'source_from') {
+        hasParent.add(r.toTodoId);
+      }
+    }
+
+    const topLevelGoalIds = todos
+      .filter(
+        (t) =>
+          t.nodeType === 'goal' &&
+          !t.parentId &&
+          !hasParent.has(t.id) &&
+          t.id !== rootGoal.id
+      )
+      .map((t) => t.id);
+
+    const planId = crypto.randomUUID();
+    await tx.table('plans').add({
+      id: planId,
+      goalTodoId: rootGoal.id,
+      title: 'Root Road',
+      nodeIds: topLevelGoalIds,
+      edgeIds: [],
+      isSystemPlan: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await tx.table('todos').update(rootGoal.id, { activePlanId: planId });
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();

@@ -17,7 +17,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react';
-import { getTodo, updateTodo, updateTodoStatus, deleteTodo } from '../db/todos';
+import { getTodo, updateTodo, updateTodoStatus, deleteTodo, traceGoalChain } from '../db/todos';
 import { getSpawnedTodos, getTemplateForInstance, createRelation, updateRelation, deleteRelation } from '../db/relations';
 import { getAllProjects } from '../db/projects';
 import { formatDuration, formatDateShort } from '../utils/date';
@@ -59,6 +59,7 @@ export function TodoDetail() {
   const navigate = useNavigate();
 
   const [todo, setTodo] = useState<Todo | null>(null);
+  const [parentGoal, setParentGoal] = useState<Todo | null>(null);
   const [isLoadingTodo, setIsLoadingTodo] = useState(true);
 
   // Edit mode — default to open for the two-column layout
@@ -111,6 +112,9 @@ export function TodoDetail() {
       setSpawnedTodos(spawned);
       setTemplateTodo(tmpl ?? null);
       setAllProjects(projects);
+
+      const goalChain = await traceGoalChain(t.id);
+      setParentGoal(goalChain[goalChain.length - 1] ?? null);
 
     }
     setIsLoadingTodo(false);
@@ -457,11 +461,10 @@ export function TodoDetail() {
   const sharedSections = (
     <>
       {/* Road to Goal */}
-      {todo && (
+      {todo && parentGoal?.nodeType === 'goal' && (
         <RoadToGoalGraph
-          scope="neighborhood"
-          focusTodoId={todo.id}
-          layersAround={3}
+          goalId={parentGoal.id}
+          highlightTodoId={todo.id}
           mode="card"
           title="Road to Goal"
           editing

@@ -10,6 +10,8 @@ import {
   Pencil,
   Check,
   Loader2,
+  GitBranch,
+  ListTodo,
 } from 'lucide-react';
 import { createTodo } from '../db/todos';
 import {
@@ -68,6 +70,9 @@ interface BigMapCanvasProps {
   onUpdateTodo?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onDeleteTodo?: (todoId: string) => Promise<void>;
   onRelationsChange?: () => void;
+  onAddChild?: (todoId: string) => Promise<void>;
+  onAddTask?: (todoId: string) => Promise<void>;
+  onAddPreGoal?: (todoId: string) => Promise<void>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -198,6 +203,9 @@ export function BigMapCanvas({
   onUpdateTodo,
   onDeleteTodo,
   onRelationsChange,
+  onAddChild,
+  onAddTask,
+  onAddPreGoal,
 }: BigMapCanvasProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -244,7 +252,9 @@ export function BigMapCanvas({
   function allowedLinkTypes(fromTodo: Todo, toTodo: Todo): RoadRelationType[] {
     if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'goal') return ['achieves'];
     if (fromTodo.nodeType === 'goal' && toTodo.nodeType === 'goal') return ['parent_of', 'ordered_before'];
-    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'task') return ['ordered_before'];
+    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'task') {
+      return ['ordered_before', 'depends_on', 'blocked_by', 'assign_from'];
+    }
     return [];
   }
 
@@ -429,18 +439,22 @@ export function BigMapCanvas({
   // Mouse position in canvas coords for connect mode temp line
   const [mouseCanvasPos, setMouseCanvasPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Avoid drawing a parent_of road edge on top of an already-drawn parent-child edge.
-  const ROAD_TYPES: RoadRelationType[] = ['parent_of', 'achieves', 'ordered_before'];
+  // Render every TodoRelation as a directed edge.
+  const ROAD_TYPES: RoadRelationType[] = [
+    'parent_of',
+    'source_from',
+    'achieves',
+    'ordered_before',
+    'depends_on',
+    'blocked_by',
+    'assign_from',
+  ];
   const visibleRoadEdges = useMemo(() => {
     return roadEdges
-      .filter((r): r is TodoRelation & { type: RoadRelationType } =>
-        ROAD_TYPES.includes(r.type as RoadRelationType)
-      )
+      .filter((r): r is TodoRelation & { type: RoadRelationType } => ROAD_TYPES.includes(r.type as RoadRelationType))
       .filter((r) => {
-        if (r.type !== 'parent_of') return true;
-        return !parentChildEdges.some(
-          (pc) => pc.fromId === r.fromTodoId && pc.toId === r.toTodoId
-        );
+        if (r.type !== 'parent_of' && r.type !== 'source_from') return true;
+        return !parentChildEdges.some((pc) => pc.fromId === r.fromTodoId && pc.toId === r.toTodoId);
       });
   }, [roadEdges, parentChildEdges]);
 
@@ -976,6 +990,46 @@ export function BigMapCanvas({
                               <Pencil className="w-3 h-3" />
                               Rename
                             </button>
+                            {isGoal && (
+                              <>
+                                {onAddChild && (
+                                  <button
+                                    onClick={() => {
+                                      onAddChild(node.todo.id).catch(() => {});
+                                      setMenuNodeId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                  >
+                                    <GitBranch className="w-3 h-3 text-indigo-500" />
+                                    Add child
+                                  </button>
+                                )}
+                                {onAddTask && (
+                                  <button
+                                    onClick={() => {
+                                      onAddTask(node.todo.id).catch(() => {});
+                                      setMenuNodeId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                  >
+                                    <ListTodo className="w-3 h-3 text-blue-500" />
+                                    Add task
+                                  </button>
+                                )}
+                                {onAddPreGoal && (
+                                  <button
+                                    onClick={() => {
+                                      onAddPreGoal(node.todo.id).catch(() => {});
+                                      setMenuNodeId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                  >
+                                    <Target className="w-3 h-3 text-emerald-500" />
+                                    Add pre goal
+                                  </button>
+                                )}
+                              </>
+                            )}
                             {!isGoal && (
                               <button
                                 onClick={() => {

@@ -44,7 +44,9 @@ export interface Plan {
   id: string;
   goalTodoId: string;
   title: string;
-  todoIds: string[];
+  nodeIds: string[]; // curated todo IDs in the subgraph
+  edgeIds: string[]; // curated ActionEdge IDs in the subgraph
+  isSystemPlan?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -103,6 +105,7 @@ export interface TodoBase {
   projectId?: string;
   parentId?: string;
   activePlanId?: string;
+  isRootGoal?: boolean;
   tags: string[];
   order: number;
   createdAt: Date;

@@ -9,16 +9,8 @@ import {
   Save,
   PanelRightClose,
   PanelRightOpen,
-  Map,
-  Plus,
-  ChevronDown,
-  Trash2,
-  GitBranch,
-  ListTodo,
-  CheckCircle2,
-  Circle,
 } from 'lucide-react';
-import { updateTodo, deleteTodo, createGoal, createTask } from '../db/todos';
+import { updateTodo, deleteTodo, createTask, createGoal, getTodo } from '../db/todos';
 import { db } from '../db/database';
 import { getAllProjects } from '../db/projects';
 import {
@@ -27,19 +19,10 @@ import {
   deleteRelation,
   getChildGoals,
   getPreAchieveGoals,
-  getTasksForGoal,
 } from '../db/relations';
-import {
-  getPlansForGoal,
-  createPlan,
-  updatePlan,
-  deletePlan,
-  addTodoToPlan,
-  removeTodoFromPlan,
-} from '../db/plans';
 import { formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
-import type { Todo, Project, GoalStatus, TodoRelationType, Plan } from '../types';
+import type { Todo, Project, GoalStatus, TodoRelationType } from '../types';
 
 const goalStatusConfig: Record<string, { label: string; color: string }> = {
   active: { label: 'Active', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
@@ -56,16 +39,7 @@ interface GoalDetailProps {
 export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [activePlan, setActivePlan] = useState<Plan | null>(null);
-  const [isPlanMenuOpen, setIsPlanMenuOpen] = useState(false);
   const [graphTick, setGraphTick] = useState(0);
-
-  // Goal hierarchy sections
-  const [childGoals, setChildGoals] = useState<Todo[]>([]);
-  const [preAchieveGoals, setPreAchieveGoals] = useState<Todo[]>([]);
-  const [achievingTasks, setAchievingTasks] = useState<Todo[]>([]);
-  const [allGoals, setAllGoals] = useState<Todo[]>([]);
 
   // Edit mode — default open for two-column layout
   const [isEditing, setIsEditing] = useState(true);
@@ -86,82 +60,7 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
 
   useEffect(() => {
     getAllProjects().then(setProjects);
-    db.todos
-      .filter((t) => t.nodeType === 'goal' && t.id !== goal.id)
-      .toArray()
-      .then(setAllGoals);
   }, [goal.id]);
-
-  useEffect(() => {
-    loadPlans();
-  }, [goal.id, goal.activePlanId]);
-
-  async function loadPlans() {
-    const goalPlans = await getPlansForGoal(goal.id);
-    setPlans(goalPlans);
-    const active =
-      goalPlans.find((p) => p.id === goal.activePlanId) ?? goalPlans[0] ?? null;
-    setActivePlan(active);
-  }
-
-  async function loadHierarchy() {
-    const [children, preGoals, tasks] = await Promise.all([
-      getChildGoals(goal.id),
-      getPreAchieveGoals(goal.id),
-      getTasksForGoal(goal.id),
-    ]);
-    setChildGoals(children);
-    setPreAchieveGoals(preGoals);
-    setAchievingTasks(tasks);
-  }
-
-  useEffect(() => {
-    loadHierarchy();
-  }, [goal.id, graphTick]);
-
-  async function handleSetActivePlan(planId: string) {
-    await updateTodo(goal.id, { activePlanId: planId });
-    onUpdate({ activePlanId: planId });
-    await loadPlans();
-  }
-
-  async function handleCreatePlan() {
-    const title = prompt('Plan name:');
-    if (!title) return;
-    const plan = await createPlan(goal.id, title.trim());
-    await handleSetActivePlan(plan.id);
-  }
-
-  async function handleRenamePlan() {
-    if (!activePlan) return;
-    const title = prompt('Rename plan:', activePlan.title);
-    if (!title) return;
-    await updatePlan(activePlan.id, { title: title.trim() });
-    await loadPlans();
-  }
-
-  async function handleDeletePlan() {
-    if (!activePlan) return;
-    if (!confirm(`Delete plan "${activePlan.title}"?`)) return;
-    await deletePlan(activePlan.id);
-    await loadPlans();
-    const remaining = await getPlansForGoal(goal.id);
-    const nextActive = remaining[0] ?? null;
-    onUpdate({ activePlanId: nextActive?.id });
-    setGraphTick((t) => t + 1);
-  }
-
-  async function handleAddToPlan(todoId: string) {
-    if (!activePlan) return;
-    await addTodoToPlan(activePlan.id, todoId);
-    setGraphTick((t) => t + 1);
-  }
-
-  async function handleRemoveFromPlan(todoId: string) {
-    if (!activePlan) return;
-    await removeTodoFromPlan(activePlan.id, todoId);
-    setGraphTick((t) => t + 1);
-  }
 
   // Initialize edit form once when goal loads (panel is open by default)
   useEffect(() => {
@@ -266,39 +165,44 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     }
   }
 
-  async function handleCreateChildGoal() {
-    const title = prompt('Child goal title:');
-    if (!title) return;
-    const child = await createGoal(title.trim(), {
-      projectId: goal.projectId,
-      tags: [...goal.tags],
-    });
-    await createRelation(goal.id, child.id, 'parent_of');
-    setGraphTick((t) => t + 1);
-    navigate(`/goal/${child.id}`);
-  }
-
-  async function handleCreateAchievingTask() {
+  async function handleCreateAchievingTask(goalId: string) {
+    const parent = await getTodo(goalId);
+    if (!parent || parent.nodeType !== 'goal') return;
     const title = prompt('Task title:');
     if (!title) return;
     const task = await createTask(title.trim(), {
-      projectId: goal.projectId,
-      tags: [...goal.tags],
+      projectId: parent.projectId,
+      tags: [...parent.tags],
     });
-    await createRelation(task.id, goal.id, 'achieves');
+    await createRelation(task.id, goalId, 'achieves');
     setGraphTick((t) => t + 1);
     navigate(`/todo/${task.id}`);
   }
 
-  async function handleLinkPreAchieveGoal() {
-    const candidates = allGoals.filter(
+  async function handleLinkPreAchieveGoal(goalId: string) {
+    const targetGoal = await getTodo(goalId);
+    if (!targetGoal || targetGoal.nodeType !== 'goal') return;
+
+    const [allGoalTodos, existingPreGoals, existingChildren] = await Promise.all([
+      db.todos.filter((t) => t.nodeType === 'goal' && t.id !== goalId).toArray(),
+      getPreAchieveGoals(goalId),
+      getChildGoals(goalId),
+    ]);
+
+    const candidates = allGoalTodos.filter(
       (g) =>
-        g.id !== goal.id &&
-        !preAchieveGoals.some((p) => p.id === g.id) &&
-        !childGoals.some((c) => c.id === g.id)
+        !existingPreGoals.some((p) => p.id === g.id) &&
+        !existingChildren.some((c) => c.id === g.id)
     );
     if (candidates.length === 0) {
-      alert('No available goals to link.');
+      const title = prompt('No existing goals to link. Enter a title to create a new pre-achieve goal:');
+      if (!title?.trim()) return;
+      const newGoal = await createGoal(title.trim(), {
+        projectId: targetGoal.projectId,
+        tags: [...targetGoal.tags],
+      });
+      await createRelation(newGoal.id, goalId, 'ordered_before');
+      setGraphTick((t) => t + 1);
       return;
     }
     const choice = prompt(
@@ -308,7 +212,7 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     if (!choice) return;
     const index = parseInt(choice.trim(), 10) - 1;
     if (index < 0 || index >= candidates.length || isNaN(index)) return;
-    await createRelation(candidates[index].id, goal.id, 'ordered_before');
+    await createRelation(candidates[index].id, goalId, 'ordered_before');
     setGraphTick((t) => t + 1);
   }
 
@@ -383,215 +287,30 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
 
   const sharedSections = (
     <>
-      {/* Plan selector */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 min-w-0">
-            <Map className="w-4 h-4 text-indigo-500 shrink-0" />
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">
-              {activePlan ? activePlan.title : 'No plan'}
-            </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              ({plans.length} plan{plans.length !== 1 ? 's' : ''})
-            </span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="relative">
-              <button
-                onClick={() => setIsPlanMenuOpen((v) => !v)}
-                className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >
-                Switch
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              {isPlanMenuOpen && (
-                <div
-                  className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg p-1 z-50"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {plans.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={async () => {
-                        await handleSetActivePlan(p.id);
-                        setIsPlanMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md transition-colors ${
-                        p.id === activePlan?.id
-                          ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400'
-                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      {p.title}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => {
-                      handleCreatePlan();
-                      setIsPlanMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-md transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    New plan
-                  </button>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleRenamePlan}
-              disabled={!activePlan}
-              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-              title="Rename plan"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={handleDeletePlan}
-              disabled={!activePlan || plans.length <= 1}
-              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-rose-100 dark:hover:bg-rose-900/30 hover:text-rose-600 disabled:opacity-40 transition-colors"
-              title="Delete plan"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Road to Goal */}
       <RoadToGoalGraph
         key={goal.id}
-        scope="neighborhood"
-        focusTodoId={goal.id}
-        layersAround={3}
+        goalId={goal.id}
         mode="card"
         title="Road to Goal"
         editing
-        planId={activePlan?.id}
         reloadTick={graphTick}
-        onAddToPlan={handleAddToPlan}
-        onRemoveFromPlan={handleRemoveFromPlan}
-        onNodeClick={(todoId) => navigate(`/todo/${todoId}`)}
+        onNodeClick={async (todoId) => {
+          const todo = await getTodo(todoId);
+          if (todo?.nodeType === 'goal') {
+            navigate(`/goals/${todoId}`);
+          } else {
+            navigate(`/todo/${todoId}`);
+          }
+        }}
         onCreateRelation={handleCreateRelation}
         onDeleteRelation={handleDeleteRelation}
         onUpdateRelation={handleUpdateRelation}
         onUpdateTodo={handleUpdateTodo}
         onDeleteTodo={handleDeleteTodo}
+        onAddTask={handleCreateAchievingTask}
+        onAddPreGoal={handleLinkPreAchieveGoal}
       />
-
-      {/* Goal hierarchy: children, pre-achieve goals, and achieving tasks */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Child goals */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <GitBranch className="w-4 h-4 text-indigo-500" />
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Child Goals</h3>
-            </div>
-            <button
-              onClick={handleCreateChildGoal}
-              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add
-            </button>
-          </div>
-          {childGoals.length === 0 ? (
-            <p className="text-xs text-slate-400 dark:text-slate-500">No child goals yet.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {childGoals.map((g) => (
-                <li key={g.id}>
-                  <button
-                    onClick={() => navigate(`/goal/${g.id}`)}
-                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                  >
-                    <Target className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                    <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{g.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Pre-achieve goals */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-emerald-500" />
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Pre-achieve Goals</h3>
-            </div>
-            <button
-              onClick={handleLinkPreAchieveGoal}
-              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Link
-            </button>
-          </div>
-          {preAchieveGoals.length === 0 ? (
-            <p className="text-xs text-slate-400 dark:text-slate-500">No pre-achieve goals yet.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {preAchieveGoals.map((g) => (
-                <li key={g.id}>
-                  <button
-                    onClick={() => navigate(`/goal/${g.id}`)}
-                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                  >
-                    <Target className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{g.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Tasks that achieve the goal */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <ListTodo className="w-4 h-4 text-blue-500" />
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Tasks to Achieve</h3>
-            </div>
-            <button
-              onClick={handleCreateAchievingTask}
-              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              Add
-            </button>
-          </div>
-          {achievingTasks.length === 0 ? (
-            <p className="text-xs text-slate-400 dark:text-slate-500">No tasks yet.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {achievingTasks.map((t) => (
-                <li key={t.id}>
-                  <button
-                    onClick={() => navigate(`/todo/${t.id}`)}
-                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                  >
-                    {t.status === 'done' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    ) : t.status === 'in_progress' ? (
-                      <Circle className="w-3.5 h-3.5 text-indigo-500 shrink-0 fill-indigo-500" />
-                    ) : (
-                      <ListTodo className="w-3.5 h-3.5 text-slate-300 dark:text-slate-500 shrink-0" />
-                    )}
-                    <span className={`text-sm truncate ${t.status === 'done' ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-700 dark:text-slate-300'}`}>
-                      {t.title}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
     </>
   );
 

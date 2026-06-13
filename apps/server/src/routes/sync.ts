@@ -359,13 +359,17 @@ router.post('/', async (req, res) => {
       // Merge plans
       if (payload.plans?.length) {
         let count = 0;
-        for (const item of payload.plans) {
+        for (const raw of payload.plans) {
+          const item = raw as unknown as Record<string, unknown>;
           const id = item.id as string;
+          const nodeIds = (item.nodeIds as string[]) ?? (item.todoIds as string[]) ?? [];
+          const edgeIds = (item.edgeIds as string[]) ?? [];
           const data = {
             id,
             goalTodoId: item.goalTodoId as string,
             title: item.title as string,
-            todoIds: JSON.stringify(item.todoIds ?? []),
+            nodeIds: JSON.stringify(nodeIds),
+            edgeIds: JSON.stringify(edgeIds),
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
@@ -426,10 +430,17 @@ router.get('/', async (_req, res) => {
         intervals: typeof s.intervals === 'string' ? JSON.parse(s.intervals) : s.intervals,
       })),
       repeatOccurrences,
-      plans: plans.map((p) => ({
-        ...p,
-        todoIds: typeof p.todoIds === 'string' ? JSON.parse(p.todoIds) : p.todoIds,
-      })),
+      plans: plans.map((p) => {
+        const nodeIds = typeof p.nodeIds === 'string' ? JSON.parse(p.nodeIds) : p.nodeIds;
+        const edgeIds = typeof p.edgeIds === 'string' ? JSON.parse(p.edgeIds) : p.edgeIds;
+        return {
+          ...p,
+          nodeIds,
+          edgeIds,
+          // Temporary: keep todoIds for old desktop clients during transition
+          todoIds: nodeIds ?? [],
+        };
+      }),
     });
   } catch (err) {
     console.error('Sync pull error:', err);

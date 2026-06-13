@@ -462,12 +462,10 @@ export function TodoExecutionPanel({
       )}
 
       {/* Road to Goal */}
-      {todo && (
+      {todo && goalTodo?.nodeType === 'goal' && (
         <RoadToGoalGraph
-          scope="neighborhood"
-          focusTodoId={goalTodo?.id ?? todo.id}
+          goalId={goalTodo.id}
           highlightTodoId={todo.id}
-          layersAround={3}
           mode="card"
           title="Road to Goal"
           editing

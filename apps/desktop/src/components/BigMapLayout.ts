@@ -305,12 +305,128 @@ function packItems(items: LayoutItem[], containerWidth: number): LayoutItem[] {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Neighborhood Layout (focused Road-to-Goal view)                    */
+/*  Plan Subgraph Layout (curated ActionEdge subgraph for a goal)       */
+/* ------------------------------------------------------------------ */
+
+export function computeSubgraphLayout(
+  goalId: string,
+  todos: Todo[],
+  actionEdges: ActionEdge[],
+  containerWidth: number
+): LayoutResult {
+  const todoMap = new Map(todos.map((t) => [t.id, t]));
+  const nodeIds = new Set(todos.map((t) => t.id));
+
+  // Build adjacency: action edge from -> to means from is lower, to is upper (toward goal)
+  const childrenOf = new Map<string, string[]>();
+  for (const t of todos) {
+    childrenOf.set(t.id, []);
+  }
+  for (const edge of actionEdges) {
+    if (!nodeIds.has(edge.fromTodoId) || !nodeIds.has(edge.toTodoId)) continue;
+    if (!childrenOf.has(edge.toTodoId)) childrenOf.set(edge.toTodoId, []);
+    childrenOf.get(edge.toTodoId)!.push(edge.fromTodoId);
+  }
+
+  // Compute depth from goal using BFS
+  const depth = new Map<string, number>();
+  depth.set(goalId, 0);
+  const queue = [goalId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const d = depth.get(id)!;
+    for (const childId of childrenOf.get(id) || []) {
+      if (!depth.has(childId) || depth.get(childId)! < d + 1) {
+        depth.set(childId, d + 1);
+        queue.push(childId);
+      }
+    }
+  }
+
+  const maxDepth = Math.max(0, ...Array.from(depth.values()));
+  for (const t of todos) {
+    if (!depth.has(t.id)) {
+      depth.set(t.id, maxDepth + 1);
+    }
+  }
+
+  // Group by depth and sort within each level
+  const depthGroups = new Map<number, string[]>();
+  for (const [id, d] of depth) {
+    if (!depthGroups.has(d)) depthGroups.set(d, []);
+    depthGroups.get(d)!.push(id);
+  }
+
+  for (const [, ids] of depthGroups) {
+    ids.sort((a, b) => {
+      const ta = todoMap.get(a)!;
+      const tb = todoMap.get(b)!;
+      const doneA = ta.status === 'done' ? 1 : 0;
+      const doneB = tb.status === 'done' ? 1 : 0;
+      if (doneA !== doneB) return doneA - doneB;
+      return ta.title.localeCompare(tb.title);
+    });
+  }
+
+  const sortedDepths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+  const minDepth = Math.min(...sortedDepths);
+  const maxDepthVal = Math.max(...sortedDepths);
+  const depthRange = maxDepthVal - minDepth;
+
+  const maxNodesInLevel = Math.max(...sortedDepths.map((d) => depthGroups.get(d)!.length), 1);
+  const neededW = Math.max(maxNodesInLevel * (NODE_W + NODE_GAP) + NODE_GAP, MIN_SVG_W);
+  const sw = Math.max(neededW, containerWidth);
+
+  const nodes: LayoutNode[] = [];
+  for (const d of sortedDepths) {
+    const ids = depthGroups.get(d)!;
+    const totalW = ids.length * NODE_W + (ids.length - 1) * NODE_GAP;
+    const startX = (sw - totalW) / 2;
+    for (let i = 0; i < ids.length; i++) {
+      const todo = todoMap.get(ids[i])!;
+      const isCenter = todo.id === goalId;
+      const isGoal = todo.nodeType === 'goal';
+      const h = isCenter || isGoal ? GOAL_H : NODE_H;
+      nodes.push({
+        todo,
+        x: startX + i * (NODE_W + NODE_GAP) + NODE_W / 2,
+        y: TOP_PAD + (d - minDepth) * LEVEL_H + h / 2,
+        depth: d,
+        componentId: goalId,
+        hasParent: !!todo.parentId,
+      });
+    }
+  }
+
+  const sh = TOP_PAD * 2 + (depthRange + 1) * LEVEL_H + GOAL_H;
+
+  // Parent-child edges within the subgraph (goal -> goal via parentId)
+  const parentChildEdges: { fromId: string; toId: string }[] = [];
+  for (const todo of todos) {
+    if (todo.parentId && nodeIds.has(todo.parentId) && todo.nodeType === 'goal') {
+      const parent = todoMap.get(todo.parentId);
+      if (parent?.nodeType === 'goal') {
+        parentChildEdges.push({ fromId: todo.parentId, toId: todo.id });
+      }
+    }
+  }
+
+  return {
+    nodes,
+    actionEdges,
+    parentChildEdges,
+    width: sw,
+    height: sh,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Goal Road Layout (focused Road-to-Goal view)                       */
 /* ------------------------------------------------------------------ */
 
 const ROAD_TYPES: TodoRelationType[] = ['parent_of', 'achieves', 'ordered_before'];
 
-export function computeNeighborhoodLayout(
+export function computeGoalRoadLayout(
   centerId: string,
   todos: Todo[],
   relations: TodoRelation[],
@@ -694,6 +810,211 @@ export function computeLayout(
     nodes: allNodes,
     actionEdges,
     parentChildEdges,
+    width: totalWidth,
+    height: totalHeight,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Unified Graph Layout (all goals + tasks, all relations)            */
+/* ------------------------------------------------------------------ */
+
+export function computeUnifiedGraphLayout(
+  todos: Todo[],
+  relations: TodoRelation[],
+  containerWidth: number
+): LayoutResult {
+  const todoMap = new Map(todos.map((t) => [t.id, t]));
+  const nodeIds = new Set(todos.map((t) => t.id));
+
+  if (todos.length === 0) {
+    return {
+      nodes: [],
+      actionEdges: [],
+      parentChildEdges: [],
+      roadEdges: [],
+      width: Math.max(MIN_SVG_W, containerWidth),
+      height: 400,
+    };
+  }
+
+  // Build undirected adjacency for weakly-connected components.
+  const undirectedNeighbors = new Map<string, string[]>();
+  for (const t of todos) undirectedNeighbors.set(t.id, []);
+  for (const rel of relations) {
+    if (!nodeIds.has(rel.fromTodoId) || !nodeIds.has(rel.toTodoId)) continue;
+    undirectedNeighbors.get(rel.fromTodoId)!.push(rel.toTodoId);
+    undirectedNeighbors.get(rel.toTodoId)!.push(rel.fromTodoId);
+  }
+
+  const components: Set<string>[] = [];
+  const visited = new Set<string>();
+  for (const t of todos) {
+    if (visited.has(t.id)) continue;
+    const component = new Set<string>();
+    const queue = [t.id];
+    visited.add(t.id);
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      component.add(id);
+      for (const neighbor of undirectedNeighbors.get(id)!) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+    components.push(component);
+  }
+
+  const layoutItems: LayoutItem[] = [];
+
+  for (const component of components) {
+    const componentId = Array.from(component).sort()[0];
+    const outgoing = new Map<string, string[]>();
+    const incoming = new Map<string, string[]>();
+    for (const id of component) {
+      outgoing.set(id, []);
+      incoming.set(id, []);
+    }
+    for (const rel of relations) {
+      if (!component.has(rel.fromTodoId) || !component.has(rel.toTodoId)) continue;
+      outgoing.get(rel.fromTodoId)!.push(rel.toTodoId);
+      incoming.get(rel.toTodoId)!.push(rel.fromTodoId);
+    }
+
+    // Roots are nodes with no incoming edges inside this component.
+    let roots = Array.from(component).filter((id) => incoming.get(id)!.length === 0);
+    if (roots.length === 0) {
+      // Pure cycle: prefer goal nodes, then highest out-degree.
+      roots = Array.from(component)
+        .sort((a, b) => {
+          const typeDiff = (todoMap.get(b)?.nodeType === 'goal' ? 1 : 0) - (todoMap.get(a)?.nodeType === 'goal' ? 1 : 0);
+          if (typeDiff !== 0) return typeDiff;
+          return outgoing.get(b)!.length - outgoing.get(a)!.length;
+        })
+        .slice(0, Math.min(3, component.size));
+    }
+
+    // Assign depths using longest-path layering from roots.
+    const depth = new Map<string, number>();
+    const queue = [...roots];
+    for (const root of roots) depth.set(root, 0);
+
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const d = depth.get(id)!;
+      for (const next of outgoing.get(id)!) {
+        if (!depth.has(next) || depth.get(next)! < d + 1) {
+          depth.set(next, d + 1);
+          if (!queue.includes(next)) queue.push(next);
+        }
+      }
+    }
+
+    // Remaining nodes are in cycles: place them one level below their deepest predecessor.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of component) {
+        if (depth.has(id)) continue;
+        const preds = incoming.get(id)!.filter((pid) => depth.has(pid));
+        if (preds.length > 0) {
+          depth.set(id, Math.max(...preds.map((pid) => depth.get(pid)!)) + 1);
+          changed = true;
+        }
+      }
+    }
+
+    let maxDepth = Math.max(0, ...Array.from(depth.values()));
+    for (const id of component) {
+      if (!depth.has(id)) {
+        depth.set(id, maxDepth + 1);
+      }
+    }
+    maxDepth = Math.max(0, ...Array.from(depth.values()));
+
+    const depthGroups = new Map<number, string[]>();
+    for (const [id, d] of depth) {
+      if (!depthGroups.has(d)) depthGroups.set(d, []);
+      depthGroups.get(d)!.push(id);
+    }
+
+    for (const [, ids] of depthGroups) {
+      ids.sort((a, b) => {
+        const ta = todoMap.get(a)!;
+        const tb = todoMap.get(b)!;
+        const doneA = ta.status === 'done' ? 1 : 0;
+        const doneB = tb.status === 'done' ? 1 : 0;
+        if (doneA !== doneB) return doneA - doneB;
+        if (ta.nodeType !== tb.nodeType) return ta.nodeType === 'goal' ? -1 : 1;
+        return ta.title.localeCompare(tb.title);
+      });
+    }
+
+    const sortedDepths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+    const maxNodesInLevel = Math.max(...sortedDepths.map((d) => depthGroups.get(d)!.length), 1);
+    const neededW = Math.max(maxNodesInLevel * (NODE_W + NODE_GAP) + NODE_GAP, MIN_SVG_W);
+
+    const nodes: LayoutNode[] = [];
+    for (const d of sortedDepths) {
+      const ids = depthGroups.get(d)!;
+      const totalW = ids.length * NODE_W + (ids.length - 1) * NODE_GAP;
+      const startX = (neededW - totalW) / 2;
+      for (let i = 0; i < ids.length; i++) {
+        const todo = todoMap.get(ids[i])!;
+        const isGoal = todo.nodeType === 'goal';
+        nodes.push({
+          todo,
+          x: startX + i * (NODE_W + NODE_GAP) + NODE_W / 2,
+          y: TOP_PAD + d * LEVEL_H + (isGoal ? GOAL_H : NODE_H) / 2,
+          depth: d,
+          componentId,
+          hasParent: false,
+        });
+      }
+    }
+
+    const bounds = computeBounds(nodes);
+    layoutItems.push({
+      id: componentId,
+      nodes,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }
+
+  const maxItemWidth = Math.max(...layoutItems.map((i) => i.width), MIN_SVG_W);
+  const packWidth = Math.max(maxItemWidth * 2 + COMPONENT_PAD_X, containerWidth);
+  packItems(layoutItems, packWidth);
+
+  const allNodes: LayoutNode[] = [];
+  for (const item of layoutItems) allNodes.push(...item.nodes);
+
+  const totalWidth = Math.max(
+    ...layoutItems.map((i) => {
+      const maxNodeX = Math.max(
+        ...i.nodes.map((n) => n.x + (n.todo.nodeType === 'goal' ? GOAL_W : NODE_W) / 2)
+      );
+      return maxNodeX + COMPONENT_PAD_X;
+    }),
+    packWidth
+  );
+  const totalHeight = Math.max(
+    ...layoutItems.map((i) => {
+      const maxNodeY = Math.max(
+        ...i.nodes.map((n) => n.y + (n.todo.nodeType === 'goal' ? GOAL_H : NODE_H) / 2)
+      );
+      return maxNodeY + COMPONENT_PAD_Y;
+    }),
+    400
+  );
+
+  return {
+    nodes: allNodes,
+    actionEdges: [],
+    parentChildEdges: [],
+    roadEdges: relations,
     width: totalWidth,
     height: totalHeight,
   };

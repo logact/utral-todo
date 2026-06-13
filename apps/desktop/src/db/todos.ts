@@ -2,7 +2,9 @@ import { db } from './database';
 import { onLocalChange } from './syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
-import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern } from '../types';
+import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern, Plan } from '../types';
+
+export const ROOT_GOAL_ID = 'system:root-goal';
 
 export async function createTodo(
   title: string,
@@ -116,6 +118,49 @@ export async function getRootTodos(): Promise<Todo[]> {
   return db.todos.filter((t) => !t.parentId).toArray();
 }
 
+export async function getRootGoal(): Promise<Todo | undefined> {
+  return db.todos.filter((t) => t.isRootGoal === true).first();
+}
+
+export async function ensureRootGoal(): Promise<Todo> {
+  const existing = await getRootGoal();
+  if (existing) return existing;
+
+  const now = new Date();
+  const rootGoal: Todo = {
+    id: ROOT_GOAL_ID,
+    nodeType: 'goal',
+    title: 'Root Goal',
+    description: '',
+    isRootGoal: true,
+    goalStatus: 'active',
+    tags: [],
+    order: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.todos.add(rootGoal);
+  onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
+
+  const plan: Plan = {
+    id: crypto.randomUUID(),
+    goalTodoId: rootGoal.id,
+    title: 'Root Road',
+    nodeIds: [],
+    edgeIds: [],
+    isSystemPlan: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.plans.add(plan);
+  onLocalChange('plans', 'create', plan.id).catch(() => {});
+
+  await db.todos.update(rootGoal.id, { activePlanId: plan.id, updatedAt: new Date() });
+  onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
+
+  return { ...rootGoal, activePlanId: plan.id };
+}
+
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
   const todos = await db.todos.where('parentId').equals(parentId).toArray();
   return todos.sort((a, b) => {
@@ -206,6 +251,10 @@ export async function getTodo(id: string): Promise<Todo | undefined> {
 }
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
+  const existing = await db.todos.get(id);
+  if (existing?.isRootGoal) {
+    throw new Error('Cannot modify the root goal');
+  }
   await db.todos.update(id, { ...updates, updatedAt: new Date() });
   onLocalChange('todos', 'update', id).catch(() => {});
 }
@@ -222,6 +271,9 @@ export async function bulkUpdateTodoProject(
 
 export async function deleteTodo(id: string): Promise<void> {
   const todo = await db.todos.get(id);
+  if (todo?.isRootGoal) {
+    throw new Error('Cannot delete the root goal');
+  }
 
   if (todo?.nodeType === 'goal') {
     const goalPlans = await db.plans.where('goalTodoId').equals(id).toArray();
@@ -231,10 +283,22 @@ export async function deleteTodo(id: string): Promise<void> {
     }
   } else {
     const plans = await db.plans.toArray();
+    const edges = await db.actionEdges.toArray();
     for (const plan of plans) {
-      if (plan.todoIds.includes(id)) {
-        const newTodoIds = plan.todoIds.filter((tid) => tid !== id);
-        await db.plans.update(plan.id, { todoIds: newTodoIds, updatedAt: new Date() });
+      if (plan.nodeIds.includes(id)) {
+        const newNodeIds = plan.nodeIds.filter((tid) => tid !== id);
+        const edgeIdsToRemove = new Set(
+          plan.edgeIds.filter((eid) => {
+            const edge = edges.find((e) => e.id === eid);
+            return edge?.fromTodoId === id || edge?.toTodoId === id;
+          })
+        );
+        const newEdgeIds = plan.edgeIds.filter((eid) => !edgeIdsToRemove.has(eid));
+        await db.plans.update(plan.id, {
+          nodeIds: newNodeIds,
+          edgeIds: newEdgeIds,
+          updatedAt: new Date(),
+        });
         onLocalChange('plans', 'update', plan.id).catch(() => {});
       }
     }

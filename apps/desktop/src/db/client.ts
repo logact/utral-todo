@@ -171,11 +171,13 @@ export function parseRoadmap(data: unknown): Roadmap {
 
 export function parsePlan(data: unknown): Plan {
   const p = data as Record<string, unknown>;
+  const nodeIds = (p.nodeIds as string[]) ?? (p.todoIds as string[]) ?? [];
   return {
     id: p.id as string,
     goalTodoId: p.goalTodoId as string,
     title: (p.title as string) || 'Untitled Plan',
-    todoIds: (p.todoIds as string[]) ?? [],
+    nodeIds,
+    edgeIds: (p.edgeIds as string[]) ?? [],
     createdAt: parseDate(p.createdAt)!,
     updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
   };

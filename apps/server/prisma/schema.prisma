@@ -48,6 +48,7 @@ model Todo {
   targetDate       DateTime?
   goalStatus       String?        // 'active' | 'paused' | 'achieved' | 'abandoned'
   activePlanId     String?
+  isRootGoal       Boolean?       @default(false)
 
   project          Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parent           Todo?          @relation("TodoChildren", fields: [parentId], references: [id], onDelete: Cascade)
@@ -114,7 +115,9 @@ model Plan {
   id         String   @id @default(uuid())
   goalTodoId String
   title      String
-  todoIds    Json     // string[]
+  nodeIds    Json     // string[]
+  edgeIds    Json     // string[]
+  isSystemPlan Boolean? @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
