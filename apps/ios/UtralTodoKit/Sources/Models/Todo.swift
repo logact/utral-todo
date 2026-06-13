@@ -4,7 +4,6 @@ import SwiftData
 @Model
 public final class Todo {
     @Attribute(.unique) public var id: String
-    public var projectId: String?
     public var parentId: String?
     public var title: String
     public var desc: String
@@ -34,7 +33,6 @@ public final class Todo {
 
     public init(
         id: String = UUID().uuidString,
-        projectId: String? = nil,
         parentId: String? = nil,
         title: String,
         desc: String = "",
@@ -52,7 +50,6 @@ public final class Todo {
         isGoal: Bool = false
     ) {
         self.id = id
-        self.projectId = projectId
         self.parentId = parentId
         self.title = title
         self.desc = desc

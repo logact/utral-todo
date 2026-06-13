@@ -7,24 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Project {
-  id          String   @id @default(uuid())
-  title       String
-  description String
-  status      String   // 'active' | 'archived'
-  color       String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deadline    DateTime?
-  mainGoalId  String?
-  todos       Todo[]
-}
-
 model Todo {
   id               String         @id @default(uuid())
   nodeType         String         @default("task") // 'goal' | 'task'
   pattern          String         @default("task") // 'task' | 'cognitive'
-  projectId        String?
   parentId         String?
   title            String
   description      String         @default("")
@@ -50,7 +36,6 @@ model Todo {
   activePlanId     String?
   isRootGoal       Boolean?       @default(false)
 
-  project          Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parent           Todo?          @relation("TodoChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children         Todo[]         @relation("TodoChildren")
 

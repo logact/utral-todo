@@ -1,4 +1,4 @@
-import type { Todo, ActionEdge, TodoRelation, TodoRelationType } from '../types';
+import type { Todo, ActionEdge, TodoRelation, TodoRelationType, TodoLog } from '../types';
 import {
   NODE_W,
   NODE_H,
@@ -10,6 +10,9 @@ import {
   MIN_SVG_W,
   COMPONENT_PAD_X,
   COMPONENT_PAD_Y,
+  SATELLITE_SIZE,
+  SATELLITE_GAP,
+  SATELLITE_OFFSET,
 } from './BigMapConstants';
 
 /* ------------------------------------------------------------------ */
@@ -25,8 +28,16 @@ export interface LayoutNode {
   hasParent: boolean;
 }
 
+export interface LayoutLogNode {
+  log: TodoLog;
+  todoId: string;
+  x: number;
+  y: number;
+}
+
 export interface LayoutResult {
   nodes: LayoutNode[];
+  execLogNodes: LayoutLogNode[];
   actionEdges: ActionEdge[];
   parentChildEdges: { fromId: string; toId: string }[];
   roadEdges?: TodoRelation[];
@@ -86,8 +97,8 @@ function getNodeSize(todoId: string, goalId: string | null) {
   };
 }
 
-function computeBounds(nodes: LayoutNode[]): { width: number; height: number } {
-  if (nodes.length === 0) return { width: 0, height: 0 };
+function computeBounds(nodes: LayoutNode[], logNodes: LayoutLogNode[] = []): { width: number; height: number } {
+  if (nodes.length === 0 && logNodes.length === 0) return { width: 0, height: 0 };
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
@@ -99,7 +110,44 @@ function computeBounds(nodes: LayoutNode[]): { width: number; height: number } {
     minY = Math.min(minY, n.y - h / 2);
     maxY = Math.max(maxY, n.y + h / 2);
   }
+  for (const l of logNodes) {
+    minX = Math.min(minX, l.x - SATELLITE_SIZE / 2);
+    maxX = Math.max(maxX, l.x + SATELLITE_SIZE / 2);
+    minY = Math.min(minY, l.y - SATELLITE_SIZE / 2);
+    maxY = Math.max(maxY, l.y + SATELLITE_SIZE / 2);
+  }
   return { width: maxX - minX + COMPONENT_PAD_X, height: maxY - minY + COMPONENT_PAD_Y };
+}
+
+function placeExecSatellites(nodes: LayoutNode[], execLogs: TodoLog[]): LayoutLogNode[] {
+  if (execLogs.length === 0 || nodes.length === 0) return [];
+  const nodeMap = new Map(nodes.map((n) => [n.todo.id, n]));
+  const logsByTodo = new Map<string, TodoLog[]>();
+  for (const log of execLogs) {
+    if (!nodeMap.has(log.todoId)) continue;
+    if (!logsByTodo.has(log.todoId)) logsByTodo.set(log.todoId, []);
+    logsByTodo.get(log.todoId)!.push(log);
+  }
+
+  const satellites: LayoutLogNode[] = [];
+  for (const [todoId, logs] of logsByTodo) {
+    const parent = nodeMap.get(todoId);
+    if (!parent) continue;
+    const parentW = parent.todo.nodeType === 'goal' ? GOAL_W : NODE_W;
+    const sorted = [...logs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const count = sorted.length;
+    const startY = parent.y - ((count - 1) * SATELLITE_GAP) / 2;
+    const x = parent.x + parentW / 2 + SATELLITE_OFFSET + SATELLITE_SIZE / 2;
+    for (let i = 0; i < count; i++) {
+      satellites.push({
+        log: sorted[i],
+        todoId,
+        x,
+        y: startY + i * SATELLITE_GAP,
+      });
+    }
+  }
+  return satellites;
 }
 
 /* ------------------------------------------------------------------ */
@@ -312,7 +360,8 @@ export function computeSubgraphLayout(
   goalId: string,
   todos: Todo[],
   actionEdges: ActionEdge[],
-  containerWidth: number
+  containerWidth: number,
+  execLogs: TodoLog[] = []
 ): LayoutResult {
   const todoMap = new Map(todos.map((t) => [t.id, t]));
   const nodeIds = new Set(todos.map((t) => t.id));
@@ -411,8 +460,11 @@ export function computeSubgraphLayout(
     }
   }
 
+  const execLogNodes = placeExecSatellites(nodes, execLogs);
+
   return {
     nodes,
+    execLogNodes,
     actionEdges,
     parentChildEdges,
     width: sw,
@@ -431,7 +483,8 @@ export function computeGoalRoadLayout(
   todos: Todo[],
   relations: TodoRelation[],
   layersAround: number,
-  containerWidth: number
+  containerWidth: number,
+  execLogs: TodoLog[] = []
 ): LayoutResult {
   const todoMap = new Map(todos.map((t) => [t.id, t]));
 
@@ -624,13 +677,17 @@ export function computeGoalRoadLayout(
   const depthRange = maxDepth - minDepth;
   const sh = TOP_PAD * 2 + (depthRange + 1) * LEVEL_H + GOAL_H;
 
+  const execLogNodes = placeExecSatellites(nodes, execLogs);
+  const bounds = computeBounds(nodes, execLogNodes);
+
   return {
     nodes,
+    execLogNodes,
     actionEdges: [],
     parentChildEdges,
     roadEdges,
-    width: sw,
-    height: sh,
+    width: Math.max(sw, bounds.width),
+    height: Math.max(sh, bounds.height),
   };
 }
 
@@ -641,7 +698,8 @@ export function computeGoalRoadLayout(
 export function computeLayout(
   todos: Todo[],
   actionEdges: ActionEdge[],
-  _relations: TodoRelation[]
+  _relations: TodoRelation[],
+  execLogs: TodoLog[] = []
 ): LayoutResult {
   const todoMap = new Map(todos.map((t) => [t.id, t]));
   const allTodoIds = new Set(todos.map((t) => t.id));
@@ -782,7 +840,10 @@ export function computeLayout(
     allNodes.push(...item.nodes);
   }
 
-  // --- Step 6: Compute parent-child edges ---
+  // --- Step 6: Compute exec log satellites ---
+  const execLogNodes = placeExecSatellites(allNodes, execLogs);
+
+  // --- Step 7: Compute parent-child edges ---
   const parentChildEdges: { fromId: string; toId: string }[] = [];
   for (const n of allNodes) {
     if (n.todo.parentId && todoMap.has(n.todo.parentId)) {
@@ -790,24 +851,14 @@ export function computeLayout(
     }
   }
 
-  // --- Step 7: Compute total bounds ---
-  const totalWidth = Math.max(
-    ...layoutItems.map((i) => {
-      const maxNodeX = Math.max(...i.nodes.map((n) => n.x + NODE_W / 2));
-      return maxNodeX + COMPONENT_PAD_X;
-    }),
-    containerWidth
-  );
-  const totalHeight = Math.max(
-    ...layoutItems.map((i) => {
-      const maxNodeY = Math.max(...i.nodes.map((n) => n.y + NODE_H / 2));
-      return maxNodeY + COMPONENT_PAD_Y;
-    }),
-    400
-  );
+  // --- Step 8: Compute total bounds ---
+  const bounds = computeBounds(allNodes, execLogNodes);
+  const totalWidth = Math.max(bounds.width, containerWidth);
+  const totalHeight = Math.max(bounds.height, 400);
 
   return {
     nodes: allNodes,
+    execLogNodes,
     actionEdges,
     parentChildEdges,
     width: totalWidth,
@@ -822,7 +873,8 @@ export function computeLayout(
 export function computeUnifiedGraphLayout(
   todos: Todo[],
   relations: TodoRelation[],
-  containerWidth: number
+  containerWidth: number,
+  execLogs: TodoLog[] = []
 ): LayoutResult {
   const todoMap = new Map(todos.map((t) => [t.id, t]));
   const nodeIds = new Set(todos.map((t) => t.id));
@@ -830,6 +882,7 @@ export function computeUnifiedGraphLayout(
   if (todos.length === 0) {
     return {
       nodes: [],
+      execLogNodes: [],
       actionEdges: [],
       parentChildEdges: [],
       roadEdges: [],
@@ -991,27 +1044,14 @@ export function computeUnifiedGraphLayout(
   const allNodes: LayoutNode[] = [];
   for (const item of layoutItems) allNodes.push(...item.nodes);
 
-  const totalWidth = Math.max(
-    ...layoutItems.map((i) => {
-      const maxNodeX = Math.max(
-        ...i.nodes.map((n) => n.x + (n.todo.nodeType === 'goal' ? GOAL_W : NODE_W) / 2)
-      );
-      return maxNodeX + COMPONENT_PAD_X;
-    }),
-    packWidth
-  );
-  const totalHeight = Math.max(
-    ...layoutItems.map((i) => {
-      const maxNodeY = Math.max(
-        ...i.nodes.map((n) => n.y + (n.todo.nodeType === 'goal' ? GOAL_H : NODE_H) / 2)
-      );
-      return maxNodeY + COMPONENT_PAD_Y;
-    }),
-    400
-  );
+  const execLogNodes = placeExecSatellites(allNodes, execLogs);
+  const bounds = computeBounds(allNodes, execLogNodes);
+  const totalWidth = Math.max(bounds.width, packWidth);
+  const totalHeight = Math.max(bounds.height, 400);
 
   return {
     nodes: allNodes,
+    execLogNodes,
     actionEdges: [],
     parentChildEdges: [],
     roadEdges: relations,

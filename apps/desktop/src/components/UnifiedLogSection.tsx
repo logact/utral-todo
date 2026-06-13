@@ -44,11 +44,12 @@ function LogEntry({ log, onDelete }: { log: TodoLog; onDelete: (id: string) => v
   );
 }
 
-const LOG_TYPE_OPTIONS: { type: 'progress' | 'thought' | 'blocker' | 'decision'; label: string; icon: typeof Zap; color: string }[] = [
+const LOG_TYPE_OPTIONS: { type: 'progress' | 'thought' | 'blocker' | 'decision' | 'exec'; label: string; icon: typeof Zap; color: string }[] = [
   { type: 'progress', label: 'Progress', icon: Zap, color: 'text-indigo-500' },
   { type: 'thought', label: 'Thought', icon: Brain, color: 'text-amber-500' },
   { type: 'blocker', label: 'Blocker', icon: X, color: 'text-rose-500' },
   { type: 'decision', label: 'Decision', icon: CheckCircle2, color: 'text-emerald-500' },
+  { type: 'exec', label: 'Exec', icon: Play, color: 'text-violet-500' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -92,8 +93,8 @@ function MagicInputBar({
   onCreateNode,
   onDeleteNode,
 }: {
-  activeType: 'progress' | 'thought' | 'blocker' | 'decision';
-  setActiveType: (type: 'progress' | 'thought' | 'blocker' | 'decision') => void;
+  activeType: 'progress' | 'thought' | 'blocker' | 'decision' | 'exec';
+  setActiveType: (type: 'progress' | 'thought' | 'blocker' | 'decision' | 'exec') => void;
   input: string;
   setInput: (v: string) => void;
   minutesSpent: number | '';
@@ -169,6 +170,8 @@ function MagicInputBar({
               ? 'What is on your mind?'
               : activeType === 'blocker'
               ? 'What is blocking you?'
+              : activeType === 'exec'
+              ? 'What did you execute?'
               : 'What decision did you make?'
           }
           className="flex-1 text-sm bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
@@ -437,7 +440,7 @@ export function UnifiedLogSection({
 }: {
   logs: TodoLog[];
   isLoading: boolean;
-  onAdd: (type: 'progress' | 'thought' | 'blocker' | 'decision', content: string, minutesSpent?: number) => void;
+  onAdd: (type: 'progress' | 'thought' | 'blocker' | 'decision' | 'exec', content: string, minutesSpent?: number) => void;
   onDelete: (id: string) => void;
   floatingInput?: boolean;
   todayTodos: Todo[];
@@ -450,7 +453,7 @@ export function UnifiedLogSection({
   onDeleteNode: (todoId: string) => void;
 }) {
   const [input, setInput] = useState('');
-  const [activeType, setActiveType] = useState<'progress' | 'thought' | 'blocker' | 'decision'>('progress');
+  const [activeType, setActiveType] = useState<'progress' | 'thought' | 'blocker' | 'decision' | 'exec'>('progress');
   const [minutesSpent, setMinutesSpent] = useState<number | ''>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 

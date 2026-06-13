@@ -1,4 +1,4 @@
-import type { Todo, TodoRelation, TodoLog, RepeatRule, Project, ActionEdge, Pluse, TimerSession, Roadmap, Plan } from '../types';
+import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, TimerSession, Roadmap, Plan } from '../types';
 
 export function parseDate(value: unknown): Date | undefined {
   if (value === null || value === undefined) return undefined;
@@ -24,7 +24,6 @@ export function parseTodo(data: unknown): Todo {
   return {
     id: t.id as string,
     nodeType: nodeType as Todo['nodeType'],
-    projectId: t.projectId as string | undefined,
     parentId: t.parentId as string | undefined,
     activePlanId: t.activePlanId as string | undefined,
     title: t.title as string,
@@ -73,20 +72,6 @@ export function parseLog(data: unknown): TodoLog {
     metadata: (l.metadata as Record<string, unknown> | undefined) ?? undefined,
     createdAt: parseDate(l.createdAt)!,
     updatedAt: parseDate(l.updatedAt) ?? parseDate(l.createdAt)!,
-  };
-}
-
-export function parseProject(data: unknown): Project {
-  const p = data as Record<string, unknown>;
-  return {
-    id: p.id as string,
-    title: p.title as string,
-    description: p.description as string,
-    color: p.color as string,
-    status: p.status as Project['status'],
-    deadline: parseDate(p.deadline),
-    createdAt: parseDate(p.createdAt)!,
-    updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
   };
 }
 

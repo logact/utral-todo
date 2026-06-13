@@ -3,7 +3,6 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { db } from '../db/database';
 import * as todosDb from '../db/todos';
-import * as projectsDb from '../db/projects';
 import * as relationsDb from '../db/relations';
 import * as todoLogsDb from '../db/todoLogs';
 import * as actionEdgesDb from '../db/actionEdges';
@@ -29,7 +28,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
     case 'list': {
       let todos = await todosDb.getAllTodos();
       if (args.status) todos = todos.filter((t) => t.status === args.status);
-      if (args.projectId) todos = todos.filter((t) => t.projectId === args.projectId);
       if (args.priority) todos = todos.filter((t) => t.priority === args.priority);
       if (args.tag) {
         const tag = String(args.tag);
@@ -45,7 +43,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       const todo = await todosDb.createTodo(String(args.title ?? 'Untitled'), {
         description: String(args.description ?? ''),
         priority: (args.priority as 'low' | 'medium' | 'high') ?? 'medium',
-        projectId: args.projectId ? String(args.projectId) : undefined,
         parentId: args.parentId ? String(args.parentId) : undefined,
         dueDate: args.dueDate ? new Date(String(args.dueDate)) : undefined,
         scheduledDate: args.scheduledDate ? new Date(String(args.scheduledDate)) : undefined,
@@ -65,7 +62,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       if (args.description !== undefined) updates.description = String(args.description);
       if (args.status !== undefined) updates.status = String(args.status);
       if (args.priority !== undefined) updates.priority = String(args.priority);
-      if (args.projectId !== undefined) updates.projectId = String(args.projectId);
       if (args.dueDate !== undefined) updates.dueDate = new Date(String(args.dueDate));
       if (args.estimatedMinutes !== undefined) updates.estimatedMinutes = Number(args.estimatedMinutes);
       if (args.tags !== undefined) updates.tags = String(args.tags).split(',').map((t) => t.trim());
@@ -105,7 +101,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
     }
     case 'inbox': {
       const all = await todosDb.getAllTodos();
-      const todos = all.filter((t) => !t.projectId && t.status !== 'done');
+      const todos = all.filter((t) => t.status !== 'done');
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'search': {
@@ -130,12 +126,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       await todosDb.reorderTodos(ids);
       return { success: true };
     }
-    case 'assign': {
-      const ids = String(args.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-      const projectId = args.projectId ? String(args.projectId) : undefined;
-      await todosDb.bulkUpdateTodoProject(ids, projectId);
-      return { success: true };
-    }
     case 'spawned': {
       const todos = await relationsDb.getSpawnedTodos(String(args.id));
       return { success: true, data: todos.map(serializeForJson) };
@@ -152,45 +142,6 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
     case 'sync-repeats': {
       // Virtual repeat instances are computed on-the-fly; no sync needed
       return { success: true, data: { createdCount: 0 } };
-    }
-    default:
-      return { error: `Unknown action: ${action}` };
-  }
-}
-
-// ─── Projects ───────────────────────────────────────────────────────────────
-
-async function handleProjects(action: string, args: Record<string, unknown>) {
-  switch (action) {
-    case 'list': {
-      let projects = await projectsDb.getAllProjects();
-      if (args.status) projects = projects.filter((p) => p.status === args.status);
-      return { success: true, data: projects.map(serializeForJson) };
-    }
-    case 'get': {
-      const project = await projectsDb.getProject(String(args.id));
-      return { success: true, data: project ? serializeForJson(project) : null };
-    }
-    case 'create': {
-      const project = await projectsDb.createProject(String(args.title ?? 'Untitled'), {
-        description: String(args.description ?? ''),
-        color: String(args.color ?? '#6366f1'),
-        deadline: args.deadline ? new Date(String(args.deadline)) : undefined,
-      });
-      return { success: true, data: serializeForJson(project) };
-    }
-    case 'update': {
-      const updates: Partial<Record<string, unknown>> = {};
-      if (args.title !== undefined) updates.title = String(args.title);
-      if (args.description !== undefined) updates.description = String(args.description);
-      if (args.status !== undefined) updates.status = String(args.status);
-      if (args.color !== undefined) updates.color = String(args.color);
-      await projectsDb.updateProject(String(args.id), updates);
-      return { success: true };
-    }
-    case 'delete': {
-      await projectsDb.deleteProject(String(args.id));
-      return { success: true };
     }
     default:
       return { error: `Unknown action: ${action}` };
@@ -427,7 +378,6 @@ async function handleAllData(action: string) {
     await db.todoLogs.clear();
     await db.actionEdges.clear();
     await db.pluses.clear();
-    await db.projects.clear();
     await db.timerSessions.clear();
     return { success: true };
   }
@@ -438,7 +388,6 @@ async function handleAllData(action: string) {
 
 async function handleStats() {
   const allTodos = await db.todos.toArray();
-  const allProjects = await db.projects.toArray();
   const allRelations = await db.relations.toArray();
   const allPluses = await db.pluses.toArray();
   const allTimers = await db.timerSessions.toArray();
@@ -470,7 +419,6 @@ async function handleStats() {
     success: true,
     data: {
       todos: { total: allTodos.length, byStatus, today: todayCount, overdue: overdueCount },
-      projects: { total: allProjects.length },
       relations: { total: allRelations.length },
       pluses: { total: allPluses.length },
       timerSessions: { active: activeTimers },
@@ -498,9 +446,6 @@ export function useCliBridge() {
           switch (entity) {
             case 'todos':
               result = await handleTodos(action, args);
-              break;
-            case 'projects':
-              result = await handleProjects(action, args);
               break;
             case 'relations':
               result = await handleRelations(action, args);

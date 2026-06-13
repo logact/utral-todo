@@ -1,4 +1,4 @@
-import { Zap, Brain, X, CheckCircle2, Activity, CheckSquare, Trash2 } from 'lucide-react';
+import { Zap, Brain, X, CheckCircle2, Activity, CheckSquare, Trash2, Play } from 'lucide-react';
 import { formatTime } from '../utils/date';
 import type { TodoLog, TodoLogType } from '../types';
 
@@ -74,6 +74,7 @@ export function logTypeIcon(type: TodoLogType) {
     case 'decision': return CheckCircle2;
     case 'system': return Activity;
     case 'step_complete': return CheckSquare;
+    case 'exec': return Play;
     default: return Zap;
   }
 }
@@ -86,6 +87,7 @@ export function logTypeColor(type: TodoLogType): string {
     case 'decision': return 'text-emerald-500';
     case 'system': return 'text-slate-400';
     case 'step_complete': return 'text-teal-500';
+    case 'exec': return 'text-violet-500';
     default: return 'text-slate-400';
   }
 }

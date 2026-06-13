@@ -14,6 +14,10 @@ export const MIN_SVG_W = 600;
 export const NODE_CIRCLE_SIZE = 20;
 export const GOAL_CIRCLE_SIZE = 24;
 
+export const SATELLITE_SIZE = 16;
+export const SATELLITE_GAP = 20;
+export const SATELLITE_OFFSET = 16;
+
 export const EDGE_COLORS: Record<ActionEdgeTypeAll, string> = {
   pre_do: '#8b5cf6',
   parent_child: '#64748b',

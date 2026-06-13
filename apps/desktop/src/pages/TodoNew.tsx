@@ -3,8 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, X, GitBranch, Repeat, Target, CheckSquare } from 'lucide-react';
 import { createTodo, createGoal, getTodo, getAllTodos } from '../db/todos';
 import { createRelation } from '../db/relations';
-import { getAllProjects } from '../db/projects';
-import type { Todo, RepeatRule, Project, GoalStatus, TaskPattern } from '../types';
+import type { Todo, RepeatRule, GoalStatus, TaskPattern } from '../types';
 
 export function TodoNew() {
   const navigate = useNavigate();
@@ -24,8 +23,6 @@ export function TodoNew() {
   const [scheduledEndDate, setScheduledEndDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [allTodos, setAllTodos] = useState<Todo[]>([]);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState('');
   const [sourceTodo, setSourceTodo] = useState<Todo | null>(null);
 
   // Tags
@@ -47,7 +44,6 @@ export function TodoNew() {
 
   useEffect(() => {
     getAllTodos().then(setAllTodos);
-    getAllProjects().then(setAllProjects);
   }, []);
 
   useEffect(() => {
@@ -81,7 +77,6 @@ export function TodoNew() {
       ? await createGoal(title.trim(), {
           description: description.trim(),
           parentId: parentId || undefined,
-          projectId: projectId || undefined,
           tags,
           motivation: motivation.trim() || undefined,
           successCriteria: successCriteria.trim() || undefined,
@@ -92,7 +87,6 @@ export function TodoNew() {
           nodeType,
           description: description.trim(),
           parentId: parentId || undefined,
-          projectId: projectId || undefined,
           tags,
           priority,
           pattern,
@@ -247,7 +241,7 @@ export function TodoNew() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
               Parent {isGoal ? 'Goal' : 'Todo'} (optional)
@@ -261,23 +255,6 @@ export function TodoNew() {
               {allTodos.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Project (optional)
-            </label>
-            <select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">No project</option>
-              {allProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
                 </option>
               ))}
             </select>

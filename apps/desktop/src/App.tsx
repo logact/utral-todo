@@ -14,11 +14,8 @@ import { Today } from './pages/Today';
 import { Todos } from './pages/Todos';
 import { Schedule } from './pages/Schedule';
 import { Settings } from './pages/Settings';
-import { SyncSettings } from './pages/SyncSettings';
 import { PluseList } from './pages/PluseList';
 import { PluseRun } from './pages/PluseRun';
-import { ProjectsList } from './pages/ProjectsList';
-import { ProjectDetail } from './pages/ProjectDetail';
 import { Goals } from './pages/Goals';
 import { GoalDetailPage } from './pages/GoalDetailPage';
 import { Roadmaps } from './pages/Roadmaps';
@@ -156,30 +153,6 @@ export default function App() {
           }
         />
         <Route
-          path="/projects"
-          element={
-            <AppLayout>
-              <ProjectsList />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/project/:id"
-          element={
-            <AppLayout>
-              <ProjectDetail />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/project/:id/:view"
-          element={
-            <AppLayout>
-              <ProjectDetail />
-            </AppLayout>
-          }
-        />
-        <Route
           path="/goals"
           element={
             <AppLayout>
@@ -216,14 +189,6 @@ export default function App() {
           element={
             <AppLayout>
               <Settings />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/sync"
-          element={
-            <AppLayout>
-              <SyncSettings />
             </AppLayout>
           }
         />

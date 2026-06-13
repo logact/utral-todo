@@ -4,7 +4,6 @@ import { setJsonMode, setQuietMode } from "./output.js";
 import { setClientOptions } from "./client.js";
 import { readConfig } from "./config.js";
 import { registerTodoCommand } from "./commands/todo.js";
-import { registerProjectCommand } from "./commands/project.js";
 import { registerPluseCommand } from "./commands/pluse.js";
 import { registerTimerCommand } from "./commands/timer.js";
 import { registerRelationCommand } from "./commands/relation.js";
@@ -35,7 +34,6 @@ program
 registerConfigCommand(program);
 registerHealthCommand(program);
 registerTodoCommand(program);
-registerProjectCommand(program);
 registerPluseCommand(program);
 registerTimerCommand(program);
 registerRelationCommand(program);

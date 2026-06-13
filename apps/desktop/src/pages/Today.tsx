@@ -1030,22 +1030,22 @@ export function Today() {
 
   const allActiveTodos: Todo[] = [];
   const doneTodos: Todo[] = [];
+  const seenDone = new Set<string>();
+  const seenActive = new Set<string>();
 
-  for (const todo of inProgress) {
-    allActiveTodos.push(todo);
-  }
-  for (const todo of overdue) {
-    if (!allActiveTodos.find((t) => t.id === todo.id)) {
-      allActiveTodos.push(todo);
-    }
+  function addDone(todo: Todo) {
+    if (seenDone.has(todo.id)) return;
+    seenDone.add(todo.id);
+    doneTodos.push(todo);
   }
 
-  for (const todo of todos) {
+  function addActive(todo: Todo) {
     if (todo.status === 'done') {
-      doneTodos.push(todo);
-      continue;
+      addDone(todo);
+      return;
     }
-    if (allActiveTodos.find((t) => t.id === todo.id)) continue;
+    if (seenActive.has(todo.id)) return;
+    seenActive.add(todo.id);
     if (!todo.scheduledDate) {
       timeGroups.get('none')!.push(todo);
     } else {
@@ -1053,20 +1053,29 @@ export function Today() {
     }
   }
 
+  for (const todo of inProgress) addActive(todo);
+  for (const todo of overdue) addActive(todo);
+  for (const todo of todos) addActive(todo);
+
   for (const [, list] of timeGroups) {
     list.sort((a, b) => a.order - b.order);
   }
 
+  // Preserve display order for active todos (used by the execution panel)
+  const pushActiveOrdered = (todo: Todo) => {
+    if (todo.status === 'done' || allActiveTodos.find((t) => t.id === todo.id)) return;
+    allActiveTodos.push(todo);
+  };
+  for (const todo of inProgress) pushActiveOrdered(todo);
+  for (const todo of overdue) pushActiveOrdered(todo);
   for (const slot of ['morning', 'afternoon', 'evening', 'none'] as const) {
-    for (const todo of timeGroups.get(slot)!) {
-      allActiveTodos.push(todo);
-    }
+    for (const todo of timeGroups.get(slot)!) pushActiveOrdered(todo);
   }
 
   // Build flat display items for sortable list
   const displayItems: DisplayItem[] = [
-    ...inProgress.map((t) => ({ id: t.id, todo: t, section: 'in_progress' as SectionType })),
-    ...overdue.map((t) => ({ id: t.id, todo: t, section: 'overdue' as SectionType })),
+    ...inProgress.filter((t) => t.status !== 'done').map((t) => ({ id: t.id, todo: t, section: 'in_progress' as SectionType })),
+    ...overdue.filter((t) => t.status !== 'done').map((t) => ({ id: t.id, todo: t, section: 'overdue' as SectionType })),
     ...timeGroups.get('morning')!.map((t) => ({ id: t.id, todo: t, section: 'morning' as SectionType })),
     ...timeGroups.get('afternoon')!.map((t) => ({ id: t.id, todo: t, section: 'afternoon' as SectionType })),
     ...timeGroups.get('evening')!.map((t) => ({ id: t.id, todo: t, section: 'evening' as SectionType })),
@@ -1100,10 +1109,10 @@ export function Today() {
   }
 
   const doneCount = doneTodos.length;
-  const totalActive = todos.filter((t) => t.status !== 'done').length + overdue.length;
+  const totalActive = allActiveTodos.length;
 
   const hasAnything =
-    inProgress.length > 0 || overdue.length > 0 || totalActive > 0 || suggested.length > 0 || doneTodos.length > 0;
+    totalActive > 0 || suggested.length > 0 || doneTodos.length > 0;
 
   const isLoading = todosLoading || plusesLoading;
 

@@ -10,10 +10,9 @@ import {
   Pencil,
   Check,
   Loader2,
-  GitBranch,
   ListTodo,
+  Play,
 } from 'lucide-react';
-import { createTodo } from '../db/todos';
 import {
   EDGE_COLORS,
   EDGE_LABELS,
@@ -29,11 +28,14 @@ import {
   GOAL_H,
   NODE_CIRCLE_SIZE,
   GOAL_CIRCLE_SIZE,
+  SATELLITE_SIZE,
 } from './BigMapConstants';
 import type { ViewportState } from '../hooks/useBigMapViewport';
-import type { LayoutNode } from './BigMapLayout';
-import type { ActionEdge, ActionEdgeType, Todo, TodoRelation, TodoRelationType } from '../types';
-import { formatDuration } from '../utils/date';
+import type { LayoutNode, LayoutLogNode } from './BigMapLayout';
+import type { ActionEdge, ActionEdgeType, NodeType, Todo, TodoRelation, TodoRelationType } from '../types';
+import { NewNodeDialog } from './NewNodeDialog';
+import { formatDuration, formatTime } from '../utils/date';
+import { allowedLinkTypes } from '../utils/relations';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -41,6 +43,7 @@ import { formatDuration } from '../utils/date';
 
 interface BigMapCanvasProps {
   nodes: LayoutNode[];
+  execLogNodes?: LayoutLogNode[];
   actionEdges: ActionEdge[];
   parentChildEdges: { fromId: string; toId: string }[];
   roadEdges?: TodoRelation[];
@@ -67,12 +70,16 @@ interface BigMapCanvasProps {
   onCreateRelation?: (fromTodoId: string, toTodoId: string, type: TodoRelationType) => Promise<void>;
   onDeleteRelation?: (relationId: string) => Promise<void>;
   onUpdateRelation?: (relationId: string, type: TodoRelationType) => Promise<void>;
+  onReconnectRelation?: (relationId: string, fromTodoId: string, toTodoId: string) => Promise<void>;
   onUpdateTodo?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onDeleteTodo?: (todoId: string) => Promise<void>;
   onRelationsChange?: () => void;
-  onAddChild?: (todoId: string) => Promise<void>;
   onAddTask?: (todoId: string) => Promise<void>;
   onAddPreGoal?: (todoId: string) => Promise<void>;
+  onAddNextGoal?: (todoId: string) => Promise<void>;
+  onAddPreTask?: (todoId: string) => Promise<void>;
+  onAddNextTask?: (todoId: string) => Promise<void>;
+  onCreateNodeFromDrag?: (sourceId: string, title: string, nodeType: NodeType) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -174,6 +181,7 @@ function RelationTypeSelector({
 
 export function BigMapCanvas({
   nodes,
+  execLogNodes = [],
   actionEdges,
   parentChildEdges,
   roadEdges = [],
@@ -200,17 +208,23 @@ export function BigMapCanvas({
   onCreateRelation,
   onDeleteRelation,
   onUpdateRelation,
+  onReconnectRelation,
   onUpdateTodo,
   onDeleteTodo,
   onRelationsChange,
-  onAddChild,
   onAddTask,
   onAddPreGoal,
+  onAddNextGoal,
+  onAddPreTask,
+  onAddNextTask,
+  onCreateNodeFromDrag,
 }: BigMapCanvasProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragMovedRef = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [hoveredExecLogId, setHoveredExecLogId] = useState<string | null>(null);
 
   const isNeighborhood = mode === 'neighborhood';
   const isEditing = isNeighborhood && editing;
@@ -233,30 +247,49 @@ export function BigMapCanvas({
   const [edgeMenuPos, setEdgeMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [edgeTypeChangeEdge, setEdgeTypeChangeEdge] = useState<TodoRelation | null>(null);
 
-  const [showAddNode, setShowAddNode] = useState(false);
-  const [newNodeTitle, setNewNodeTitle] = useState('');
+  const [newNodeDialog, setNewNodeDialog] = useState<{
+    isOpen: boolean;
+    sourceId: string;
+    defaultType: NodeType;
+  }>({ isOpen: false, sourceId: '', defaultType: 'task' });
 
   const [isProcessing, setIsProcessing] = useState(false);
 
   /* ---------------------------------------------------------------- */
-  /*  Link type helpers                                                */
+  /*  Drag-to-relation state                                           */
   /* ---------------------------------------------------------------- */
 
-  function resolveLinkType(fromTodo: Todo, toTodo: Todo): RoadRelationType | null {
-    if (fromTodo.nodeType === 'goal' && toTodo.nodeType === 'goal') return 'parent_of';
-    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'goal') return 'achieves';
-    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'task') return 'ordered_before';
-    return null;
-  }
+  const [nodeDragSourceId, setNodeDragSourceId] = useState<string | null>(null);
+  const [edgeDrag, setEdgeDrag] = useState<{
+    relationId: string;
+    fixedEnd: 'source' | 'target';
+    fixedId: string;
+  } | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
-  function allowedLinkTypes(fromTodo: Todo, toTodo: Todo): RoadRelationType[] {
-    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'goal') return ['achieves'];
-    if (fromTodo.nodeType === 'goal' && toTodo.nodeType === 'goal') return ['parent_of', 'ordered_before'];
-    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'task') {
-      return ['ordered_before', 'depends_on', 'blocked_by', 'assign_from'];
-    }
-    return [];
-  }
+  const nodeDragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragPathRef = useRef<SVGPathElement>(null);
+  const dragCircleRef = useRef<SVGCircleElement>(null);
+  const dragInfoRef = useRef<
+    | {
+        mode: 'connect' | 'node' | 'edge';
+        connectSourceId?: string;
+        connectEdgeType?: ActionEdgeType;
+        nodeDragSourceId?: string;
+        edgeDrag?: {
+          relationId: string;
+          fixedEnd: 'source' | 'target';
+          fixedId: string;
+        };
+      }
+    | null
+  >(null);
+
+  const isInteractionDragging = nodeDragSourceId !== null || edgeDrag !== null;
+
+  /* ---------------------------------------------------------------- */
+  /*  Link type helpers                                                */
+  /* ---------------------------------------------------------------- */
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, LayoutNode>();
@@ -341,31 +374,59 @@ export function BigMapCanvas({
     }
   }
 
-  async function handleAddNode() {
-    const title = newNodeTitle.trim();
-    if (!title || !centerTodoId || !onCreateRelation) return;
-    const center = todoById.get(centerTodoId);
-    if (!center) return;
-
-    setIsProcessing(true);
-    try {
-      const newTodo = await createTodo(title, { nodeType: 'task' });
-      const type = resolveLinkType(newTodo, center);
-      if (type) {
-        await onCreateRelation(newTodo.id, centerTodoId, type);
-      }
-      setNewNodeTitle('');
-      setShowAddNode(false);
-      onRelationsChange?.();
-    } finally {
-      setIsProcessing(false);
-    }
-  }
 
   function startLink(fromTodoId: string) {
     setLinkingFromId(fromTodoId);
     setPendingLinkTargetId(null);
     setShowLinkTypeSelector(false);
+  }
+
+  async function commitDrag(targetId: string) {
+    if (nodeDragSourceId) {
+      await selectLinkTargetForDrag(nodeDragSourceId, targetId);
+      setNodeDragSourceId(null);
+      return;
+    }
+
+    if (edgeDrag) {
+      const relation = roadEdges.find((r) => r.id === edgeDrag.relationId);
+      if (!relation) {
+        setEdgeDrag(null);
+        return;
+      }
+      const newFromId = edgeDrag.fixedEnd === 'target' ? targetId : relation.fromTodoId;
+      const newToId = edgeDrag.fixedEnd === 'source' ? targetId : relation.toTodoId;
+      if (newFromId === relation.fromTodoId && newToId === relation.toTodoId) {
+        setEdgeDrag(null);
+        return;
+      }
+      if (onReconnectRelation) {
+        setIsProcessing(true);
+        try {
+          await onReconnectRelation(relation.id, newFromId, newToId);
+          onRelationsChange?.();
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+      setEdgeDrag(null);
+    }
+  }
+
+  async function selectLinkTargetForDrag(fromTodoId: string, toTodoId: string) {
+    if (fromTodoId === toTodoId) return;
+    const fromTodo = todoById.get(fromTodoId);
+    const toTodo = todoById.get(toTodoId);
+    if (!fromTodo || !toTodo) return;
+    const types = allowedLinkTypes(fromTodo, toTodo);
+    if (types.length === 0) return;
+    if (types.length === 1) {
+      await handleCreateRelationOfType(fromTodoId, toTodoId, types[0]);
+    } else {
+      setLinkingFromId(fromTodoId);
+      setPendingLinkTargetId(toTodoId);
+      setShowLinkTypeSelector(true);
+    }
   }
 
   function cancelLink() {
@@ -422,8 +483,11 @@ export function BigMapCanvas({
         setEdgeMenuEdge(null);
         setEdgeMenuPos(null);
         setEdgeTypeChangeEdge(null);
-        setShowAddNode(false);
         setRenameNodeId(null);
+        setNodeDragSourceId(null);
+        setEdgeDrag(null);
+        setDropTargetId(null);
+        setNewNodeDialog((prev) => ({ ...prev, isOpen: false }));
         cancelLink();
       }
     }
@@ -436,8 +500,100 @@ export function BigMapCanvas({
     };
   }, []);
 
-  // Mouse position in canvas coords for connect mode temp line
-  const [mouseCanvasPos, setMouseCanvasPos] = useState<{ x: number; y: number } | null>(null);
+  // Convert screen mouse event to canvas coordinates
+  const toCanvasPoint = useCallback(
+    (e: React.MouseEvent) => {
+      if (!containerRef.current) return null;
+      const rect = containerRef.current.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left - viewport.offsetX) / viewport.scale,
+        y: (e.clientY - rect.top - viewport.offsetY) / viewport.scale,
+      };
+    },
+    [viewport.offsetX, viewport.offsetY, viewport.scale]
+  );
+
+  /* ---------------------------------------------------------------- */
+  /*  Ref-based drag preview (avoids full React re-renders on move)   */
+  /* ---------------------------------------------------------------- */
+
+  function updateDragPreview(point: { x: number; y: number }) {
+    if (!dragPathRef.current || !dragCircleRef.current) return;
+
+    const info = dragInfoRef.current;
+    if (!info) return;
+
+    let fromX: number | undefined;
+    let fromY: number | undefined;
+    let color = '#6366f1';
+    let dash: string | undefined;
+    let markerType: string = 'achieves';
+
+    if (info.mode === 'connect' && info.connectSourceId) {
+      const srcNode = nodeMap.get(info.connectSourceId);
+      if (srcNode) {
+        const srcH = srcNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
+        fromX = srcNode.x;
+        fromY = srcNode.y + srcH / 2;
+        color = EDGE_COLORS[info.connectEdgeType ?? 'pre_do'];
+        dash = EDGE_DASH[info.connectEdgeType ?? 'pre_do'] ?? undefined;
+        markerType = info.connectEdgeType ?? 'pre_do';
+      }
+    } else if (info.mode === 'node' && info.nodeDragSourceId) {
+      const srcNode = nodeMap.get(info.nodeDragSourceId);
+      if (srcNode) {
+        fromX = srcNode.x;
+        fromY = srcNode.y;
+      }
+    } else if (info.mode === 'edge' && info.edgeDrag) {
+      const fixedNode = nodeMap.get(info.edgeDrag.fixedId);
+      if (fixedNode) {
+        fromX = fixedNode.x;
+        fromY = fixedNode.y;
+        const relation = roadEdges.find((r) => r.id === info.edgeDrag!.relationId);
+        if (relation) {
+          color = ROAD_EDGE_COLORS[relation.type];
+          dash = ROAD_EDGE_DASH[relation.type] ?? undefined;
+          markerType = relation.type;
+        }
+      }
+    }
+
+    if (fromX === undefined || fromY === undefined) return;
+
+    const toX = point.x;
+    const toY = point.y;
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const dLen = Math.sqrt(dx * dx + dy * dy) || 1;
+    const perpX = -(dy / dLen) * 30;
+    const perpY = (dx / dLen) * 30;
+    const ctrlX = (fromX + toX) / 2 + perpX;
+    const ctrlY = (fromY + toY) / 2 + perpY;
+
+    const path = dragPathRef.current;
+    path.setAttribute('d', `M ${fromX} ${fromY} Q ${ctrlX} ${ctrlY} ${toX} ${toY}`);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-dasharray', dash ?? '');
+    path.setAttribute('marker-end', `url(#arrow-${markerType})`);
+    path.setAttribute('opacity', '0.7');
+
+    const circle = dragCircleRef.current;
+    circle.setAttribute('cx', String(toX));
+    circle.setAttribute('cy', String(toY));
+    circle.setAttribute('fill', color);
+    circle.setAttribute('opacity', '0.5');
+  }
+
+  function hideDragPreview() {
+    if (dragPathRef.current) {
+      dragPathRef.current.setAttribute('d', '');
+      dragPathRef.current.setAttribute('opacity', '0');
+    }
+    if (dragCircleRef.current) {
+      dragCircleRef.current.setAttribute('opacity', '0');
+    }
+  }
 
   // Render every TodoRelation as a directed edge.
   const ROAD_TYPES: RoadRelationType[] = [
@@ -485,46 +641,125 @@ export function BigMapCanvas({
     [onWheel]
   );
 
-  // Track mouse position in canvas coordinates for connect mode
-  const updateMouseCanvasPos = useCallback(
-    (e: React.MouseEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const localY = e.clientY - rect.top;
-      setMouseCanvasPos({
-        x: (localX - viewport.offsetX) / viewport.scale,
-        y: (localY - viewport.offsetY) / viewport.scale,
-      });
-    },
-    [viewport.offsetX, viewport.offsetY, viewport.scale]
-  );
-
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (connectMode && connectSourceId) {
-        updateMouseCanvasPos(e);
+      if (connectMode && connectSourceId && !isInteractionDragging) {
+        dragInfoRef.current = {
+          mode: 'connect',
+          connectSourceId,
+          connectEdgeType,
+        };
+      }
+
+      const needsPreview = isInteractionDragging || (connectMode && connectSourceId);
+      if (needsPreview) {
+        const point = toCanvasPoint(e);
+        if (point) {
+          updateDragPreview(point);
+          if (nodeDragStartRef.current) {
+            const dx = point.x - nodeDragStartRef.current.x;
+            const dy = point.y - nodeDragStartRef.current.y;
+            if (Math.sqrt(dx * dx + dy * dy) > 4) {
+              dragMovedRef.current = true;
+            }
+          }
+        }
       }
       onMouseMove(e);
     },
-    [connectMode, connectSourceId, updateMouseCanvasPos, onMouseMove]
+    [connectMode, connectSourceId, connectEdgeType, isInteractionDragging, toCanvasPoint, onMouseMove]
   );
 
-  const handleMouseLeave = useCallback(() => {
-    setMouseCanvasPos(null);
+  const handleMouseUp = useCallback(() => {
+    hideDragPreview();
+    if (isInteractionDragging) {
+      if (dropTargetId) {
+        void commitDrag(dropTargetId);
+      } else if (
+        nodeDragSourceId &&
+        dragMovedRef.current &&
+        onCreateNodeFromDrag
+      ) {
+        const sourceTodo = todoById.get(nodeDragSourceId);
+        if (sourceTodo) {
+          const defaultType: NodeType = sourceTodo.nodeType === 'goal' ? 'task' : 'goal';
+          setNewNodeDialog({
+            isOpen: true,
+            sourceId: nodeDragSourceId,
+            defaultType,
+          });
+        }
+      }
+      setNodeDragSourceId(null);
+      nodeDragStartRef.current = null;
+      setEdgeDrag(null);
+      setDropTargetId(null);
+    }
+    dragInfoRef.current = null;
     onMouseUp();
-  }, [onMouseUp]);
+  }, [dropTargetId, isInteractionDragging, nodeDragSourceId, onCreateNodeFromDrag, onMouseUp, todoById]);
 
   // In connect mode, disable left-click panning so node clicks work cleanly
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      if (isInteractionDragging) {
+        e.stopPropagation();
+        return;
+      }
       if (connectMode && e.button === 0) {
         return;
       }
       onMouseDown(e);
     },
-    [connectMode, onMouseDown]
+    [connectMode, onMouseDown, isInteractionDragging]
   );
+
+  function startNodeDrag(nodeId: string, e: React.MouseEvent) {
+    if (!isEditing || e.button !== 0) return;
+    e.stopPropagation();
+    dragMovedRef.current = false;
+    setNodeDragSourceId(nodeId);
+    dragInfoRef.current = { mode: 'node', nodeDragSourceId: nodeId };
+    const point = toCanvasPoint(e);
+    if (point) {
+      nodeDragStartRef.current = point;
+      updateDragPreview(point);
+    }
+  }
+
+  function startEdgeDrag(
+    relation: TodoRelation,
+    end: 'source' | 'target',
+    e: React.MouseEvent
+  ) {
+    if (!isEditing || e.button !== 0) return;
+    e.stopPropagation();
+    const nextEdgeDrag = {
+      relationId: relation.id,
+      fixedEnd: end === 'source' ? ('target' as const) : ('source' as const),
+      fixedId: end === 'source' ? relation.toTodoId : relation.fromTodoId,
+    };
+    setEdgeDrag(nextEdgeDrag);
+    dragInfoRef.current = { mode: 'edge', edgeDrag: nextEdgeDrag };
+    const point = toCanvasPoint(e);
+    if (point) updateDragPreview(point);
+  }
+
+  function startNewEdgeDrag(nodeId: string, e: React.MouseEvent) {
+    startNodeDrag(nodeId, e);
+  }
+
+  const handleMouseLeave = useCallback(() => {
+    hideDragPreview();
+    if (isInteractionDragging) {
+      setNodeDragSourceId(null);
+      nodeDragStartRef.current = null;
+      setEdgeDrag(null);
+      setDropTargetId(null);
+    }
+    dragInfoRef.current = null;
+    onMouseUp();
+  }, [isInteractionDragging, onMouseUp]);
 
   const transformStyle = {
     transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.scale})`,
@@ -540,7 +775,7 @@ export function BigMapCanvas({
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
-      onMouseUp={onMouseUp}
+      onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
     >
       {/* Transform container */}
@@ -560,19 +795,25 @@ export function BigMapCanvas({
             <marker id="arrow-to_achieve" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
               <path d="M0,0 L0,6 L7,3 z" fill={EDGE_COLORS.to_achieve} />
             </marker>
-            {(['parent_of', 'achieves', 'ordered_before'] as const).map((type) => (
-              <marker
-                key={type}
-                id={`arrow-${type}`}
-                markerWidth="8"
-                markerHeight="8"
-                refX="7"
-                refY="3"
-                orient="auto"
-              >
-                <path d="M0,0 L0,6 L7,3 z" fill={ROAD_EDGE_COLORS[type]} />
-              </marker>
-            ))}
+            {(['parent_of', 'achieves', 'ordered_before'] as const).map((type) => {
+              const isOrder = type === 'ordered_before';
+              return (
+                <marker
+                  key={type}
+                  id={`arrow-${type}`}
+                  markerWidth={isOrder ? 12 : 8}
+                  markerHeight={isOrder ? 12 : 8}
+                  refX={isOrder ? 10 : 7}
+                  refY={isOrder ? 5 : 3}
+                  orient="auto"
+                >
+                  <path
+                    d={isOrder ? 'M0,0 L0,10 L10,5 z' : 'M0,0 L0,6 L7,3 z'}
+                    fill={ROAD_EDGE_COLORS[type]}
+                  />
+                </marker>
+              );
+            })}
           </defs>
 
           {/* Parent-child edges (dashed gray) */}
@@ -643,22 +884,34 @@ export function BigMapCanvas({
                     setMenuNodeId(null);
                   }}
                 />
-                <g
-                  transform={`translate(${midX}, ${midY})`}
-                  onClick={(e) => {
-                    if (!isEditing) return;
-                    e.stopPropagation();
-                    setEdgeMenuEdge(edge);
-                    setEdgeMenuPos({ x: midX, y: midY });
-                    setMenuNodeId(null);
-                  }}
-                  className="pointer-events-auto cursor-pointer"
-                >
-                  <rect x="-18" y="-7" width="36" height="14" rx="7" fill={color} opacity={isHovered ? 0.9 : 0.7} />
-                  <text x="0" y="3.5" textAnchor="middle" fill="white" fontSize="8" fontWeight="500">
-                    {ROAD_EDGE_LABELS[edge.type]}
-                  </text>
-                </g>
+                {isEditing && (
+                  <>
+                    <circle
+                      cx={fromX}
+                      cy={fromY}
+                      r={5}
+                      fill={color}
+                      opacity={isHovered ? 0.9 : 0}
+                      className="pointer-events-auto cursor-crosshair"
+                      style={{ transition: 'opacity 0.2s' }}
+                      onMouseDown={(e) => startEdgeDrag(edge, 'source', e)}
+                      onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                      onMouseLeave={() => setHoveredEdgeId(null)}
+                    />
+                    <circle
+                      cx={toX}
+                      cy={toY}
+                      r={5}
+                      fill={color}
+                      opacity={isHovered ? 0.9 : 0}
+                      className="pointer-events-auto cursor-crosshair"
+                      style={{ transition: 'opacity 0.2s' }}
+                      onMouseDown={(e) => startEdgeDrag(edge, 'target', e)}
+                      onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                      onMouseLeave={() => setHoveredEdgeId(null)}
+                    />
+                  </>
+                )}
               </g>
             );
           })}
@@ -709,39 +962,40 @@ export function BigMapCanvas({
             );
           })}
 
-          {/* Temp line for connect mode */}
-          {connectMode && connectSourceId && mouseCanvasPos && (() => {
-            const srcNode = nodeMap.get(connectSourceId);
-            if (!srcNode) return null;
-            const srcH = srcNode.todo.nodeType === 'goal' ? GOAL_H : NODE_H;
-            const fromX = srcNode.x;
-            const fromY = srcNode.y + srcH / 2;
-            const toX = mouseCanvasPos.x;
-            const toY = mouseCanvasPos.y;
-            const dx = toX - fromX;
-            const dy = toY - fromY;
-            const dLen = Math.sqrt(dx * dx + dy * dy) || 1;
-            const perpX = -(dy / dLen) * 30;
-            const perpY = (dx / dLen) * 30;
-            const ctrlX = (fromX + toX) / 2 + perpX;
-            const ctrlY = (fromY + toY) / 2 + perpY;
-            const color = EDGE_COLORS[connectEdgeType];
-            const dash = EDGE_DASH[connectEdgeType];
+          {/* Drag/connect preview (updated via refs to avoid React re-renders) */}
+          <path
+            ref={dragPathRef}
+            fill="none"
+            strokeWidth={2}
+            opacity={0}
+            className="pointer-events-none"
+          />
+          <circle ref={dragCircleRef} r="4" opacity={0} className="pointer-events-none" />
+
+          {/* Exec log satellite lines */}
+          {execLogNodes.map((execNode) => {
+            const parent = nodeMap.get(execNode.todoId);
+            if (!parent) return null;
+            const parentW = parent.todo.nodeType === 'goal' ? GOAL_W : NODE_W;
+            const fromX = parent.x + parentW / 2;
+            const fromY = parent.y;
+            const toX = execNode.x - SATELLITE_SIZE / 2;
+            const toY = execNode.y;
             return (
-              <g>
-                <path
-                  d={`M ${fromX} ${fromY} Q ${ctrlX} ${ctrlY} ${toX} ${toY}`}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={2}
-                  strokeDasharray={dash}
-                  opacity={0.7}
-                  markerEnd={`url(#arrow-${connectEdgeType})`}
+              <g key={`exec-line-${execNode.log.id}`}>
+                <line
+                  x1={fromX}
+                  y1={fromY}
+                  x2={toX}
+                  y2={toY}
+                  stroke="#8b5cf6"
+                  strokeWidth={1}
+                  strokeDasharray="3,2"
+                  opacity={0.5}
                 />
-                <circle cx={toX} cy={toY} r="4" fill={color} opacity={0.5} />
               </g>
             );
-          })()}
+          })}
         </svg>
 
         {/* Node layer */}
@@ -781,10 +1035,25 @@ export function BigMapCanvas({
                 height: h,
                 opacity: isDimmed ? 0.18 : 1,
                 transition: 'opacity 0.2s',
-                zIndex: isSelected || menuNodeId === node.todo.id || isLinkSource ? 30 : 10,
+                zIndex: isSelected || menuNodeId === node.todo.id || isLinkSource || nodeDragSourceId === node.todo.id ? 30 : 10,
               }}
-              onMouseEnter={() => setHoveredNodeId(node.todo.id)}
-              onMouseLeave={() => setHoveredNodeId(null)}
+              onMouseEnter={() => {
+                setHoveredNodeId(node.todo.id);
+                if (
+                  isInteractionDragging &&
+                  dragMovedRef.current &&
+                  nodeDragSourceId !== node.todo.id &&
+                  edgeDrag?.fixedId !== node.todo.id
+                ) {
+                  setDropTargetId(node.todo.id);
+                }
+              }}
+              onMouseLeave={() => {
+                setHoveredNodeId(null);
+                if (dropTargetId === node.todo.id) {
+                  setDropTargetId(null);
+                }
+              }}
             >
               {/* Hover ring */}
               {isSelected && (
@@ -795,6 +1064,18 @@ export function BigMapCanvas({
                     height: circleSize + 8,
                     left: (w - circleSize - 8) / 2,
                     top: (h - circleSize - 8) / 2,
+                  }}
+                />
+              )}
+              {/* Drop target highlight */}
+              {dropTargetId === node.todo.id && (
+                <div
+                  className="absolute rounded-full border-2 border-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20 pointer-events-none animate-pulse"
+                  style={{
+                    width: circleSize + 12,
+                    height: circleSize + 12,
+                    left: (w - circleSize - 12) / 2,
+                    top: (h - circleSize - 12) / 2,
                   }}
                 />
               )}
@@ -847,7 +1128,12 @@ export function BigMapCanvas({
                 <button
                   type="button"
                   className={`absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border-2 border-white/70 dark:border-slate-900/70 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)] ${circleColorClass}`}
+                  onMouseDown={(e) => startNodeDrag(node.todo.id, e)}
                   onClick={() => {
+                    if (dragMovedRef.current) {
+                      dragMovedRef.current = false;
+                      return;
+                    }
                     if (connectMode && onNodeClickForConnect) {
                       onNodeClickForConnect(node.todo.id);
                     } else if (isLinkTarget) {
@@ -859,6 +1145,15 @@ export function BigMapCanvas({
                 >
                   {isGoal && <Target className="w-3.5 h-3.5 text-white" />}
                 </button>
+
+                {/* New-edge drag handle */}
+                {isEditing && (
+                  <div
+                    className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-indigo-500 border-2 border-white dark:border-slate-900 shadow-sm cursor-crosshair hover:scale-125 transition-transform z-20"
+                    title="Drag to create relation"
+                    onMouseDown={(e) => startNewEdgeDrag(node.todo.id, e)}
+                  />
+                )}
 
                 {/* Tooltip */}
                 {showTooltip && (
@@ -992,18 +1287,6 @@ export function BigMapCanvas({
                             </button>
                             {isGoal && (
                               <>
-                                {onAddChild && (
-                                  <button
-                                    onClick={() => {
-                                      onAddChild(node.todo.id).catch(() => {});
-                                      setMenuNodeId(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                  >
-                                    <GitBranch className="w-3 h-3 text-indigo-500" />
-                                    Add child
-                                  </button>
-                                )}
                                 {onAddTask && (
                                   <button
                                     onClick={() => {
@@ -1028,28 +1311,66 @@ export function BigMapCanvas({
                                     Add pre goal
                                   </button>
                                 )}
+                                {onAddNextGoal && (
+                                  <button
+                                    onClick={() => {
+                                      onAddNextGoal(node.todo.id).catch(() => {});
+                                      setMenuNodeId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                  >
+                                    <Target className="w-3 h-3 text-indigo-500" />
+                                    Add next goal
+                                  </button>
+                                )}
                               </>
                             )}
                             {!isGoal && (
-                              <button
-                                onClick={() => {
-                                  handleToggleTodoStatus(node.todo.id, node.todo.status ?? 'pending');
-                                  setMenuNodeId(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                              >
-                                {isDone ? (
-                                  <>
-                                    <Check className="w-3 h-3" />
-                                    Mark pending
-                                  </>
-                                ) : (
-                                  <>
-                                    <Check className="w-3 h-3" />
-                                    Mark done
-                                  </>
+                              <>
+                                {onAddPreTask && (
+                                  <button
+                                    onClick={() => {
+                                      onAddPreTask(node.todo.id).catch((err) => console.error('Add pre task failed:', err));
+                                      setMenuNodeId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                  >
+                                    <ListTodo className="w-3 h-3 text-emerald-500" />
+                                    Add pre task
+                                  </button>
                                 )}
-                              </button>
+                                {onAddNextTask && (
+                                  <button
+                                    onClick={() => {
+                                      onAddNextTask(node.todo.id).catch((err) => console.error('Add next task failed:', err));
+                                      setMenuNodeId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                  >
+                                    <ListTodo className="w-3 h-3 text-indigo-500" />
+                                    Add next task
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    handleToggleTodoStatus(node.todo.id, node.todo.status ?? 'pending');
+                                    setMenuNodeId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
+                                >
+                                  {isDone ? (
+                                    <>
+                                      <Check className="w-3 h-3" />
+                                      Mark pending
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check className="w-3 h-3" />
+                                      Mark done
+                                    </>
+                                  )}
+                                </button>
+                              </>
                             )}
                             {planTodoIds && onAddToPlan && !isInPlan && (
                               <button
@@ -1099,59 +1420,52 @@ export function BigMapCanvas({
           );
         })}
 
-        {/* Add node button */}
-        {isEditing && !showAddNode && (
-          <div className="absolute" style={{ left: width / 2 - 12, top: height - 40 }}>
-            <button
-              onClick={() => setShowAddNode(true)}
-              className="w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors shadow-sm"
-              title="Add node"
-            >
-              <Plus className="w-3 h-3 text-slate-400" />
-            </button>
-          </div>
-        )}
-
-        {/* Add node form */}
-        {isEditing && showAddNode && (
-          <div
-            className="absolute flex items-center gap-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg p-2 z-40"
-            style={{ left: width / 2 - 140, top: height - 50, width: 280 }}
-            data-editing-menu
-          >
-            <input
-              type="text"
-              value={newNodeTitle}
-              onChange={(e) => setNewNodeTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAddNode();
-                if (e.key === 'Escape') {
-                  setShowAddNode(false);
-                  setNewNodeTitle('');
-                }
+        {/* Exec log satellite nodes */}
+        {execLogNodes.map((execNode) => {
+          const isHovered = hoveredExecLogId === execNode.log.id;
+          return (
+            <div
+              key={execNode.log.id}
+              className="absolute"
+              style={{
+                left: execNode.x - SATELLITE_SIZE / 2,
+                top: execNode.y - SATELLITE_SIZE / 2,
+                width: SATELLITE_SIZE,
+                height: SATELLITE_SIZE,
+                zIndex: isHovered ? 40 : 20,
               }}
-              placeholder="New step title..."
-              autoFocus
-              className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <button
-              onClick={handleAddNode}
-              disabled={!newNodeTitle.trim() || isProcessing}
-              className="text-[11px] font-medium px-2.5 py-1.5 rounded-md bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
+              onMouseEnter={() => setHoveredExecLogId(execNode.log.id)}
+              onMouseLeave={() => setHoveredExecLogId(null)}
             >
-              Add
-            </button>
-            <button
-              onClick={() => {
-                setShowAddNode(false);
-                setNewNodeTitle('');
-              }}
-              className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={() => navigate(`/todo/${execNode.todoId}/execute`)}
+                className="w-full h-full rounded-full bg-violet-500 border-2 border-white dark:border-slate-900 shadow-sm hover:scale-125 transition-transform cursor-pointer"
+                title={execNode.log.content}
+              />
+              {isHovered && (
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 min-w-[160px] max-w-[220px] bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg p-2 z-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Play className="w-3 h-3 text-violet-500" />
+                    <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">
+                      Exec
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
+                      {formatTime(execNode.log.createdAt)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-200 leading-snug break-words max-h-24 overflow-hidden">
+                    {execNode.log.content}
+                  </p>
+                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rotate-45" />
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Linking mode banner */}
         {isEditing && linkingFromId && (
@@ -1261,6 +1575,20 @@ export function BigMapCanvas({
           </div>
         )}
       </div>
+
+      <NewNodeDialog
+        isOpen={newNodeDialog.isOpen}
+        onClose={() => setNewNodeDialog((prev) => ({ ...prev, isOpen: false }))}
+        sourceNodeType={(() => {
+          const todo = todoById.get(newNodeDialog.sourceId);
+          return todo?.nodeType ?? 'task';
+        })()}
+        defaultNodeType={newNodeDialog.defaultType}
+        onCreate={(title, nodeType) => {
+          onCreateNodeFromDrag?.(newNodeDialog.sourceId, title, nodeType);
+          setNewNodeDialog((prev) => ({ ...prev, isOpen: false }));
+        }}
+      />
     </div>
   );
 }

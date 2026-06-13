@@ -26,7 +26,6 @@ import {
   Calendar,
   AlertCircle,
   X,
-  FolderKanban,
   CheckSquare,
   Square,
   GripVertical,
@@ -35,10 +34,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useTodos } from '../hooks/useTodos';
-import { bulkUpdateTodoProject } from '../db/todos';
-import { getAllProjects } from '../db/projects';
 import { formatDate, formatDuration, isToday } from '../utils/date';
-import type { Todo, TodoStatus, Priority, Project } from '../types';
+import type { Todo, TodoStatus, Priority } from '../types';
 
 /* ─── Helpers ─── */
 
@@ -80,20 +77,6 @@ function PriorityBadge({ priority }: { priority: Priority }) {
   );
 }
 
-function ProjectBadge({ project }: { project: Project }) {
-  return (
-    <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-      style={{
-        backgroundColor: project.color + '20',
-        color: project.color,
-      }}
-    >
-      {project.title}
-    </span>
-  );
-}
-
 type FilterTab = 'all' | 'in_progress' | 'pending' | 'done';
 type NodeTypeFilter = 'all' | 'task' | 'goal';
 
@@ -126,7 +109,6 @@ function SortableTodoRow({
   selectMode,
   selected,
   onSelectToggle,
-  projects,
   isDragEnabled,
 }: {
   todo: Todo;
@@ -135,7 +117,6 @@ function SortableTodoRow({
   selectMode: boolean;
   selected: boolean;
   onSelectToggle: (id: string) => void;
-  projects: Project[];
   isDragEnabled: boolean;
 }) {
   const {
@@ -156,9 +137,6 @@ function SortableTodoRow({
   const displayStatus = getDisplayStatus(todo);
   const isDoneStatus = isDone(todo);
   const isActiveStatus = isInProgress(todo);
-  const project = todo.projectId
-    ? projects.find((p) => p.id === todo.projectId)
-    : undefined;
 
   return (
     <div
@@ -270,7 +248,6 @@ function SortableTodoRow({
               {displayStatus}
             </span>
           )}
-          {project && <ProjectBadge project={project} />}
           {todo.tags.length > 0 && (
             <span className="text-[11px] text-slate-400 dark:text-slate-500">
               {todo.tags.join(', ')}
@@ -303,9 +280,6 @@ export function Todos() {
   // Bulk selection state
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
-  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
-  const [isAssigning, setIsAssigning] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -405,10 +379,8 @@ export function Todos() {
     if (selectMode) {
       setSelectMode(false);
       setSelectedIds(new Set());
-      setShowProjectDropdown(false);
     } else {
       setSelectMode(true);
-      getAllProjects().then(setAllProjects);
     }
   }
 
@@ -430,16 +402,6 @@ export function Todos() {
 
   function clearSelection() {
     setSelectedIds(new Set());
-  }
-
-  async function assignToProject(projectId: string | undefined) {
-    if (selectedIds.size === 0) return;
-    setIsAssigning(true);
-    await bulkUpdateTodoProject(Array.from(selectedIds), projectId);
-    await refresh();
-    setSelectedIds(new Set());
-    setShowProjectDropdown(false);
-    setIsAssigning(false);
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -658,7 +620,6 @@ export function Todos() {
                     selectMode={selectMode}
                     selected={selectedIds.has(todo.id)}
                     onSelectToggle={toggleSelection}
-                    projects={allProjects}
                     isDragEnabled={isDragEnabled}
                   />
                 ))}
@@ -716,50 +677,6 @@ export function Todos() {
 
             <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
 
-            {/* Project dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowProjectDropdown((v) => !v)}
-                disabled={isAssigning}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-50"
-              >
-                <FolderKanban className="w-4 h-4" />
-                Assign to project
-              </button>
-
-              {showProjectDropdown && (
-                <>
-                  {/* Backdrop */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowProjectDropdown(false)}
-                  />
-                  {/* Dropdown */}
-                  <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden max-h-64 overflow-y-auto">
-                    <button
-                      onClick={() => assignToProject(undefined)}
-                      className="w-full text-left px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      No project
-                    </button>
-                    {allProjects.map((project) => (
-                      <button
-                        key={project.id}
-                        onClick={() => assignToProject(project.id)}
-                        className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-2"
-                      >
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: project.color }}
-                        />
-                        <span className="truncate">{project.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
             <button
               onClick={async () => {
                 const ids = Array.from(selectedIds);
@@ -767,7 +684,6 @@ export function Todos() {
                   await remove(id);
                 }
                 setSelectedIds(new Set());
-                setShowProjectDropdown(false);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
             >
@@ -778,7 +694,6 @@ export function Todos() {
             <button
               onClick={() => {
                 setSelectedIds(new Set());
-                setShowProjectDropdown(false);
               }}
               className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             >

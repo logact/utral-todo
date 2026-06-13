@@ -12,17 +12,19 @@ import {
 } from 'lucide-react';
 import { updateTodo, deleteTodo, createTask, createGoal, getTodo } from '../db/todos';
 import { db } from '../db/database';
-import { getAllProjects } from '../db/projects';
 import {
   createRelation,
   updateRelation,
   deleteRelation,
   getChildGoals,
-  getPreAchieveGoals,
+  getOrderedPredecessors,
+  getOrderedSuccessors,
 } from '../db/relations';
 import { formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
-import type { Todo, Project, GoalStatus, TodoRelationType } from '../types';
+import { NeighborPromptDialog } from '../components/NeighborPromptDialog';
+import { PromptDialog } from '../components/PromptDialog';
+import type { Todo, GoalStatus, TodoRelationType } from '../types';
 
 const goalStatusConfig: Record<string, { label: string; color: string }> = {
   active: { label: 'Active', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
@@ -38,8 +40,21 @@ interface GoalDetailProps {
 
 export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<Project[]>([]);
   const [graphTick, setGraphTick] = useState(0);
+  const [taskCreateGoalId, setTaskCreateGoalId] = useState<string | null>(null);
+  const [neighborDialog, setNeighborDialog] = useState<{
+    isOpen: boolean;
+    targetTodoId: string;
+    direction: 'before' | 'after';
+    nodeType: 'goal' | 'task';
+    candidates: Todo[];
+  }>({
+    isOpen: false,
+    targetTodoId: '',
+    direction: 'before',
+    nodeType: 'task',
+    candidates: [],
+  });
 
   // Edit mode — default open for two-column layout
   const [isEditing, setIsEditing] = useState(true);
@@ -50,17 +65,12 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   const [editSuccessCriteria, setEditSuccessCriteria] = useState(goal.successCriteria ?? '');
   const [editTargetDate, setEditTargetDate] = useState(goal.targetDate ? new Date(goal.targetDate).toISOString().split('T')[0] : '');
   const [editGoalStatus, setEditGoalStatus] = useState<GoalStatus>(goal.goalStatus ?? 'active');
-  const [editProjectId, setEditProjectId] = useState(goal.projectId ?? '');
   const [editTags, setEditTags] = useState<string[]>([...goal.tags]);
   const [editTagInput, setEditTagInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // Track whether edit form has been initialized
   const editFormInitRef = useRef(false);
-
-  useEffect(() => {
-    getAllProjects().then(setProjects);
-  }, [goal.id]);
 
   // Initialize edit form once when goal loads (panel is open by default)
   useEffect(() => {
@@ -77,7 +87,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     setEditSuccessCriteria(g.successCriteria ?? '');
     setEditTargetDate(g.targetDate ? new Date(g.targetDate).toISOString().split('T')[0] : '');
     setEditGoalStatus(g.goalStatus ?? 'active');
-    setEditProjectId(g.projectId ?? '');
     setEditTags([...g.tags]);
     setEditTagInput('');
   }
@@ -103,7 +112,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
       successCriteria: editSuccessCriteria.trim() || undefined,
       targetDate: editTargetDate ? new Date(editTargetDate) : undefined,
       goalStatus: editGoalStatus,
-      projectId: editProjectId || undefined,
       tags: editTags,
     };
     await updateTodo(goal.id, updates);
@@ -151,6 +159,33 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     await updateRelation(relationId, { type });
   }
 
+  async function handleReconnectRelation(relationId: string, fromTodoId: string, toTodoId: string) {
+    if (fromTodoId === toTodoId) return;
+    const relation = await db.relations.get(relationId);
+    if (!relation) return;
+    if (relation.fromTodoId === fromTodoId && relation.toTodoId === toTodoId) return;
+
+    const fromTodo = await getTodo(fromTodoId);
+    const toTodo = await getTodo(toTodoId);
+    if (!fromTodo || !toTodo) return;
+
+    const allowedTypes = allowedLinkTypesForReconnect(fromTodo, toTodo);
+    if (!allowedTypes.includes(relation.type)) return;
+
+    await deleteRelation(relationId);
+    await createRelation(fromTodoId, toTodoId, relation.type);
+    setGraphTick((t) => t + 1);
+  }
+
+  function allowedLinkTypesForReconnect(fromTodo: Todo, toTodo: Todo): TodoRelationType[] {
+    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'goal') return ['achieves'];
+    if (fromTodo.nodeType === 'goal' && toTodo.nodeType === 'goal') return ['parent_of', 'ordered_before'];
+    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'task') {
+      return ['ordered_before', 'depends_on', 'blocked_by', 'assign_from'];
+    }
+    return [];
+  }
+
   async function handleUpdateTodo(todoId: string, updates: Partial<Todo>) {
     await updateTodo(todoId, updates);
     if (todoId === goal.id) {
@@ -168,56 +203,115 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   async function handleCreateAchievingTask(goalId: string) {
     const parent = await getTodo(goalId);
     if (!parent || parent.nodeType !== 'goal') return;
-    const title = prompt('Task title:');
-    if (!title) return;
-    const task = await createTask(title.trim(), {
-      projectId: parent.projectId,
-      tags: [...parent.tags],
-    });
-    await createRelation(task.id, goalId, 'achieves');
-    setGraphTick((t) => t + 1);
-    navigate(`/todo/${task.id}`);
+    setTaskCreateGoalId(goalId);
   }
 
-  async function handleLinkPreAchieveGoal(goalId: string) {
-    const targetGoal = await getTodo(goalId);
-    if (!targetGoal || targetGoal.nodeType !== 'goal') return;
-
-    const [allGoalTodos, existingPreGoals, existingChildren] = await Promise.all([
-      db.todos.filter((t) => t.nodeType === 'goal' && t.id !== goalId).toArray(),
-      getPreAchieveGoals(goalId),
-      getChildGoals(goalId),
-    ]);
-
-    const candidates = allGoalTodos.filter(
-      (g) =>
-        !existingPreGoals.some((p) => p.id === g.id) &&
-        !existingChildren.some((c) => c.id === g.id)
-    );
-    if (candidates.length === 0) {
-      const title = prompt('No existing goals to link. Enter a title to create a new pre-achieve goal:');
-      if (!title?.trim()) return;
-      const newGoal = await createGoal(title.trim(), {
-        projectId: targetGoal.projectId,
-        tags: [...targetGoal.tags],
+  async function handleConfirmCreateTask(title: string) {
+    if (!taskCreateGoalId) return;
+    try {
+      const parent = await getTodo(taskCreateGoalId);
+      if (!parent) return;
+      const task = await createTask(title.trim(), {
+        tags: [...parent.tags],
       });
-      await createRelation(newGoal.id, goalId, 'ordered_before');
+      await createRelation(task.id, taskCreateGoalId, 'achieves');
       setGraphTick((t) => t + 1);
-      return;
+      setTaskCreateGoalId(null);
+      navigate(`/todo/${task.id}`);
+    } catch (err) {
+      console.error('handleConfirmCreateTask failed:', err);
     }
-    const choice = prompt(
-      'Link a goal that should be achieved before this one:\n' +
-        candidates.map((g, i) => `${i + 1}. ${g.title}`).join('\n')
-    );
-    if (!choice) return;
-    const index = parseInt(choice.trim(), 10) - 1;
-    if (index < 0 || index >= candidates.length || isNaN(index)) return;
-    await createRelation(candidates[index].id, goalId, 'ordered_before');
-    setGraphTick((t) => t + 1);
+  }
+
+  async function addOrderedNeighbor(
+    targetTodoId: string,
+    direction: 'before' | 'after',
+    nodeType: 'goal' | 'task'
+  ) {
+    try {
+      const targetTodo = await getTodo(targetTodoId);
+      if (!targetTodo || targetTodo.nodeType !== nodeType) return;
+
+      const [allCandidates, existingPredecessors, existingSuccessors, existingChildren] = await Promise.all([
+        db.todos.filter((t) => t.nodeType === nodeType && t.id !== targetTodoId).toArray(),
+        getOrderedPredecessors(targetTodoId),
+        getOrderedSuccessors(targetTodoId),
+        nodeType === 'goal' ? getChildGoals(targetTodoId) : Promise.resolve([] as Todo[]),
+      ]);
+
+      const excludedIds = new Set([
+        targetTodoId,
+        ...existingPredecessors.filter((t) => t.nodeType === nodeType).map((t) => t.id),
+        ...existingSuccessors.filter((t) => t.nodeType === nodeType).map((t) => t.id),
+        ...existingChildren.map((t) => t.id),
+      ]);
+
+      const candidates = allCandidates.filter((t) => !excludedIds.has(t.id));
+
+      setNeighborDialog({
+        isOpen: true,
+        targetTodoId,
+        direction,
+        nodeType,
+        candidates,
+      });
+    } catch (err) {
+      console.error(`addOrderedNeighbor(${targetTodoId}, ${direction}, ${nodeType}) failed:`, err);
+    }
+  }
+
+  async function handleCreateNeighbor(title: string) {
+    const { targetTodoId, direction, nodeType } = neighborDialog;
+    if (!targetTodoId || !title.trim()) return;
+
+    try {
+      const targetTodo = await getTodo(targetTodoId);
+      if (!targetTodo) return;
+
+      const newTodo =
+        nodeType === 'goal'
+          ? await createGoal(title.trim(), { tags: [...targetTodo.tags] })
+          : await createTask(title.trim(), { tags: [...targetTodo.tags] });
+      const [fromId, toId] = direction === 'before' ? [newTodo.id, targetTodoId] : [targetTodoId, newTodo.id];
+      await createRelation(fromId, toId, 'ordered_before');
+      setGraphTick((t) => t + 1);
+      setNeighborDialog((prev) => ({ ...prev, isOpen: false }));
+    } catch (err) {
+      console.error('handleCreateNeighbor failed:', err);
+    }
+  }
+
+  async function handleLinkNeighbor(todoId: string) {
+    const { targetTodoId, direction } = neighborDialog;
+    if (!targetTodoId || !todoId) return;
+
+    try {
+      const [fromId, toId] = direction === 'before' ? [todoId, targetTodoId] : [targetTodoId, todoId];
+      await createRelation(fromId, toId, 'ordered_before');
+      setGraphTick((t) => t + 1);
+      setNeighborDialog((prev) => ({ ...prev, isOpen: false }));
+    } catch (err) {
+      console.error('handleLinkNeighbor failed:', err);
+    }
+  }
+
+  async function handleAddPreGoal(goalId: string) {
+    await addOrderedNeighbor(goalId, 'before', 'goal');
+  }
+
+  async function handleAddNextGoal(goalId: string) {
+    await addOrderedNeighbor(goalId, 'after', 'goal');
+  }
+
+  async function handleAddPreTask(taskId: string) {
+    await addOrderedNeighbor(taskId, 'before', 'task');
+  }
+
+  async function handleAddNextTask(taskId: string) {
+    await addOrderedNeighbor(taskId, 'after', 'task');
   }
 
   const statusStyle = goalStatusConfig[goal.goalStatus ?? 'active'] ?? goalStatusConfig.active;
-  const project = projects.find((p) => p.id === goal.projectId);
 
   // ---------- Left column: display content ----------
 
@@ -246,14 +340,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
               <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
                 <Calendar className="w-3.5 h-3.5" />
                 Target: {formatDateShort(goal.targetDate)}
-              </span>
-            )}
-            {project && (
-              <span
-                className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: project.color + '20', color: project.color }}
-              >
-                {project.title}
               </span>
             )}
             {goal.tags.map((tag) => (
@@ -293,6 +379,7 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
         goalId={goal.id}
         mode="card"
         title="Road to Goal"
+        layersAround={3}
         editing
         reloadTick={graphTick}
         onNodeClick={async (todoId) => {
@@ -306,10 +393,14 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
         onCreateRelation={handleCreateRelation}
         onDeleteRelation={handleDeleteRelation}
         onUpdateRelation={handleUpdateRelation}
+        onReconnectRelation={handleReconnectRelation}
         onUpdateTodo={handleUpdateTodo}
         onDeleteTodo={handleDeleteTodo}
         onAddTask={handleCreateAchievingTask}
-        onAddPreGoal={handleLinkPreAchieveGoal}
+        onAddPreGoal={handleAddPreGoal}
+        onAddNextGoal={handleAddNextGoal}
+        onAddPreTask={handleAddPreTask}
+        onAddNextTask={handleAddNextTask}
       />
     </>
   );
@@ -383,20 +474,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
             <option value="abandoned">Abandoned</option>
           </select>
         </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Project</label>
-        <select
-          value={editProjectId}
-          onChange={(e) => setEditProjectId(e.target.value)}
-          className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="">No project</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.title}</option>
-          ))}
-        </select>
       </div>
 
       <div>
@@ -504,6 +581,24 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
           {sharedSections}
         </div>
       )}
+      <NeighborPromptDialog
+        isOpen={neighborDialog.isOpen}
+        onClose={() => setNeighborDialog((prev) => ({ ...prev, isOpen: false }))}
+        direction={neighborDialog.direction}
+        nodeType={neighborDialog.nodeType}
+        candidates={neighborDialog.candidates}
+        onCreate={handleCreateNeighbor}
+        onLink={handleLinkNeighbor}
+      />
+
+      <PromptDialog
+        isOpen={taskCreateGoalId !== null}
+        onClose={() => setTaskCreateGoalId(null)}
+        title="Add task to goal"
+        placeholder="Task title"
+        confirmLabel="Create task"
+        onConfirm={handleConfirmCreateTask}
+      />
     </div>
   );
 }

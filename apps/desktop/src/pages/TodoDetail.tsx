@@ -19,40 +19,12 @@ import {
 } from 'lucide-react';
 import { getTodo, updateTodo, updateTodoStatus, deleteTodo, traceGoalChain } from '../db/todos';
 import { getSpawnedTodos, getTemplateForInstance, createRelation, updateRelation, deleteRelation } from '../db/relations';
-import { getAllProjects } from '../db/projects';
 import { formatDuration, formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
 import { TraceView } from '../components/TraceView';
 import { useTodoLogs } from '../hooks/useTodoLogs';
 import { GoalDetail } from './GoalDetail';
-import type { Todo, RepeatRule, Priority, Project, TaskPattern, TodoRelationType } from '../types';
-
-function ProjectBadge({ projectId }: { projectId: string }) {
-  const [project, setProject] = useState<Project | null>(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    getAllProjects().then((projects) => {
-      const p = projects.find((pr) => pr.id === projectId);
-      if (p) setProject(p);
-    });
-  }, [projectId]);
-
-  if (!project) return null;
-
-  return (
-    <button
-      onClick={() => navigate(`/project/${project.id}`)}
-      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded"
-      style={{
-        backgroundColor: project.color + '20',
-        color: project.color,
-      }}
-    >
-      {project.title}
-    </button>
-  );
-}
+import type { Todo, RepeatRule, Priority, TaskPattern, TodoRelationType } from '../types';
 
 export function TodoDetail() {
   const { id } = useParams<{ id: string }>();
@@ -72,7 +44,6 @@ export function TodoDetail() {
   const [editEstimatedMinutes, setEditEstimatedMinutes] = useState(60);
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState('');
-  const [editProjectId, setEditProjectId] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editScheduledDate, setEditScheduledDate] = useState('');
   const [editScheduledTime, setEditScheduledTime] = useState('');
@@ -89,7 +60,6 @@ export function TodoDetail() {
   const editFormInitRef = useRef(false);
 
   const [spawnedTodos, setSpawnedTodos] = useState<Todo[]>([]);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
 
   // Repeat
   const [templateTodo, setTemplateTodo] = useState<Todo | null>(null);
@@ -104,14 +74,12 @@ export function TodoDetail() {
     if (t) {
       setTodo(t);
 
-      const [spawned, tmpl, projects] = await Promise.all([
+      const [spawned, tmpl] = await Promise.all([
         getSpawnedTodos(t.id),
         getTemplateForInstance(t.id),
-        getAllProjects(),
       ]);
       setSpawnedTodos(spawned);
       setTemplateTodo(tmpl ?? null);
-      setAllProjects(projects);
 
       const goalChain = await traceGoalChain(t.id);
       setParentGoal(goalChain[goalChain.length - 1] ?? null);
@@ -170,7 +138,6 @@ export function TodoDetail() {
     setEditEstimatedMinutes(t.estimatedMinutes ?? 60);
     setEditTags([...t.tags]);
     setEditTagInput('');
-    setEditProjectId(t.projectId ?? '');
     setEditDueDate(t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '');
     setEditScheduledDate(t.scheduledDate ? new Date(t.scheduledDate).toISOString().split('T')[0] : '');
     setEditScheduledTime(t.scheduledDate ? new Date(t.scheduledDate).toTimeString().slice(0, 5) : '');
@@ -228,7 +195,6 @@ export function TodoDetail() {
       pattern: editPattern,
       estimatedMinutes: editEstimatedMinutes,
       tags: editTags,
-      projectId: editProjectId || undefined,
       dueDate: editDueDate ? new Date(editDueDate) : undefined,
       scheduledDate: (() => {
         if (!editScheduledDate) return undefined;
@@ -431,9 +397,6 @@ export function TodoDetail() {
                 {tag}
               </span>
             ))}
-            {todo.projectId && (
-              <ProjectBadge projectId={todo.projectId} />
-            )}
             {todo.dueDate && (
               <span className="text-[10px] text-slate-400 dark:text-slate-500">
                 Due {formatDateShort(todo.dueDate)}
@@ -670,23 +633,6 @@ export function TodoDetail() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            Project
-          </label>
-          <select
-            value={editProjectId}
-            onChange={(e) => setEditProjectId(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">No project</option>
-            {allProjects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-        </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
             Due Date

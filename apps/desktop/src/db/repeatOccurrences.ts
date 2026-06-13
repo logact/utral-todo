@@ -79,7 +79,6 @@ export async function materializeInstance(
     description: template.description,
     priority: template.priority,
     estimatedMinutes: template.estimatedMinutes,
-    projectId: template.projectId,
     tags: [...template.tags],
     scheduledDate: new Date(date),
     status: occurrence?.status ?? 'pending',

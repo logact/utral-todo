@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface ViewportState {
   scale: number;
@@ -23,6 +23,29 @@ export function useBigMapViewport() {
 
   const dragStartRef = useRef({ x: 0, y: 0 });
   const viewportStartRef = useRef({ offsetX: 0, offsetY: 0 });
+  const pendingDragRef = useRef<{ dx: number; dy: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
+
+  const flushDrag = useCallback(() => {
+    rafRef.current = null;
+    if (pendingDragRef.current) {
+      const { dx, dy } = pendingDragRef.current;
+      pendingDragRef.current = null;
+      setViewport((prev) => ({
+        ...prev,
+        offsetX: viewportStartRef.current.offsetX + dx,
+        offsetY: viewportStartRef.current.offsetY + dy,
+      }));
+    }
+  }, []);
 
   const zoomIn = useCallback(() => {
     setViewport((prev) => {
@@ -94,20 +117,27 @@ export function useBigMapViewport() {
     };
   }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    setViewport((prev) => ({
-      ...prev,
-      offsetX: viewportStartRef.current.offsetX + dx,
-      offsetY: viewportStartRef.current.offsetY + dy,
-    }));
-  }, [isDragging]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isDragging) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      pendingDragRef.current = { dx, dy };
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(flushDrag);
+      }
+    },
+    [isDragging, flushDrag]
+  );
 
   const handleMouseUp = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    flushDrag();
     setIsDragging(false);
-  }, []);
+  }, [flushDrag]);
 
   return {
     viewport,

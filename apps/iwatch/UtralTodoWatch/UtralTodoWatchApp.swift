@@ -16,7 +16,6 @@ struct UtralTodoWatchApp: App {
 let sharedWatchModelContainer: ModelContainer = {
     let schema = Schema([
         Todo.self,
-        Project.self,
         TodoLog.self,
         TodoRelation.self,
         TimerSession.self,

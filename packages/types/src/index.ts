@@ -1,6 +1,6 @@
 export type TodoStatus = 'pending' | 'in_progress' | 'done';
 export type Priority = 'low' | 'medium' | 'high';
-export type TodoLogType = 'progress' | 'thought' | 'blocker' | 'decision' | 'system' | 'step_complete';
+export type TodoLogType = 'progress' | 'thought' | 'blocker' | 'decision' | 'system' | 'step_complete' | 'exec';
 
 export type NodeType = 'goal' | 'task';
 export type TaskPattern = 'task' | 'cognitive';
@@ -102,7 +102,6 @@ export interface TodoBase {
   pattern?: TaskPattern;
   title: string;
   description: string;
-  projectId?: string;
   parentId?: string;
   activePlanId?: string;
   isRootGoal?: boolean;
@@ -200,21 +199,8 @@ export interface TimerSession {
   updatedAt: Date;
 }
 
-export interface Project {
-  id: string;
-  title: string;
-  description: string;
-  color: string;
-  status: 'active' | 'archived';
-  deadline?: Date;
-  mainGoalId?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface SyncPayload {
   todos?: Todo[];
-  projects?: Project[];
   relations?: TodoRelation[];
   todoLogs?: TodoLog[];
   actionEdges?: ActionEdge[];
@@ -245,7 +231,6 @@ export interface SyncResult {
   success: boolean;
   pulled: {
     todos: number;
-    projects: number;
     relations: number;
     todoLogs: number;
     actionEdges: number;
@@ -256,7 +241,6 @@ export interface SyncResult {
   };
   pushed: {
     todos: number;
-    projects: number;
     relations: number;
     todoLogs: number;
     actionEdges: number;
@@ -287,9 +271,6 @@ export interface MobileTodo {
   status: TodoStatus;
   priority: Priority;
   estimatedMinutes: number;
-  projectId?: string;
-  projectTitle?: string;
-  projectColor?: string;
   scheduledDate?: Date;
   dueDate?: Date;
   order: number;
@@ -305,7 +286,6 @@ export interface WatchTodo {
 
 export interface MobileTodayResponse {
   todos: MobileTodo[];
-  projects: Project[];
 }
 
 export interface WatchTodayResponse {

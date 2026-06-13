@@ -205,8 +205,6 @@ public final class SyncEngine: ObservableObject {
             await applyPluseEvent(recordId: recordId, operation: event.operation, payload: payload)
         case "timerSession":
             await applyTimerSessionEvent(recordId: recordId, operation: event.operation, payload: payload)
-        case "project":
-            await applyProjectEvent(recordId: recordId, operation: event.operation, payload: payload)
         case "todoRelation":
             await applyTodoRelationEvent(recordId: recordId, operation: event.operation, payload: payload)
         case "todoLog":
@@ -359,41 +357,6 @@ public final class SyncEngine: ObservableObject {
             )
             if let updatedAt = remoteUpdatedAt { session.updatedAt = updatedAt }
             modelContext.insert(session)
-        }
-        try? modelContext.save()
-    }
-
-    private func applyProjectEvent(recordId: String, operation: String, payload: Data?) async {
-        if operation == "delete" {
-            if let project = try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == recordId })).first {
-                modelContext.delete(project)
-                try? modelContext.save()
-            }
-            return
-        }
-
-        guard let payload,
-              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
-
-        let remoteUpdatedAt = parseDate(json["updatedAt"])
-
-        if let project = try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= project.updatedAt { return }
-            if let title = json["title"] as? String { project.title = title }
-            if let desc = json["description"] as? String { project.desc = desc }
-            if let status = json["status"] as? String { project.status = status }
-            if let color = json["color"] as? String { project.color = color }
-            project.updatedAt = remoteUpdatedAt ?? Date()
-        } else if operation == "create" || operation == "update" {
-            let project = Project(
-                id: recordId,
-                title: (json["title"] as? String) ?? "",
-                desc: (json["description"] as? String) ?? "",
-                color: (json["color"] as? String) ?? "#6366f1",
-                status: (json["status"] as? String) ?? "active"
-            )
-            if let updatedAt = remoteUpdatedAt { project.updatedAt = updatedAt }
-            modelContext.insert(project)
         }
         try? modelContext.save()
     }

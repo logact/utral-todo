@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, Project, TimerSession, RepeatOccurrence, Roadmap, Plan } from '../types';
+import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, RepeatOccurrence, Roadmap, Plan } from '../types';
 
 export interface SyncQueueItem {
   id: string;
@@ -24,7 +24,6 @@ const db = new Dexie('TodoScheduleDB') as Dexie & {
   roadmaps: EntityTable<Roadmap, 'id'>;
   plans: EntityTable<Plan, 'id'>;
   pluses: EntityTable<Pluse, 'id'>;
-  projects: EntityTable<Project, 'id'>;
   timerSessions: EntityTable<TimerSession, 'id'>;
   repeatOccurrences: EntityTable<RepeatOccurrence, 'id'>;
   syncQueue: EntityTable<SyncQueueItem, 'id'>;
@@ -32,13 +31,11 @@ const db = new Dexie('TodoScheduleDB') as Dexie & {
 };
 
 db.version(1).stores({
-  projects: 'id, status, createdAt',
-  tasks: 'id, projectId, status, scheduledDate, dueDate',
+  tasks: 'id, status, scheduledDate, dueDate',
 });
 
 db.version(2).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, status, scheduledDate, dueDate, createdAt',
 }).upgrade(async (tx) => {
   const oldTasks = await tx.table('tasks').toArray();
   if (oldTasks.length > 0) {
@@ -51,8 +48,7 @@ db.version(2).stores({
 });
 
 db.version(3).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, status, scheduledDate, dueDate, createdAt',
 }).upgrade(async (tx) => {
   const todos = await tx.table('todos').toArray();
   for (const todo of todos) {
@@ -61,47 +57,40 @@ db.version(3).stores({
 });
 
 db.version(4).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt',
 });
 
 db.version(5).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
 });
 
 db.version(6).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
 });
 
 db.version(7).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
 });
 
 db.version(8).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
 });
 
 db.version(9).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
 });
 
 db.version(10).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
 }).upgrade(async (tx) => {
@@ -112,7 +101,6 @@ db.version(10).stores({
         const step = todo.plan[i];
         const childTodo = {
           id: crypto.randomUUID(),
-          projectId: todo.projectId,
           parentId: todo.id,
           title: step.title || 'Untitled step',
           description: '',
@@ -134,31 +122,27 @@ db.version(10).stores({
 });
 
 db.version(11).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
 });
 
 db.version(12).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId',
 });
 
 db.version(13).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
 });
 
 db.version(14).stores({
-  projects: 'id, status, createdAt',
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
@@ -166,7 +150,7 @@ db.version(14).stores({
 });
 
 db.version(15).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
@@ -174,7 +158,7 @@ db.version(15).stores({
 });
 
 db.version(16).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
@@ -183,7 +167,7 @@ db.version(16).stores({
 });
 
 db.version(17).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
@@ -199,7 +183,7 @@ db.version(17).stores({
 });
 
 db.version(18).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
@@ -228,40 +212,37 @@ db.version(18).stores({
 });
 
 db.version(19).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
-  projects: 'id, status, createdAt',
 });
 
 db.version(20).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
-  projects: 'id, status, createdAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
 });
 
 db.version(21).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
 }).upgrade(async (tx) => {
   // Backfill updatedAt from createdAt for all existing records
-  const tables = ['todos', 'relations', 'todoLogs', 'actionEdges', 'pluses', 'projects'];
+  const tables = ['todos', 'relations', 'todoLogs', 'actionEdges', 'pluses'];
   for (const tableName of tables) {
     const items = await tx.table(tableName).toArray();
     for (const item of items) {
@@ -273,26 +254,24 @@ db.version(21).stores({
 });
 
 db.version(22).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
 });
 
 db.version(23).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
@@ -308,13 +287,12 @@ db.version(23).stores({
 });
 
 db.version(24).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
@@ -329,13 +307,12 @@ db.version(24).stores({
 });
 
 db.version(25).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -379,13 +356,12 @@ db.version(25).stores({
 });
 
 db.version(26).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -393,13 +369,12 @@ db.version(26).stores({
 });
 
 db.version(27).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -407,13 +382,12 @@ db.version(27).stores({
 });
 
 db.version(28).stores({
-  todos: 'id, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -421,13 +395,12 @@ db.version(28).stores({
 });
 
 db.version(29).stores({
-  todos: 'id, nodeType, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -445,12 +418,11 @@ db.version(29).stores({
 });
 
 db.version(30).stores({
-  todos: 'id, nodeType, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -461,12 +433,11 @@ db.version(30).stores({
 });
 
 db.version(31).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -481,13 +452,12 @@ db.version(31).stores({
 });
 
 db.version(32).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -495,13 +465,12 @@ db.version(32).stores({
 });
 
 db.version(33).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -509,13 +478,12 @@ db.version(33).stores({
 });
 
 db.version(34).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -540,13 +508,12 @@ db.version(34).stores({
 });
 
 db.version(35).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -567,13 +534,12 @@ db.version(35).stores({
 });
 
 db.version(36).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -601,13 +567,12 @@ db.version(36).stores({
 });
 
 db.version(38).stores({
-  todos: 'id, nodeType, pattern, projectId, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
   roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
-  projects: 'id, status, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
@@ -676,6 +641,29 @@ db.version(38).stores({
   }
 });
 
+db.version(39).stores({
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  roadmaps: 'id, goalTodoId, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, isSystemPlan, updatedAt',
+}).upgrade(async (tx) => {
+  // Clear orphaned project data
+  await tx.table('projects').clear();
+  const todos = await tx.table('todos').toArray();
+  for (const todo of todos) {
+    if (todo.projectId !== undefined) {
+      await tx.table('todos').update(todo.id, { projectId: undefined });
+    }
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();
@@ -684,7 +672,6 @@ export async function clearAllData(): Promise<void> {
   await db.roadmaps.clear();
   await db.plans.clear();
   await db.pluses.clear();
-  await db.projects.clear();
   await db.timerSessions.clear();
   await db.repeatOccurrences.clear();
   await db.syncQueue.clear();

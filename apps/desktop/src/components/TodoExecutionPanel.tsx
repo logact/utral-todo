@@ -172,7 +172,7 @@ export function TodoExecutionPanel({
   }
 
   async function handleAddLog(
-    type: 'progress' | 'thought' | 'blocker' | 'decision',
+    type: 'progress' | 'thought' | 'blocker' | 'decision' | 'exec',
     content: string,
     minutesSpent?: number
   ) {

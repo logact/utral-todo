@@ -10,7 +10,6 @@ interface Todo {
   priority: string;
   estimatedMinutes: number;
   tags: string[];
-  projectId: string | null;
   parentId: string | null;
   dueDate: string | null;
   scheduledDate: string | null;
@@ -28,7 +27,6 @@ export function registerTodoCommand(program: Command) {
   todo
     .command("list")
     .description("list todos")
-    .option("-p, --project <id>", "filter by project ID")
     .option("-P, --parent <id>", "filter by parent ID")
     .option("-r, --root", "show only root todos")
     .option("-d, --date <date>", "filter by scheduled date (YYYY-MM-DD)")
@@ -40,7 +38,6 @@ export function registerTodoCommand(program: Command) {
     .action(async (opts) => {
       let path = "/api/todos";
       const params = new URLSearchParams();
-      if (opts.project) params.append("projectId", opts.project);
       if (opts.parent) params.append("parentId", opts.parent);
       if (opts.root) params.append("root", "true");
       if (opts.date) params.append("date", opts.date);
@@ -83,7 +80,6 @@ export function registerTodoCommand(program: Command) {
     .option("--priority <p>", "priority (low/medium/high)", "medium")
     .option("--estimated <minutes>", "estimated minutes", "60")
     .option("--tags <tags>", "comma-separated tags")
-    .option("--project <id>", "project ID")
     .option("--parent <id>", "parent todo ID")
     .option("--due <date>", "due date (ISO)")
     .option("--scheduled <date>", "scheduled date (ISO)")
@@ -97,7 +93,6 @@ export function registerTodoCommand(program: Command) {
         priority: opts.priority,
         estimatedMinutes: parseInt(opts.estimated, 10),
         tags: opts.tags ? opts.tags.split(",").map((t: string) => t.trim()) : [],
-        projectId: opts.project ?? null,
         parentId: opts.parent ?? null,
         dueDate: opts.due ?? null,
         scheduledDate: opts.scheduled ?? null,
@@ -120,7 +115,6 @@ export function registerTodoCommand(program: Command) {
     .option("--status <s>", "new status")
     .option("--estimated <minutes>", "new estimated minutes")
     .option("--tags <tags>", "comma-separated tags")
-    .option("--project <id>", "new project ID")
     .option("--due <date>", "new due date")
     .option("--scheduled <date>", "new scheduled date")
     .option("--scheduled-end <date>", "new scheduled end date")
@@ -133,7 +127,6 @@ export function registerTodoCommand(program: Command) {
       if (opts.status !== undefined) body.status = opts.status;
       if (opts.estimated !== undefined) body.estimatedMinutes = parseInt(opts.estimated, 10);
       if (opts.tags !== undefined) body.tags = opts.tags.split(",").map((t: string) => t.trim());
-      if (opts.project !== undefined) body.projectId = opts.project;
       if (opts.due !== undefined) body.dueDate = opts.due;
       if (opts.scheduled !== undefined) body.scheduledDate = opts.scheduled;
       if (opts.scheduledEnd !== undefined) body.scheduledEndDate = opts.scheduledEnd;

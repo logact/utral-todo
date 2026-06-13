@@ -16,10 +16,12 @@ import {
 } from 'lucide-react';
 import { BigMapCanvas } from './BigMapCanvas';
 import { useBigMapViewport } from '../hooks/useBigMapViewport';
-import { computeUnifiedGraphLayout, type LayoutResult } from './BigMapLayout';
-import { getAllTodos, getTodo } from '../db/todos';
-import { getAllRelations } from '../db/relations';
-import type { Todo, TodoRelation, TodoRelationType } from '../types';
+import { computeUnifiedGraphLayout, computeGoalRoadLayout, type LayoutResult } from './BigMapLayout';
+import { getAllTodos, getTodo, createGoal, createTask } from '../db/todos';
+import { getAllRelations, createRelation } from '../db/relations';
+import { db } from '../db/database';
+import type { Todo, TodoRelation, TodoRelationType, TodoLog, NodeType } from '../types';
+import { inferRelationBetween } from '../utils/relations';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -31,17 +33,21 @@ export interface RoadToGoalGraphProps {
   mode?: 'page' | 'card';
   title?: string;
   editing?: boolean;
+  layersAround?: number;
   reloadTick?: number;
   onNodeClick?: (todoId: string) => void;
   onCreateRelation?: (fromTodoId: string, toTodoId: string, type: TodoRelationType) => Promise<void>;
   onDeleteRelation?: (relationId: string) => Promise<void>;
   onUpdateRelation?: (relationId: string, type: TodoRelationType) => Promise<void>;
+  onReconnectRelation?: (relationId: string, fromTodoId: string, toTodoId: string) => Promise<void>;
   onUpdateTodo?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onDeleteTodo?: (todoId: string) => Promise<void>;
   onRelationsChange?: () => void;
-  onAddChild?: (todoId: string) => Promise<void>;
   onAddTask?: (todoId: string) => Promise<void>;
   onAddPreGoal?: (todoId: string) => Promise<void>;
+  onAddNextGoal?: (todoId: string) => Promise<void>;
+  onAddPreTask?: (todoId: string) => Promise<void>;
+  onAddNextTask?: (todoId: string) => Promise<void>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -137,6 +143,7 @@ function ViewportToolbar({
 
 const EMPTY_LAYOUT: LayoutResult = {
   nodes: [],
+  execLogNodes: [],
   actionEdges: [],
   parentChildEdges: [],
   roadEdges: [],
@@ -150,22 +157,27 @@ export function RoadToGoalGraph({
   mode = 'card',
   title = 'Road to Goal',
   editing = false,
+  layersAround,
   reloadTick = 0,
   onNodeClick,
   onCreateRelation,
   onDeleteRelation,
   onUpdateRelation,
+  onReconnectRelation,
   onUpdateTodo,
   onDeleteTodo,
   onRelationsChange,
-  onAddChild,
   onAddTask,
   onAddPreGoal,
+  onAddNextGoal,
+  onAddPreTask,
+  onAddNextTask,
 }: RoadToGoalGraphProps) {
   const [canvasContainer, setCanvasContainer] = useState<HTMLDivElement | null>(null);
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [relations, setRelations] = useState<TodoRelation[]>([]);
+  const [execLogs, setExecLogs] = useState<TodoLog[]>([]);
   const [goalTodo, setGoalTodo] = useState<Todo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFitted, setHasFitted] = useState(false);
@@ -217,6 +229,15 @@ export function RoadToGoalGraph({
     setRelations(allRelations);
     setGoalTodo(goal ?? null);
 
+    // Load exec logs for every task that will appear in the graph.
+    const taskIds = allTodos.filter((t) => t.nodeType === 'task').map((t) => t.id);
+    const logsPerTask = await Promise.all(
+      taskIds.map((id) =>
+        db.todoLogs.where('todoId').equals(id).and((l) => l.type === 'exec').toArray()
+      )
+    );
+    setExecLogs(logsPerTask.flat());
+
     if (!signal?.cancelled) setIsLoading(false);
   }, [goalId, reloadTick]);
 
@@ -234,6 +255,41 @@ export function RoadToGoalGraph({
     await loadData();
   }, [loadData]);
 
+  // Create a new goal/task from an empty-space drop and link it to the source node.
+  const handleCreateNodeFromDrag = useCallback(
+    async (sourceId: string, title: string, nodeType: NodeType) => {
+      const sourceTodo = await getTodo(sourceId);
+      if (!sourceTodo) return;
+
+      const newTodo =
+        nodeType === 'goal'
+          ? await createGoal(title, { tags: [...sourceTodo.tags] })
+          : await createTask(title, { tags: [...sourceTodo.tags] });
+
+      const relation = inferRelationBetween(sourceTodo, newTodo);
+      if (!relation) return;
+
+      await createRelation(relation.fromId, relation.toId, relation.type);
+      await reload();
+      onRelationsChange?.();
+    },
+    [reload, onRelationsChange]
+  );
+
+  // Refresh graph data when local/remote changes sync.
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handler = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => reload(), 100);
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('sync:remote-applied', handler);
+    };
+  }, [reload]);
+
   // Filtered todos based on status (always keep the focus goal visible)
   const filteredTodos = useMemo(() => {
     const list = todos.filter((t) => {
@@ -249,12 +305,15 @@ export function RoadToGoalGraph({
     return list;
   }, [todos, showPending, showInProgress, showDone, goalId, goalTodo]);
 
-  // Compute unified layout with every goal/task and every relation as a directed edge.
+  // Compute layout: full graph by default, or BFS-limited neighborhood when layersAround is set.
   const layoutResult = useMemo<LayoutResult>(() => {
     if (isLoading) return EMPTY_LAYOUT;
     if (containerWidth === 0) return EMPTY_LAYOUT;
-    return computeUnifiedGraphLayout(filteredTodos, relations, containerWidth);
-  }, [isLoading, filteredTodos, relations, containerWidth]);
+    if (layersAround !== undefined && layersAround >= 0) {
+      return computeGoalRoadLayout(goalId, filteredTodos, relations, layersAround, containerWidth, execLogs);
+    }
+    return computeUnifiedGraphLayout(filteredTodos, relations, containerWidth, execLogs);
+  }, [isLoading, filteredTodos, relations, containerWidth, layersAround, goalId, execLogs]);
 
   // Auto-fit on first load; center on the focus goal.
   const handleFit = useCallback(() => {
@@ -395,6 +454,7 @@ export function RoadToGoalGraph({
           actionEdges={layoutResult.actionEdges}
           parentChildEdges={layoutResult.parentChildEdges}
           roadEdges={layoutResult.roadEdges}
+          execLogNodes={layoutResult.execLogNodes}
           width={layoutResult.width}
           height={layoutResult.height}
           viewport={viewport.viewport}
@@ -411,15 +471,19 @@ export function RoadToGoalGraph({
           onCreateRelation={onCreateRelation}
           onDeleteRelation={onDeleteRelation}
           onUpdateRelation={onUpdateRelation}
+          onReconnectRelation={onReconnectRelation}
           onUpdateTodo={onUpdateTodo}
           onDeleteTodo={onDeleteTodo}
           onRelationsChange={() => {
             reload();
             onRelationsChange?.();
           }}
-          onAddChild={onAddChild}
           onAddTask={onAddTask}
           onAddPreGoal={onAddPreGoal}
+          onAddNextGoal={onAddNextGoal}
+          onAddPreTask={onAddPreTask}
+          onAddNextTask={onAddNextTask}
+          onCreateNodeFromDrag={handleCreateNodeFromDrag}
         />
       )}
     </div>

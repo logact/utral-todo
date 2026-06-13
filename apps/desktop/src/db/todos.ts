@@ -12,7 +12,6 @@ export async function createTodo(
     nodeType?: NodeType;
     pattern?: TaskPattern;
     parentId?: string;
-    projectId?: string;
     description?: string;
     priority?: Priority;
     estimatedMinutes?: number;
@@ -45,7 +44,6 @@ export async function createTodo(
     tags: options?.tags ?? [],
     createdAt: now,
     updatedAt: now,
-    projectId: options?.projectId,
     parentId: options?.parentId,
     dueDate: options?.dueDate,
     scheduledDate: options?.scheduledDate,
@@ -66,7 +64,6 @@ export async function createGoal(
   title: string,
   options?: {
     parentId?: string;
-    projectId?: string;
     description?: string;
     tags?: string[];
     order?: number;
@@ -91,7 +88,6 @@ export async function createTask(
   title: string,
   options?: {
     parentId?: string;
-    projectId?: string;
     description?: string;
     priority?: Priority;
     estimatedMinutes?: number;
@@ -257,16 +253,6 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
   }
   await db.todos.update(id, { ...updates, updatedAt: new Date() });
   onLocalChange('todos', 'update', id).catch(() => {});
-}
-
-export async function bulkUpdateTodoProject(
-  todoIds: string[],
-  projectId: string | undefined
-): Promise<void> {
-  for (const id of todoIds) {
-    await db.todos.update(id, { projectId, updatedAt: new Date() });
-    onLocalChange('todos', 'update', id).catch(() => {});
-  }
 }
 
 export async function deleteTodo(id: string): Promise<void> {

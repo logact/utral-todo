@@ -26,23 +26,6 @@ export function BigMap() {
     setGraphTick((t) => t + 1);
   }, []);
 
-  const handleAddChild = useCallback(
-    async (parentGoalId: string) => {
-      const parent = await getTodo(parentGoalId);
-      if (!parent || parent.nodeType !== 'goal') return;
-      const title = prompt('Child goal title:');
-      if (!title) return;
-      const child = await createGoal(title.trim(), {
-        projectId: parent.projectId,
-        tags: [...parent.tags],
-        parentId: parentGoalId,
-      });
-      await createRelation(parentGoalId, child.id, 'parent_of');
-      handleReload();
-    },
-    [handleReload]
-  );
-
   const handleAddTask = useCallback(
     async (targetGoalId: string) => {
       const parent = await getTodo(targetGoalId);
@@ -50,7 +33,6 @@ export function BigMap() {
       const title = prompt('Task title:');
       if (!title) return;
       const task = await createTask(title.trim(), {
-        projectId: parent.projectId,
         tags: [...parent.tags],
       });
       await createRelation(task.id, targetGoalId, 'achieves');
@@ -86,7 +68,6 @@ export function BigMap() {
         const title = prompt('No existing goals to link. Enter a title to create a new pre-achieve goal:');
         if (!title?.trim()) return;
         const newGoal = await createGoal(title.trim(), {
-          projectId: targetGoal.projectId,
           tags: [...targetGoal.tags],
         });
         await createRelation(newGoal.id, targetGoalId, 'ordered_before');
@@ -129,6 +110,36 @@ export function BigMap() {
     },
     [handleReload]
   );
+
+  const handleReconnectRelation = useCallback(
+    async (relationId: string, fromTodoId: string, toTodoId: string) => {
+      if (fromTodoId === toTodoId) return;
+      const relation = await db.relations.get(relationId);
+      if (!relation) return;
+      if (relation.fromTodoId === fromTodoId && relation.toTodoId === toTodoId) return;
+
+      const fromTodo = await getTodo(fromTodoId);
+      const toTodo = await getTodo(toTodoId);
+      if (!fromTodo || !toTodo) return;
+
+      const allowedTypes = allowedLinkTypesForReconnect(fromTodo, toTodo);
+      if (!allowedTypes.includes(relation.type)) return;
+
+      await deleteRelation(relationId);
+      await createRelation(fromTodoId, toTodoId, relation.type);
+      handleReload();
+    },
+    [handleReload]
+  );
+
+  function allowedLinkTypesForReconnect(fromTodo: Todo, toTodo: Todo): TodoRelationType[] {
+    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'goal') return ['achieves'];
+    if (fromTodo.nodeType === 'goal' && toTodo.nodeType === 'goal') return ['parent_of', 'ordered_before'];
+    if (fromTodo.nodeType === 'task' && toTodo.nodeType === 'task') {
+      return ['ordered_before', 'depends_on', 'blocked_by', 'assign_from'];
+    }
+    return [];
+  }
 
   const handleUpdateTodo = useCallback(
     async (todoId: string, updates: Partial<Todo>) => {
@@ -225,9 +236,9 @@ export function BigMap() {
           onCreateRelation={handleCreateRelation}
           onDeleteRelation={handleDeleteRelation}
           onUpdateRelation={handleUpdateRelation}
+          onReconnectRelation={handleReconnectRelation}
           onUpdateTodo={handleUpdateTodo}
           onDeleteTodo={handleDeleteTodo}
-          onAddChild={handleAddChild}
           onAddTask={handleAddTask}
           onAddPreGoal={handleAddPreGoal}
         />

@@ -118,7 +118,6 @@ export function computeVirtualTodo(
     id,
     nodeType: template.nodeType || 'task',
     pattern: template.pattern ?? 'task',
-    projectId: template.projectId,
     parentId: template.parentId,
     title: template.title,
     description: template.description,
