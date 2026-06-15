@@ -1,0 +1,37 @@
+# Claude Code / AI Context Management
+# Files and directories listed here are excluded from the AI context window
+# This prevents large planning documents from inflating token usage every turn
+
+# Planning documents (large, reference-only)
+planning/
+docs/
+
+# Large demo files
+*.demo.html
+fitness_road_to_goal_demo.html
+
+# Build artifacts
+node_modules/
+dist/
+build/
+.out/
+.next/
+
+# Large data files
+*.csv
+*.jsonl
+*.log
+
+# IDE / local files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+
+# Temp files
+tmp/
+temp/
