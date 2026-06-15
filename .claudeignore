@@ -1,8 +1,106 @@
 # Claude Code / AI Context Management
 # Files and directories listed here are excluded from the AI context window
-# This prevents large planning documents from inflating token usage every turn
+# This prevents large/generated files from inflating token usage every turn
 
-# Planning documents (large, reference-only)
+# ============================================
+# CRITICAL: Build artifacts & generated files
+# ============================================
+# Rust / Tauri (desktop app)
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/Cargo.lock
+
+# iOS / Xcode build index
+apps/ios/UtralTodoKit/.build/
+*.xcworkspace/
+*.xcuserdata/
+DerivedData/
+
+# Vite / bundler caches
+**/.vite/
+
+# Graphify code analysis output (massive AST dumps)
+graphify-out/
+.graphify_*
+
+# ============================================
+# Package manager lock files (very large, no code value)
+# ============================================
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+*.lock
+
+# ============================================
+# Build outputs & compiled files
+# ============================================
+node_modules/
+dist/
+build/
+.out/
+.next/
+.tauri/
+**/*.tsbuildinfo
+
+# Server compiled output
+apps/server/dist/
+
+# CLI compiled output
+apps/cli/dist/
+
+# Mobile compiled output
+apps/mobile/dist/
+
+# ============================================
+# Large data files & databases
+# ============================================
+*.csv
+*.jsonl
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# SQLite databases (specific paths in this project)
+apps/server/prisma/**/database.sqlite
+apps/server/prisma/**/database.sqlite-journal
+
+# ============================================
+# Session artifacts & Claude metadata
+# ============================================
+session_*/
+*.zip
+
+# ============================================
+# Environment & config files (sensitive / irrelevant)
+# ============================================
+.env
+.env.*
+!.env.example
+
+# ============================================
+# IDE / local files
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================================
+# Test & coverage
+# ============================================
+coverage/
+
+# ============================================
+# Temp files
+# ============================================
+tmp/
+temp/
+
+# ============================================
+# Large planning documents (reference-only)
+# ============================================
 planning/
 docs/
 
@@ -10,28 +108,9 @@ docs/
 *.demo.html
 fitness_road_to_goal_demo.html
 
-# Build artifacts
-node_modules/
-dist/
-build/
-.out/
-.next/
-
-# Large data files
-*.csv
-*.jsonl
-*.log
-
-# IDE / local files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Test coverage
-coverage/
-
-# Temp files
-tmp/
-temp/
+# ============================================
+# Git / system files
+# ============================================
+.git/
+.gitignore
+.DS_Store
