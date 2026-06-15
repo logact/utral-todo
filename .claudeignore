@@ -66,10 +66,16 @@ apps/server/prisma/**/database.sqlite
 apps/server/prisma/**/database.sqlite-journal
 
 # ============================================
-# Session artifacts & Claude metadata
+# Session artifacts & Kimi agent metadata
 # ============================================
+# Kimi agent generates session directories + zip exports
+session_*
 session_*/
 *.zip
+
+# Agent logs and metadata (if outside session dirs)
+.agents/
+logs/kimi-code.log
 
 # ============================================
 # Environment & config files (sensitive / irrelevant)

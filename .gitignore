@@ -55,3 +55,6 @@ apps/server/prisma/server/
 data/
 apps/server/data/
 utral-todo/
+# kimi agent
+session_*
+*.zip
