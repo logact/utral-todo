@@ -11,7 +11,7 @@ import {
   Target,
   ArrowRight,
 } from 'lucide-react';
-import { getTodo, updateTodo, updateTodoStatus, getSubGoals, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
+import { getTodo, updateTodoStatus, getSubGoals, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
 import {
   traceSourceChain,
   getSpawnedTodos,
@@ -262,20 +262,6 @@ export function TodoExecutionPanel({
     await updateRelation(relationId, { type });
   }
 
-  async function handleUpdateTodoGraph(updatedTodoId: string, updates: Partial<Todo>) {
-    await updateTodo(updatedTodoId, updates);
-    if (updatedTodoId === todoId) {
-      setTodo((prev) => (prev ? { ...prev, ...updates } : prev));
-    }
-  }
-
-  async function handleDeleteTodoGraph(deletedTodoId: string) {
-    await deleteTodo(deletedTodoId);
-    if (deletedTodoId === todoId) {
-      onNavigate?.('/');
-    }
-  }
-
   function formatRepeatRule(rule: RepeatRule): string {
     if (rule.type === 'daily') return 'Every day';
     if (rule.type === 'weekly' && rule.weekDays) {
@@ -473,8 +459,6 @@ export function TodoExecutionPanel({
           onCreateRelation={handleCreateRelation}
           onDeleteRelation={handleDeleteRelation}
           onUpdateRelation={handleUpdateRelation}
-          onUpdateTodo={handleUpdateTodoGraph}
-          onDeleteTodo={handleDeleteTodoGraph}
         />
       )}
 

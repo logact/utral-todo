@@ -2,7 +2,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, Home, Plus } from 'lucide-react';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
-import { getRootGoal, getTodo, createGoal, createTask, updateTodo, deleteTodo, ensureRootGoal } from '../db/todos';
+import { getRootGoal, getTodo, ensureRootGoal } from '../db/todos';
 import { createRelation, deleteRelation, updateRelation } from '../db/relations';
 import { db } from '../db/database';
 import type { Todo, TodoRelationType } from '../types';
@@ -25,67 +25,6 @@ export function BigMap() {
   const handleReload = useCallback(() => {
     setGraphTick((t) => t + 1);
   }, []);
-
-  const handleAddTask = useCallback(
-    async (targetGoalId: string) => {
-      const parent = await getTodo(targetGoalId);
-      if (!parent || parent.nodeType !== 'goal') return;
-      const title = prompt('Task title:');
-      if (!title) return;
-      const task = await createTask(title.trim(), {
-        tags: [...parent.tags],
-      });
-      await createRelation(task.id, targetGoalId, 'achieves');
-      handleReload();
-      navigate(`/todo/${task.id}`);
-    },
-    [handleReload, navigate]
-  );
-
-  const handleAddPreGoal = useCallback(
-    async (targetGoalId: string) => {
-      const targetGoal = await getTodo(targetGoalId);
-      if (!targetGoal || targetGoal.nodeType !== 'goal') return;
-
-      const allGoals = await db.todos
-        .filter((t) => t.nodeType === 'goal' && t.id !== targetGoalId)
-        .toArray();
-      const relations = await db.relations.toArray();
-      const existingPreGoals = relations
-        .filter((r) => r.toTodoId === targetGoalId && r.type === 'ordered_before')
-        .map((r) => r.fromTodoId);
-      const existingChildren = relations
-        .filter((r) => r.fromTodoId === targetGoalId && r.type === 'parent_of')
-        .map((r) => r.toTodoId);
-
-      const candidates = allGoals.filter(
-        (g) =>
-          !existingPreGoals.includes(g.id) &&
-          !existingChildren.includes(g.id) &&
-          g.id !== targetGoalId
-      );
-      if (candidates.length === 0) {
-        const title = prompt('No existing goals to link. Enter a title to create a new pre-achieve goal:');
-        if (!title?.trim()) return;
-        const newGoal = await createGoal(title.trim(), {
-          tags: [...targetGoal.tags],
-        });
-        await createRelation(newGoal.id, targetGoalId, 'ordered_before');
-        handleReload();
-        return;
-      }
-      const choice = prompt(
-        'Link a goal that should be achieved before this one:\n' +
-          candidates.map((g, i) => `${i + 1}. ${g.title}`).join('\n')
-      );
-      if (!choice) return;
-      const index = parseInt(choice.trim(), 10) - 1;
-      if (index < 0 || index >= candidates.length || isNaN(index)) return;
-      await createRelation(candidates[index].id, targetGoalId, 'ordered_before');
-      handleReload();
-    },
-    [handleReload]
-  );
 
   const handleCreateRelation = useCallback(
     async (fromTodoId: string, toTodoId: string, type: TodoRelationType) => {
@@ -140,25 +79,6 @@ export function BigMap() {
     }
     return [];
   }
-
-  const handleUpdateTodo = useCallback(
-    async (todoId: string, updates: Partial<Todo>) => {
-      await updateTodo(todoId, updates);
-      handleReload();
-    },
-    [handleReload]
-  );
-
-  const handleDeleteTodo = useCallback(
-    async (todoId: string) => {
-      await deleteTodo(todoId);
-      handleReload();
-      if (todoId === goalId) {
-        navigate('/map');
-      }
-    },
-    [handleReload, goalId, navigate]
-  );
 
   if (!goalId) {
     if (isLoadingRoot) {
@@ -237,10 +157,6 @@ export function BigMap() {
           onDeleteRelation={handleDeleteRelation}
           onUpdateRelation={handleUpdateRelation}
           onReconnectRelation={handleReconnectRelation}
-          onUpdateTodo={handleUpdateTodo}
-          onDeleteTodo={handleDeleteTodo}
-          onAddTask={handleAddTask}
-          onAddPreGoal={handleAddPreGoal}
         />
       </div>
     </div>

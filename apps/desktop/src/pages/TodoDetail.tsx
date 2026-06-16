@@ -17,7 +17,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react';
-import { getTodo, updateTodo, updateTodoStatus, deleteTodo, traceGoalChain } from '../db/todos';
+import { getTodo, updateTodo, updateTodoStatus, traceGoalChain } from '../db/todos';
 import { getSpawnedTodos, getTemplateForInstance, createRelation, updateRelation, deleteRelation } from '../db/relations';
 import { formatDuration, formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
@@ -275,20 +275,6 @@ export function TodoDetail() {
     await updateRelation(relationId, { type });
   }
 
-  async function handleUpdateTodo(todoId: string, updates: Partial<Todo>) {
-    await updateTodo(todoId, updates);
-    if (todoId === id) {
-      setTodo((prev) => (prev ? { ...prev, ...updates } : prev));
-    }
-  }
-
-  async function handleDeleteTodo(todoId: string) {
-    await deleteTodo(todoId);
-    if (todoId === id) {
-      navigate(-1);
-    }
-  }
-
   if (isLoadingTodo) {
     return (
       <div className="text-slate-500 dark:text-slate-400">Loading...</div>
@@ -435,8 +421,6 @@ export function TodoDetail() {
           onCreateRelation={handleCreateRelation}
           onDeleteRelation={handleDeleteRelation}
           onUpdateRelation={handleUpdateRelation}
-          onUpdateTodo={handleUpdateTodo}
-          onDeleteTodo={handleDeleteTodo}
         />
       )}
 

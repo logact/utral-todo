@@ -1,16 +1,11 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Target,
-  MoreHorizontal,
-  Link2,
-  Plus,
   X,
   Trash2,
   Pencil,
-  Check,
   Loader2,
-  ListTodo,
   Play,
 } from 'lucide-react';
 import {
@@ -64,22 +59,32 @@ interface BigMapCanvasProps {
   connectEdgeType?: ActionEdgeType;
   onNodeClickForConnect?: (todoId: string) => void;
   editing?: boolean;
-  planTodoIds?: Set<string>;
-  onAddToPlan?: (todoId: string) => Promise<void>;
-  onRemoveFromPlan?: (todoId: string) => Promise<void>;
   onCreateRelation?: (fromTodoId: string, toTodoId: string, type: TodoRelationType) => Promise<void>;
   onDeleteRelation?: (relationId: string) => Promise<void>;
   onUpdateRelation?: (relationId: string, type: TodoRelationType) => Promise<void>;
   onReconnectRelation?: (relationId: string, fromTodoId: string, toTodoId: string) => Promise<void>;
-  onUpdateTodo?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
-  onDeleteTodo?: (todoId: string) => Promise<void>;
   onRelationsChange?: () => void;
-  onAddTask?: (todoId: string) => Promise<void>;
-  onAddPreGoal?: (todoId: string) => Promise<void>;
-  onAddNextGoal?: (todoId: string) => Promise<void>;
-  onAddPreTask?: (todoId: string) => Promise<void>;
-  onAddNextTask?: (todoId: string) => Promise<void>;
   onCreateNodeFromDrag?: (sourceId: string, title: string, nodeType: NodeType) => void;
+}
+
+interface GraphNodeProps {
+  node: LayoutNode;
+  isCenter: boolean;
+  isSelected: boolean;
+  isDimmed: boolean;
+  isLinkSource: boolean;
+  isDropTarget: boolean;
+  isDragSource: boolean;
+  isEditing: boolean;
+  connectMode: boolean;
+  isConnectSource: boolean;
+  incomingEntries: { label: string; title: string; color: string }[];
+  onNodeEnter: (nodeId: string) => void;
+  onNodeLeave: (nodeId: string) => void;
+  onNodeMouseDown: (nodeId: string, e: React.MouseEvent) => void;
+  onNodeClick: (nodeId: string) => void;
+  onNewEdgeMouseDown: (nodeId: string, e: React.MouseEvent) => void;
+  onNodeClickForConnect?: (todoId: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -176,6 +181,234 @@ function RelationTypeSelector({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Memoized Node                                                      */
+/* ------------------------------------------------------------------ */
+
+const GraphNode = memo(function GraphNode({
+  node,
+  isCenter,
+  isSelected,
+  isDimmed,
+  isLinkSource,
+  isDropTarget,
+  isDragSource,
+  isEditing,
+  connectMode,
+  isConnectSource,
+  incomingEntries,
+  onNodeEnter,
+  onNodeLeave,
+  onNodeMouseDown,
+  onNodeClick,
+  onNewEdgeMouseDown,
+}: GraphNodeProps) {
+  const todo = node.todo;
+  const isGoal = todo.nodeType === 'goal';
+  const isDone = todo.status === 'done';
+  const w = isGoal ? GOAL_W : NODE_W;
+  const h = isGoal ? GOAL_H : NODE_H;
+  const circleSize = isGoal ? GOAL_CIRCLE_SIZE : NODE_CIRCLE_SIZE;
+
+  const circleColorClass = isGoal
+    ? 'bg-indigo-500'
+    : isDone
+    ? 'bg-emerald-500'
+    : todo.status === 'in_progress'
+    ? 'bg-indigo-500 animate-pulse'
+    : 'bg-slate-300 dark:bg-slate-500';
+
+  const showTooltip = isSelected || isLinkSource || (connectMode && isConnectSource);
+
+  return (
+    <div
+      data-node
+      className="absolute"
+      style={{
+        left: node.x - w / 2,
+        top: node.y - h / 2,
+        width: w,
+        height: h,
+        opacity: isDimmed ? 0.18 : 1,
+        transition: 'opacity 0.2s',
+        zIndex: isSelected || isLinkSource || isDragSource ? 30 : 10,
+      }}
+      onMouseEnter={() => onNodeEnter(todo.id)}
+      onMouseLeave={() => onNodeLeave(todo.id)}
+    >
+      {/* Hover ring */}
+      {isSelected && (
+        <div
+          className="absolute rounded-full border-2 border-indigo-400 bg-indigo-50/30 dark:bg-indigo-950/20 pointer-events-none"
+          style={{
+            width: circleSize + 8,
+            height: circleSize + 8,
+            left: (w - circleSize - 8) / 2,
+            top: (h - circleSize - 8) / 2,
+          }}
+        />
+      )}
+      {/* Drop target highlight */}
+      {isDropTarget && (
+        <div
+          className="absolute rounded-full border-2 border-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20 pointer-events-none animate-pulse"
+          style={{
+            width: circleSize + 12,
+            height: circleSize + 12,
+            left: (w - circleSize - 12) / 2,
+            top: (h - circleSize - 12) / 2,
+          }}
+        />
+      )}
+      {/* Center highlight in neighborhood mode */}
+      {isCenter && (
+        <div
+          className="absolute rounded-full border-2 border-amber-400 bg-amber-50/30 dark:bg-amber-950/20 pointer-events-none"
+          style={{
+            width: circleSize + 8,
+            height: circleSize + 8,
+            left: (w - circleSize - 8) / 2,
+            top: (h - circleSize - 8) / 2,
+          }}
+        />
+      )}
+      {/* Source node highlight in connect mode */}
+      {connectMode && isConnectSource && (
+        <div
+          className="absolute rounded-full border-2 border-amber-400 bg-amber-50/30 dark:bg-amber-950/20 pointer-events-none animate-pulse"
+          style={{
+            width: circleSize + 8,
+            height: circleSize + 8,
+            left: (w - circleSize - 8) / 2,
+            top: (h - circleSize - 8) / 2,
+          }}
+        />
+      )}
+      {/* Linking source highlight */}
+      {isLinkSource && (
+        <div
+          className="absolute rounded-full border-2 border-amber-400 bg-amber-50/30 dark:bg-amber-950/20 pointer-events-none animate-pulse"
+          style={{
+            width: circleSize + 8,
+            height: circleSize + 8,
+            left: (w - circleSize - 8) / 2,
+            top: (h - circleSize - 8) / 2,
+          }}
+        />
+      )}
+
+      <div
+        className="absolute"
+        style={{
+          left: (w - circleSize) / 2,
+          top: (h - circleSize) / 2,
+          width: circleSize,
+          height: circleSize,
+        }}
+      >
+        <button
+          type="button"
+          className={`absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border-2 border-white/70 dark:border-slate-900/70 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)] ${circleColorClass}`}
+          onMouseDown={(e) => onNodeMouseDown(todo.id, e)}
+          onClick={() => onNodeClick(todo.id)}
+        >
+          {isGoal && <Target className="w-3.5 h-3.5 text-white" />}
+        </button>
+
+        {/* New-edge drag handle */}
+        {isEditing && (
+          <div
+            className={`absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-indigo-500 border-2 border-white dark:border-slate-900 shadow-sm cursor-crosshair hover:scale-125 transition-all z-20 ${
+              isSelected || isDragSource || isLinkSource ? 'opacity-100' : 'opacity-0'
+            }`}
+            title="Drag to create relation"
+            onMouseDown={(e) => onNewEdgeMouseDown(todo.id, e)}
+          />
+        )}
+
+        {/* Tooltip */}
+        {showTooltip && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 min-w-[180px] max-w-[260px] bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg p-2.5 z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Goal header */}
+            {isGoal && (
+              <div className="flex items-center gap-1.5 mb-1.5 pb-1.5 border-b border-slate-100 dark:border-slate-700">
+                <Target className="w-3 h-3 text-indigo-500" />
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                  Goal
+                </span>
+              </div>
+            )}
+
+            {/* Title row */}
+            <div className="flex items-center gap-2">
+              {node.hasParent && !isGoal && (
+                <div className="w-1 h-4 rounded-full bg-teal-400 shrink-0" />
+              )}
+              <StatusDot status={todo.status ?? 'pending'} />
+              <span
+                className={`text-[13px] font-medium truncate flex-1 min-w-0 leading-tight ${
+                  isDone
+                    ? 'text-slate-400 dark:text-slate-500 line-through'
+                    : isGoal
+                    ? 'text-indigo-900 dark:text-indigo-200'
+                    : 'text-slate-800 dark:text-slate-200'
+                }`}
+              >
+                {todo.title}
+              </span>
+            </div>
+
+            {/* Meta row */}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {(todo.estimatedMinutes ?? 60) > 0 && !isGoal && (
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 shrink-0">
+                  {formatDuration(todo.estimatedMinutes ?? 60)}
+                </span>
+              )}
+              {isCenter && (
+                <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider shrink-0 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
+                  Now
+                </span>
+              )}
+            </div>
+
+            {/* Incoming relation sources */}
+            {incomingEntries.length > 0 && (
+              <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-700">
+                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  Sources
+                </span>
+                <div className="mt-1 space-y-0.5 max-h-24 overflow-y-auto">
+                  {incomingEntries.map((entry, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <div
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: entry.color }}
+                      />
+                      <span className="text-[10px] text-slate-600 dark:text-slate-300 truncate">
+                        {entry.title}
+                      </span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0">
+                        {entry.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Downward arrow */}
+            <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rotate-45" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -202,21 +435,11 @@ export function BigMapCanvas({
   connectEdgeType = 'pre_do',
   onNodeClickForConnect,
   editing = false,
-  planTodoIds,
-  onAddToPlan,
-  onRemoveFromPlan,
   onCreateRelation,
   onDeleteRelation,
   onUpdateRelation,
   onReconnectRelation,
-  onUpdateTodo,
-  onDeleteTodo,
   onRelationsChange,
-  onAddTask,
-  onAddPreGoal,
-  onAddNextGoal,
-  onAddPreTask,
-  onAddNextTask,
   onCreateNodeFromDrag,
 }: BigMapCanvasProps) {
   const navigate = useNavigate();
@@ -229,7 +452,6 @@ export function BigMapCanvas({
   const isNeighborhood = mode === 'neighborhood';
   const isEditing = isNeighborhood && editing;
   const effectiveHighlightId = highlightTodoId ?? centerTodoId;
-  const effectiveNodeClick = onNodeClick ?? ((id: string) => navigate(`/todo/${id}`));
 
   /* ---------------------------------------------------------------- */
   /*  Editing state                                                    */
@@ -238,10 +460,6 @@ export function BigMapCanvas({
   const [linkingFromId, setLinkingFromId] = useState<string | null>(null);
   const [pendingLinkTargetId, setPendingLinkTargetId] = useState<string | null>(null);
   const [showLinkTypeSelector, setShowLinkTypeSelector] = useState(false);
-
-  const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
-  const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
 
   const [edgeMenuEdge, setEdgeMenuEdge] = useState<TodoRelation | null>(null);
   const [edgeMenuPos, setEdgeMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -286,6 +504,16 @@ export function BigMapCanvas({
   >(null);
 
   const isInteractionDragging = nodeDragSourceId !== null || edgeDrag !== null;
+
+  // Refs mirroring interaction state so hover handlers stay stable.
+  const nodeDragSourceRef = useRef(nodeDragSourceId);
+  nodeDragSourceRef.current = nodeDragSourceId;
+  const edgeDragRef = useRef(edgeDrag);
+  edgeDragRef.current = edgeDrag;
+  const isInteractionDraggingRef = useRef(isInteractionDragging);
+  isInteractionDraggingRef.current = isInteractionDragging;
+  const dropTargetIdRef = useRef(dropTargetId);
+  dropTargetIdRef.current = dropTargetId;
 
   /* ---------------------------------------------------------------- */
   /*  Link type helpers                                                */
@@ -340,46 +568,6 @@ export function BigMapCanvas({
     }
   }
 
-  async function handleUpdateTodoTitle(todoId: string, title: string) {
-    if (!onUpdateTodo) return;
-    setIsProcessing(true);
-    try {
-      await onUpdateTodo(todoId, { title });
-      onRelationsChange?.();
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  async function handleToggleTodoStatus(todoId: string, currentStatus: string) {
-    if (!onUpdateTodo) return;
-    const nextStatus = currentStatus === 'done' ? 'pending' : 'done';
-    setIsProcessing(true);
-    try {
-      await onUpdateTodo(todoId, { status: nextStatus });
-      onRelationsChange?.();
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  async function handleDeleteTodoById(todoId: string) {
-    if (!onDeleteTodo) return;
-    setIsProcessing(true);
-    try {
-      await onDeleteTodo(todoId);
-      onRelationsChange?.();
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-
-  function startLink(fromTodoId: string) {
-    setLinkingFromId(fromTodoId);
-    setPendingLinkTargetId(null);
-    setShowLinkTypeSelector(false);
-  }
 
   async function commitDrag(targetId: string) {
     if (nodeDragSourceId) {
@@ -435,31 +623,6 @@ export function BigMapCanvas({
     setShowLinkTypeSelector(false);
   }
 
-  async function selectLinkTarget(toTodoId: string) {
-    if (!linkingFromId || linkingFromId === toTodoId) {
-      cancelLink();
-      return;
-    }
-    const fromTodo = todoById.get(linkingFromId);
-    const toTodo = todoById.get(toTodoId);
-    if (!fromTodo || !toTodo) {
-      cancelLink();
-      return;
-    }
-    const types = allowedLinkTypes(fromTodo, toTodo);
-    if (types.length === 0) {
-      cancelLink();
-      return;
-    }
-    if (types.length === 1) {
-      await handleCreateRelationOfType(linkingFromId, toTodoId, types[0]);
-      cancelLink();
-    } else {
-      setPendingLinkTargetId(toTodoId);
-      setShowLinkTypeSelector(true);
-    }
-  }
-
   async function confirmLinkType(type: TodoRelationType) {
     if (!linkingFromId || !pendingLinkTargetId) return;
     await handleCreateRelationOfType(linkingFromId, pendingLinkTargetId, type);
@@ -471,7 +634,6 @@ export function BigMapCanvas({
     function handleDocClick(e: MouseEvent) {
       const target = e.target as HTMLElement;
       if (target.closest('[data-editing-menu]')) return;
-      setMenuNodeId(null);
       setEdgeMenuEdge(null);
       setEdgeMenuPos(null);
       setEdgeTypeChangeEdge(null);
@@ -479,11 +641,9 @@ export function BigMapCanvas({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        setMenuNodeId(null);
         setEdgeMenuEdge(null);
         setEdgeMenuPos(null);
         setEdgeTypeChangeEdge(null);
-        setRenameNodeId(null);
         setNodeDragSourceId(null);
         setEdgeDrag(null);
         setDropTargetId(null);
@@ -633,6 +793,114 @@ export function BigMapCanvas({
     return connected;
   }, [hoveredNodeId, actionEdges, parentChildEdges, visibleRoadEdges]);
 
+  // Precompute incoming relation sources per node for the hover tooltip.
+  const incomingEdgesByNodeId = useMemo(() => {
+    const map = new Map<string, { label: string; title: string; color: string }[]>();
+    for (const n of nodes) map.set(n.todo.id, []);
+
+    for (const edge of actionEdges) {
+      const fromNode = nodeMap.get(edge.fromTodoId);
+      if (fromNode) {
+        const list = map.get(edge.toTodoId) ?? [];
+        list.push({
+          label: EDGE_LABELS[edge.type] ?? edge.type,
+          title: fromNode.todo.title,
+          color: EDGE_COLORS[edge.type],
+        });
+      }
+    }
+
+    for (const edge of parentChildEdges) {
+      const fromNode = nodeMap.get(edge.fromId);
+      if (fromNode) {
+        const list = map.get(edge.toId) ?? [];
+        list.push({ label: 'Parent', title: fromNode.todo.title, color: '#94a3b8' });
+      }
+    }
+
+    for (const edge of visibleRoadEdges) {
+      const fromNode = nodeMap.get(edge.fromTodoId);
+      if (fromNode) {
+        const list = map.get(edge.toTodoId) ?? [];
+        list.push({
+          label: ROAD_EDGE_LABELS[edge.type] ?? edge.type,
+          title: fromNode.todo.title,
+          color: ROAD_EDGE_COLORS[edge.type],
+        });
+      }
+    }
+
+    return map;
+  }, [nodes, actionEdges, parentChildEdges, visibleRoadEdges]);
+
+  const effectiveNodeClick = useCallback(
+    (id: string) => {
+      if (onNodeClick) {
+        onNodeClick(id);
+      } else {
+        navigate(`/todo/${id}`);
+      }
+    },
+    [onNodeClick, navigate]
+  );
+
+  const handleNodeEnter = useCallback((nodeId: string) => {
+    setHoveredNodeId(nodeId);
+    if (
+      isInteractionDraggingRef.current &&
+      dragMovedRef.current &&
+      nodeDragSourceRef.current !== nodeId &&
+      edgeDragRef.current?.fixedId !== nodeId
+    ) {
+      setDropTargetId(nodeId);
+    }
+  }, []);
+
+  const handleNodeLeave = useCallback((nodeId: string) => {
+    setHoveredNodeId(null);
+    if (dropTargetIdRef.current === nodeId) {
+      setDropTargetId(null);
+    }
+  }, []);
+
+  const handleNodeMouseDown = useCallback(
+    (nodeId: string, e: React.MouseEvent) => {
+      if (!isEditing || e.button !== 0) return;
+      e.stopPropagation();
+      dragMovedRef.current = false;
+      setNodeDragSourceId(nodeId);
+      dragInfoRef.current = { mode: 'node', nodeDragSourceId: nodeId };
+      const point = toCanvasPoint(e);
+      if (point) {
+        nodeDragStartRef.current = point;
+        updateDragPreview(point);
+      }
+    },
+    [isEditing, toCanvasPoint]
+  );
+
+  const handleNodeClick = useCallback(
+    (nodeId: string) => {
+      if (dragMovedRef.current) {
+        dragMovedRef.current = false;
+        return;
+      }
+      if (connectMode && onNodeClickForConnect) {
+        onNodeClickForConnect(nodeId);
+      } else if (!linkingFromId) {
+        effectiveNodeClick(nodeId);
+      }
+    },
+    [connectMode, onNodeClickForConnect, linkingFromId, effectiveNodeClick]
+  );
+
+  const handleNewEdgeMouseDown = useCallback(
+    (nodeId: string, e: React.MouseEvent) => {
+      handleNodeMouseDown(nodeId, e);
+    },
+    [handleNodeMouseDown]
+  );
+
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (!containerRef.current) return;
@@ -714,19 +982,6 @@ export function BigMapCanvas({
     [connectMode, onMouseDown, isInteractionDragging]
   );
 
-  function startNodeDrag(nodeId: string, e: React.MouseEvent) {
-    if (!isEditing || e.button !== 0) return;
-    e.stopPropagation();
-    dragMovedRef.current = false;
-    setNodeDragSourceId(nodeId);
-    dragInfoRef.current = { mode: 'node', nodeDragSourceId: nodeId };
-    const point = toCanvasPoint(e);
-    if (point) {
-      nodeDragStartRef.current = point;
-      updateDragPreview(point);
-    }
-  }
-
   function startEdgeDrag(
     relation: TodoRelation,
     end: 'source' | 'target',
@@ -743,10 +998,6 @@ export function BigMapCanvas({
     dragInfoRef.current = { mode: 'edge', edgeDrag: nextEdgeDrag };
     const point = toCanvasPoint(e);
     if (point) updateDragPreview(point);
-  }
-
-  function startNewEdgeDrag(nodeId: string, e: React.MouseEvent) {
-    startNodeDrag(nodeId, e);
   }
 
   const handleMouseLeave = useCallback(() => {
@@ -881,7 +1132,6 @@ export function BigMapCanvas({
                     e.stopPropagation();
                     setEdgeMenuEdge(edge);
                     setEdgeMenuPos({ x: midX, y: midY });
-                    setMenuNodeId(null);
                   }}
                 />
                 {isEditing && (
@@ -999,426 +1249,28 @@ export function BigMapCanvas({
         </svg>
 
         {/* Node layer */}
-        {nodes.map((node) => {
-          const isGoal = node.todo.nodeType === 'goal';
-          const isDone = node.todo.status === 'done';
-          const isCenter = isNeighborhood && node.todo.id === effectiveHighlightId;
-          const w = isGoal ? GOAL_W : NODE_W;
-          const h = isGoal ? GOAL_H : NODE_H;
-          const circleSize = isGoal ? GOAL_CIRCLE_SIZE : NODE_CIRCLE_SIZE;
-          const isDimmed = hoveredNodeId && !hoveredConnectedIds.has(node.todo.id) && hoveredNodeId !== node.todo.id;
-          const isSelected = hoveredNodeId === node.todo.id;
-          const isLinkSource = linkingFromId === node.todo.id;
-          const isLinkTarget = !!linkingFromId && linkingFromId !== node.todo.id;
-          const isRenaming = renameNodeId === node.todo.id;
-          const showTooltip = isSelected || menuNodeId === node.todo.id || isRenaming || isLinkSource || (connectMode && connectSourceId === node.todo.id);
-          const showNodeActions = isEditing && (isSelected || menuNodeId === node.todo.id);
-
-          const circleColorClass = isGoal
-            ? 'bg-indigo-500'
-            : isDone
-            ? 'bg-emerald-500'
-            : node.todo.status === 'in_progress'
-            ? 'bg-indigo-500 animate-pulse'
-            : 'bg-slate-300 dark:bg-slate-500';
-          const isInPlan = planTodoIds ? planTodoIds.has(node.todo.id) : false;
-
-          return (
-            <div
-              key={node.todo.id}
-              data-node
-              className="absolute"
-              style={{
-                left: node.x - w / 2,
-                top: node.y - h / 2,
-                width: w,
-                height: h,
-                opacity: isDimmed ? 0.18 : 1,
-                transition: 'opacity 0.2s',
-                zIndex: isSelected || menuNodeId === node.todo.id || isLinkSource || nodeDragSourceId === node.todo.id ? 30 : 10,
-              }}
-              onMouseEnter={() => {
-                setHoveredNodeId(node.todo.id);
-                if (
-                  isInteractionDragging &&
-                  dragMovedRef.current &&
-                  nodeDragSourceId !== node.todo.id &&
-                  edgeDrag?.fixedId !== node.todo.id
-                ) {
-                  setDropTargetId(node.todo.id);
-                }
-              }}
-              onMouseLeave={() => {
-                setHoveredNodeId(null);
-                if (dropTargetId === node.todo.id) {
-                  setDropTargetId(null);
-                }
-              }}
-            >
-              {/* Hover ring */}
-              {isSelected && (
-                <div
-                  className="absolute rounded-full border-2 border-indigo-400 bg-indigo-50/30 dark:bg-indigo-950/20 pointer-events-none"
-                  style={{
-                    width: circleSize + 8,
-                    height: circleSize + 8,
-                    left: (w - circleSize - 8) / 2,
-                    top: (h - circleSize - 8) / 2,
-                  }}
-                />
-              )}
-              {/* Drop target highlight */}
-              {dropTargetId === node.todo.id && (
-                <div
-                  className="absolute rounded-full border-2 border-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20 pointer-events-none animate-pulse"
-                  style={{
-                    width: circleSize + 12,
-                    height: circleSize + 12,
-                    left: (w - circleSize - 12) / 2,
-                    top: (h - circleSize - 12) / 2,
-                  }}
-                />
-              )}
-              {/* Center highlight in neighborhood mode */}
-              {isCenter && (
-                <div
-                  className="absolute rounded-full border-2 border-amber-400 bg-amber-50/30 dark:bg-amber-950/20 pointer-events-none"
-                  style={{
-                    width: circleSize + 8,
-                    height: circleSize + 8,
-                    left: (w - circleSize - 8) / 2,
-                    top: (h - circleSize - 8) / 2,
-                  }}
-                />
-              )}
-              {/* Source node highlight in connect mode */}
-              {connectMode && connectSourceId === node.todo.id && (
-                <div
-                  className="absolute rounded-full border-2 border-amber-400 bg-amber-50/30 dark:bg-amber-950/20 pointer-events-none animate-pulse"
-                  style={{
-                    width: circleSize + 8,
-                    height: circleSize + 8,
-                    left: (w - circleSize - 8) / 2,
-                    top: (h - circleSize - 8) / 2,
-                  }}
-                />
-              )}
-              {/* Linking source highlight */}
-              {isLinkSource && (
-                <div
-                  className="absolute rounded-full border-2 border-amber-400 bg-amber-50/30 dark:bg-amber-950/20 pointer-events-none animate-pulse"
-                  style={{
-                    width: circleSize + 8,
-                    height: circleSize + 8,
-                    left: (w - circleSize - 8) / 2,
-                    top: (h - circleSize - 8) / 2,
-                  }}
-                />
-              )}
-
-              <div
-                className="absolute"
-                style={{
-                  left: (w - circleSize) / 2,
-                  top: (h - circleSize) / 2,
-                  width: circleSize,
-                  height: circleSize,
-                }}
-              >
-                <button
-                  type="button"
-                  className={`absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border-2 border-white/70 dark:border-slate-900/70 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)] ${circleColorClass}`}
-                  onMouseDown={(e) => startNodeDrag(node.todo.id, e)}
-                  onClick={() => {
-                    if (dragMovedRef.current) {
-                      dragMovedRef.current = false;
-                      return;
-                    }
-                    if (connectMode && onNodeClickForConnect) {
-                      onNodeClickForConnect(node.todo.id);
-                    } else if (isLinkTarget) {
-                      selectLinkTarget(node.todo.id);
-                    } else if (!linkingFromId) {
-                      effectiveNodeClick(node.todo.id);
-                    }
-                  }}
-                >
-                  {isGoal && <Target className="w-3.5 h-3.5 text-white" />}
-                </button>
-
-                {/* New-edge drag handle */}
-                {isEditing && (
-                  <div
-                    className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-indigo-500 border-2 border-white dark:border-slate-900 shadow-sm cursor-crosshair hover:scale-125 transition-transform z-20"
-                    title="Drag to create relation"
-                    onMouseDown={(e) => startNewEdgeDrag(node.todo.id, e)}
-                  />
-                )}
-
-                {/* Tooltip */}
-                {showTooltip && (
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 min-w-[180px] max-w-[260px] bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg p-2.5 z-50"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Goal header */}
-                    {isGoal && (
-                      <div className="flex items-center gap-1.5 mb-1.5 pb-1.5 border-b border-slate-100 dark:border-slate-700">
-                        <Target className="w-3 h-3 text-indigo-500" />
-                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                          Goal
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Title row */}
-                    <div className="flex items-center gap-2">
-                      {node.hasParent && !isGoal && (
-                        <div className="w-1 h-4 rounded-full bg-teal-400 shrink-0" />
-                      )}
-                      <StatusDot status={node.todo.status ?? 'pending'} />
-                      {isRenaming ? (
-                        <input
-                          type="text"
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter') {
-                              if (renameValue.trim()) {
-                                await handleUpdateTodoTitle(node.todo.id, renameValue.trim());
-                              }
-                              setRenameNodeId(null);
-                            }
-                            if (e.key === 'Escape') {
-                              setRenameNodeId(null);
-                            }
-                          }}
-                          onBlur={async () => {
-                            if (renameValue.trim()) {
-                              await handleUpdateTodoTitle(node.todo.id, renameValue.trim());
-                            }
-                            setRenameNodeId(null);
-                          }}
-                          autoFocus
-                          className="flex-1 min-w-0 text-[13px] px-2 py-1 rounded border border-indigo-300 dark:border-indigo-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      ) : (
-                        <span
-                          className={`text-[13px] font-medium truncate flex-1 min-w-0 leading-tight ${
-                            isDone
-                              ? 'text-slate-400 dark:text-slate-500 line-through'
-                              : isGoal
-                              ? 'text-indigo-900 dark:text-indigo-200'
-                              : 'text-slate-800 dark:text-slate-200'
-                          }`}
-                        >
-                          {node.todo.title}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Meta row */}
-                    {!isRenaming && (
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        {(node.todo.estimatedMinutes ?? 60) > 0 && !isGoal && (
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 shrink-0">
-                            {formatDuration(node.todo.estimatedMinutes ?? 60)}
-                          </span>
-                        )}
-                        {isCenter && (
-                          <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider shrink-0 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
-                            Now
-                          </span>
-                        )}
-                        {isLinkTarget && (
-                          <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 shrink-0 animate-pulse">
-                            Link?
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Editing actions */}
-                    {showNodeActions && !isRenaming && (
-                      <div className="relative flex items-center justify-end gap-1 mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-700">
-                        {!linkingFromId && (
-                          <button
-                            data-editing-menu
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startLink(node.todo.id);
-                              setMenuNodeId(null);
-                            }}
-                            className="p-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-400 hover:text-indigo-500 shadow-sm transition-colors"
-                            title="Create link"
-                          >
-                            <Link2 className="w-3 h-3" />
-                          </button>
-                        )}
-                        <button
-                          data-editing-menu
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuNodeId(menuNodeId === node.todo.id ? null : node.todo.id);
-                            setEdgeMenuEdge(null);
-                          }}
-                          className="p-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-400 hover:text-indigo-500 shadow-sm transition-colors"
-                        >
-                          <MoreHorizontal className="w-3 h-3" />
-                        </button>
-
-                        {/* Node action menu */}
-                        {menuNodeId === node.todo.id && (
-                          <div
-                            data-editing-menu
-                            className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg p-1 z-50 min-w-[140px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              onClick={() => {
-                                setRenameNodeId(node.todo.id);
-                                setRenameValue(node.todo.title);
-                                setMenuNodeId(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                            >
-                              <Pencil className="w-3 h-3" />
-                              Rename
-                            </button>
-                            {isGoal && (
-                              <>
-                                {onAddTask && (
-                                  <button
-                                    onClick={() => {
-                                      onAddTask(node.todo.id).catch(() => {});
-                                      setMenuNodeId(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                  >
-                                    <ListTodo className="w-3 h-3 text-blue-500" />
-                                    Add task
-                                  </button>
-                                )}
-                                {onAddPreGoal && (
-                                  <button
-                                    onClick={() => {
-                                      onAddPreGoal(node.todo.id).catch(() => {});
-                                      setMenuNodeId(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                  >
-                                    <Target className="w-3 h-3 text-emerald-500" />
-                                    Add pre goal
-                                  </button>
-                                )}
-                                {onAddNextGoal && (
-                                  <button
-                                    onClick={() => {
-                                      onAddNextGoal(node.todo.id).catch(() => {});
-                                      setMenuNodeId(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                  >
-                                    <Target className="w-3 h-3 text-indigo-500" />
-                                    Add next goal
-                                  </button>
-                                )}
-                              </>
-                            )}
-                            {!isGoal && (
-                              <>
-                                {onAddPreTask && (
-                                  <button
-                                    onClick={() => {
-                                      onAddPreTask(node.todo.id).catch((err) => console.error('Add pre task failed:', err));
-                                      setMenuNodeId(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                  >
-                                    <ListTodo className="w-3 h-3 text-emerald-500" />
-                                    Add pre task
-                                  </button>
-                                )}
-                                {onAddNextTask && (
-                                  <button
-                                    onClick={() => {
-                                      onAddNextTask(node.todo.id).catch((err) => console.error('Add next task failed:', err));
-                                      setMenuNodeId(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                  >
-                                    <ListTodo className="w-3 h-3 text-indigo-500" />
-                                    Add next task
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => {
-                                    handleToggleTodoStatus(node.todo.id, node.todo.status ?? 'pending');
-                                    setMenuNodeId(null);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                                >
-                                  {isDone ? (
-                                    <>
-                                      <Check className="w-3 h-3" />
-                                      Mark pending
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Check className="w-3 h-3" />
-                                      Mark done
-                                    </>
-                                  )}
-                                </button>
-                              </>
-                            )}
-                            {planTodoIds && onAddToPlan && !isInPlan && (
-                              <button
-                                onClick={() => {
-                                  onAddToPlan(node.todo.id).catch(() => {});
-                                  setMenuNodeId(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-md transition-colors"
-                              >
-                                <Plus className="w-3 h-3" />
-                                Add to plan
-                              </button>
-                            )}
-                            {planTodoIds && onRemoveFromPlan && isInPlan && node.todo.id !== centerTodoId && (
-                              <button
-                                onClick={() => {
-                                  onRemoveFromPlan(node.todo.id).catch(() => {});
-                                  setMenuNodeId(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
-                              >
-                                <X className="w-3 h-3" />
-                                Remove from plan
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                handleDeleteTodoById(node.todo.id);
-                                setMenuNodeId(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-md transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Downward arrow */}
-                    <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rotate-45" />
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {nodes.map((node) => (
+          <GraphNode
+            key={node.todo.id}
+            node={node}
+            isCenter={isNeighborhood && node.todo.id === effectiveHighlightId}
+            isSelected={hoveredNodeId === node.todo.id}
+            isDimmed={hoveredNodeId ? !hoveredConnectedIds.has(node.todo.id) && hoveredNodeId !== node.todo.id : false}
+            isLinkSource={linkingFromId === node.todo.id}
+            isDropTarget={dropTargetId === node.todo.id}
+            isDragSource={nodeDragSourceId === node.todo.id}
+            isEditing={isEditing}
+            connectMode={connectMode}
+            isConnectSource={connectSourceId === node.todo.id}
+            incomingEntries={incomingEdgesByNodeId.get(node.todo.id) ?? []}
+            onNodeEnter={handleNodeEnter}
+            onNodeLeave={handleNodeLeave}
+            onNodeMouseDown={handleNodeMouseDown}
+            onNodeClick={handleNodeClick}
+            onNewEdgeMouseDown={handleNewEdgeMouseDown}
+            onNodeClickForConnect={onNodeClickForConnect}
+          />
+        ))}
 
         {/* Exec log satellite nodes */}
         {execLogNodes.map((execNode) => {

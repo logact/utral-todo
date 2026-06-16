@@ -10,20 +10,15 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react';
-import { updateTodo, deleteTodo, createTask, createGoal, getTodo } from '../db/todos';
+import { updateTodo, getTodo } from '../db/todos';
 import { db } from '../db/database';
 import {
   createRelation,
   updateRelation,
   deleteRelation,
-  getChildGoals,
-  getOrderedPredecessors,
-  getOrderedSuccessors,
 } from '../db/relations';
 import { formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
-import { NeighborPromptDialog } from '../components/NeighborPromptDialog';
-import { PromptDialog } from '../components/PromptDialog';
 import type { Todo, GoalStatus, TodoRelationType } from '../types';
 
 const goalStatusConfig: Record<string, { label: string; color: string }> = {
@@ -41,20 +36,6 @@ interface GoalDetailProps {
 export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   const navigate = useNavigate();
   const [graphTick, setGraphTick] = useState(0);
-  const [taskCreateGoalId, setTaskCreateGoalId] = useState<string | null>(null);
-  const [neighborDialog, setNeighborDialog] = useState<{
-    isOpen: boolean;
-    targetTodoId: string;
-    direction: 'before' | 'after';
-    nodeType: 'goal' | 'task';
-    candidates: Todo[];
-  }>({
-    isOpen: false,
-    targetTodoId: '',
-    direction: 'before',
-    nodeType: 'task',
-    candidates: [],
-  });
 
   // Edit mode — default open for two-column layout
   const [isEditing, setIsEditing] = useState(true);
@@ -186,131 +167,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     return [];
   }
 
-  async function handleUpdateTodo(todoId: string, updates: Partial<Todo>) {
-    await updateTodo(todoId, updates);
-    if (todoId === goal.id) {
-      onUpdate(updates);
-    }
-  }
-
-  async function handleDeleteTodo(todoId: string) {
-    await deleteTodo(todoId);
-    if (todoId === goal.id) {
-      navigate(-1);
-    }
-  }
-
-  async function handleCreateAchievingTask(goalId: string) {
-    const parent = await getTodo(goalId);
-    if (!parent || parent.nodeType !== 'goal') return;
-    setTaskCreateGoalId(goalId);
-  }
-
-  async function handleConfirmCreateTask(title: string) {
-    if (!taskCreateGoalId) return;
-    try {
-      const parent = await getTodo(taskCreateGoalId);
-      if (!parent) return;
-      const task = await createTask(title.trim(), {
-        tags: [...parent.tags],
-      });
-      await createRelation(task.id, taskCreateGoalId, 'achieves');
-      setGraphTick((t) => t + 1);
-      setTaskCreateGoalId(null);
-      navigate(`/todo/${task.id}`);
-    } catch (err) {
-      console.error('handleConfirmCreateTask failed:', err);
-    }
-  }
-
-  async function addOrderedNeighbor(
-    targetTodoId: string,
-    direction: 'before' | 'after',
-    nodeType: 'goal' | 'task'
-  ) {
-    try {
-      const targetTodo = await getTodo(targetTodoId);
-      if (!targetTodo || targetTodo.nodeType !== nodeType) return;
-
-      const [allCandidates, existingPredecessors, existingSuccessors, existingChildren] = await Promise.all([
-        db.todos.filter((t) => t.nodeType === nodeType && t.id !== targetTodoId).toArray(),
-        getOrderedPredecessors(targetTodoId),
-        getOrderedSuccessors(targetTodoId),
-        nodeType === 'goal' ? getChildGoals(targetTodoId) : Promise.resolve([] as Todo[]),
-      ]);
-
-      const excludedIds = new Set([
-        targetTodoId,
-        ...existingPredecessors.filter((t) => t.nodeType === nodeType).map((t) => t.id),
-        ...existingSuccessors.filter((t) => t.nodeType === nodeType).map((t) => t.id),
-        ...existingChildren.map((t) => t.id),
-      ]);
-
-      const candidates = allCandidates.filter((t) => !excludedIds.has(t.id));
-
-      setNeighborDialog({
-        isOpen: true,
-        targetTodoId,
-        direction,
-        nodeType,
-        candidates,
-      });
-    } catch (err) {
-      console.error(`addOrderedNeighbor(${targetTodoId}, ${direction}, ${nodeType}) failed:`, err);
-    }
-  }
-
-  async function handleCreateNeighbor(title: string) {
-    const { targetTodoId, direction, nodeType } = neighborDialog;
-    if (!targetTodoId || !title.trim()) return;
-
-    try {
-      const targetTodo = await getTodo(targetTodoId);
-      if (!targetTodo) return;
-
-      const newTodo =
-        nodeType === 'goal'
-          ? await createGoal(title.trim(), { tags: [...targetTodo.tags] })
-          : await createTask(title.trim(), { tags: [...targetTodo.tags] });
-      const [fromId, toId] = direction === 'before' ? [newTodo.id, targetTodoId] : [targetTodoId, newTodo.id];
-      await createRelation(fromId, toId, 'ordered_before');
-      setGraphTick((t) => t + 1);
-      setNeighborDialog((prev) => ({ ...prev, isOpen: false }));
-    } catch (err) {
-      console.error('handleCreateNeighbor failed:', err);
-    }
-  }
-
-  async function handleLinkNeighbor(todoId: string) {
-    const { targetTodoId, direction } = neighborDialog;
-    if (!targetTodoId || !todoId) return;
-
-    try {
-      const [fromId, toId] = direction === 'before' ? [todoId, targetTodoId] : [targetTodoId, todoId];
-      await createRelation(fromId, toId, 'ordered_before');
-      setGraphTick((t) => t + 1);
-      setNeighborDialog((prev) => ({ ...prev, isOpen: false }));
-    } catch (err) {
-      console.error('handleLinkNeighbor failed:', err);
-    }
-  }
-
-  async function handleAddPreGoal(goalId: string) {
-    await addOrderedNeighbor(goalId, 'before', 'goal');
-  }
-
-  async function handleAddNextGoal(goalId: string) {
-    await addOrderedNeighbor(goalId, 'after', 'goal');
-  }
-
-  async function handleAddPreTask(taskId: string) {
-    await addOrderedNeighbor(taskId, 'before', 'task');
-  }
-
-  async function handleAddNextTask(taskId: string) {
-    await addOrderedNeighbor(taskId, 'after', 'task');
-  }
-
   const statusStyle = goalStatusConfig[goal.goalStatus ?? 'active'] ?? goalStatusConfig.active;
 
   // ---------- Left column: display content ----------
@@ -394,13 +250,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
         onDeleteRelation={handleDeleteRelation}
         onUpdateRelation={handleUpdateRelation}
         onReconnectRelation={handleReconnectRelation}
-        onUpdateTodo={handleUpdateTodo}
-        onDeleteTodo={handleDeleteTodo}
-        onAddTask={handleCreateAchievingTask}
-        onAddPreGoal={handleAddPreGoal}
-        onAddNextGoal={handleAddNextGoal}
-        onAddPreTask={handleAddPreTask}
-        onAddNextTask={handleAddNextTask}
       />
     </>
   );
@@ -581,24 +430,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
           {sharedSections}
         </div>
       )}
-      <NeighborPromptDialog
-        isOpen={neighborDialog.isOpen}
-        onClose={() => setNeighborDialog((prev) => ({ ...prev, isOpen: false }))}
-        direction={neighborDialog.direction}
-        nodeType={neighborDialog.nodeType}
-        candidates={neighborDialog.candidates}
-        onCreate={handleCreateNeighbor}
-        onLink={handleLinkNeighbor}
-      />
-
-      <PromptDialog
-        isOpen={taskCreateGoalId !== null}
-        onClose={() => setTaskCreateGoalId(null)}
-        title="Add task to goal"
-        placeholder="Task title"
-        confirmLabel="Create task"
-        onConfirm={handleConfirmCreateTask}
-      />
     </div>
   );
 }

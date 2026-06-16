@@ -40,14 +40,7 @@ export interface RoadToGoalGraphProps {
   onDeleteRelation?: (relationId: string) => Promise<void>;
   onUpdateRelation?: (relationId: string, type: TodoRelationType) => Promise<void>;
   onReconnectRelation?: (relationId: string, fromTodoId: string, toTodoId: string) => Promise<void>;
-  onUpdateTodo?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
-  onDeleteTodo?: (todoId: string) => Promise<void>;
   onRelationsChange?: () => void;
-  onAddTask?: (todoId: string) => Promise<void>;
-  onAddPreGoal?: (todoId: string) => Promise<void>;
-  onAddNextGoal?: (todoId: string) => Promise<void>;
-  onAddPreTask?: (todoId: string) => Promise<void>;
-  onAddNextTask?: (todoId: string) => Promise<void>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -164,14 +157,7 @@ export function RoadToGoalGraph({
   onDeleteRelation,
   onUpdateRelation,
   onReconnectRelation,
-  onUpdateTodo,
-  onDeleteTodo,
   onRelationsChange,
-  onAddTask,
-  onAddPreGoal,
-  onAddNextGoal,
-  onAddPreTask,
-  onAddNextTask,
 }: RoadToGoalGraphProps) {
   const [canvasContainer, setCanvasContainer] = useState<HTMLDivElement | null>(null);
 
@@ -472,17 +458,10 @@ export function RoadToGoalGraph({
           onDeleteRelation={onDeleteRelation}
           onUpdateRelation={onUpdateRelation}
           onReconnectRelation={onReconnectRelation}
-          onUpdateTodo={onUpdateTodo}
-          onDeleteTodo={onDeleteTodo}
           onRelationsChange={() => {
             reload();
             onRelationsChange?.();
           }}
-          onAddTask={onAddTask}
-          onAddPreGoal={onAddPreGoal}
-          onAddNextGoal={onAddNextGoal}
-          onAddPreTask={onAddPreTask}
-          onAddNextTask={onAddNextTask}
           onCreateNodeFromDrag={handleCreateNodeFromDrag}
         />
       )}
