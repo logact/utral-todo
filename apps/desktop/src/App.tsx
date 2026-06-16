@@ -16,8 +16,7 @@ import { Schedule } from './pages/Schedule';
 import { Settings } from './pages/Settings';
 import { PluseList } from './pages/PluseList';
 import { PluseRun } from './pages/PluseRun';
-import { Goals } from './pages/Goals';
-import { GoalDetailPage } from './pages/GoalDetailPage';
+
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const [quickModalOpen, setQuickModalOpen] = useState(false);
@@ -150,22 +149,7 @@ export default function App() {
             </AppLayout>
           }
         />
-        <Route
-          path="/goals"
-          element={
-            <AppLayout>
-              <Goals />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/goals/:id"
-          element={
-            <AppLayout>
-              <GoalDetailPage />
-            </AppLayout>
-          }
-        />
+
         <Route
           path="/settings"
           element={
