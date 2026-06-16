@@ -662,7 +662,7 @@ export function BigMapCanvas({
 
   // Convert screen mouse event to canvas coordinates
   const toCanvasPoint = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent | React.MouseEvent) => {
       if (!containerRef.current) return null;
       const rect = containerRef.current.getBoundingClientRect();
       return {
@@ -910,7 +910,7 @@ export function BigMapCanvas({
   );
 
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent | React.MouseEvent) => {
       if (connectMode && connectSourceId && !isInteractionDragging) {
         dragInfoRef.current = {
           mode: 'connect',
@@ -921,7 +921,7 @@ export function BigMapCanvas({
 
       const needsPreview = isInteractionDragging || (connectMode && connectSourceId);
       if (needsPreview) {
-        const point = toCanvasPoint(e);
+        const point = toCanvasPoint(e as React.MouseEvent);
         if (point) {
           updateDragPreview(point);
           if (nodeDragStartRef.current) {
@@ -933,7 +933,9 @@ export function BigMapCanvas({
           }
         }
       }
-      onMouseMove(e);
+      if ('nativeEvent' in e) {
+        onMouseMove(e as React.MouseEvent);
+      }
     },
     [connectMode, connectSourceId, connectEdgeType, isInteractionDragging, toCanvasPoint, onMouseMove]
   );
@@ -966,6 +968,26 @@ export function BigMapCanvas({
     dragInfoRef.current = null;
     onMouseUp();
   }, [dropTargetId, isInteractionDragging, nodeDragSourceId, onCreateNodeFromDrag, onMouseUp, todoById]);
+
+  // Global mouse move/up handlers for dragging outside the container
+  useEffect(() => {
+    if (!isInteractionDragging) return;
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      handleMouseMove(e);
+    };
+
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      handleMouseUp();
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isInteractionDragging, handleMouseMove, handleMouseUp]);
 
   // In connect mode, disable left-click panning so node clicks work cleanly
   const handleMouseDown = useCallback(
@@ -1034,7 +1056,7 @@ export function BigMapCanvas({
         {/* SVG edges layer */}
         <svg
           className="absolute pointer-events-none"
-          style={{ width, height, left: 0, top: 0 }}
+          style={{ width, height, left: 0, top: 0, overflow: 'visible' }}
         >
           <defs>
             <marker id="arrow-pre_do" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
