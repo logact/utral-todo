@@ -1,0 +1,1 @@
+{"nodes": [{"id": "desktop_tauri_config", "label": "Tauri Desktop Configuration", "file_type": "concept", "source_file": "apps/desktop/src-tauri/tauri.conf.json", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}
