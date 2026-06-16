@@ -207,6 +207,36 @@ export async function processQueue(): Promise<void> {
       return;
     }
 
+    // Sort items to ensure correct order: todos before todoRelations,
+    // todoRelations before todoLogs, etc. This prevents foreign key violations.
+    const tableOrder: Record<string, number> = {
+      todos: 0,
+      todo: 0,
+      relations: 1,
+      todoRelation: 1,
+      todoLogs: 2,
+      todoLog: 2,
+      actionEdges: 3,
+      actionEdge: 3,
+      pluses: 4,
+      pluse: 4,
+      timerSessions: 5,
+      timerSession: 5,
+      repeatOccurrences: 6,
+      repeatOccurrence: 6,
+      plans: 7,
+      plan: 7,
+    };
+    items.sort((a, b) => {
+      const orderA = tableOrder[a.table] ?? 99;
+      const orderB = tableOrder[b.table] ?? 99;
+      if (orderA !== orderB) return orderA - orderB;
+      // Within same table, process deletes first, then creates/updates by createdAt
+      if (a.operation === 'delete' && b.operation !== 'delete') return -1;
+      if (a.operation !== 'delete' && b.operation === 'delete') return 1;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+
     // Batch into chunks of 50
     const batchSize = 50;
     for (let i = 0; i < items.length; i += batchSize) {

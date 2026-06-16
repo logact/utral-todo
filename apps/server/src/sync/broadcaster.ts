@@ -128,7 +128,25 @@ export async function applyChange(
         if (existing) {
           await prisma.todoRelation.update({ where: { id: recordId }, data: data as never });
         } else {
-          await prisma.todoRelation.create({ data: data as never });
+          // Check if referenced todos exist before creating relation
+          const fromTodoId = data.fromTodoId as string;
+          const toTodoId = data.toTodoId as string;
+          
+          if (fromTodoId && toTodoId) {
+            const [fromTodo, toTodo] = await Promise.all([
+              prisma.todo.findUnique({ where: { id: fromTodoId } }),
+              prisma.todo.findUnique({ where: { id: toTodoId } }),
+            ]);
+            
+            if (!fromTodo || !toTodo) {
+              console.warn(`[sync] Skipping todoRelation ${recordId}: referenced todo missing (from=${fromTodoId} exists=${!!fromTodo}, to=${toTodoId} exists=${!!toTodo})`);
+              return;
+            }
+          }
+          
+          await prisma.todoRelation.create({ data: data as never }).catch((err) => {
+            console.error(`[sync] Failed to create todoRelation ${recordId}:`, err);
+          });
         }
       }
       break;
@@ -160,7 +178,25 @@ export async function applyChange(
         if (existing) {
           await prisma.actionEdge.update({ where: { id: recordId }, data: data as never });
         } else {
-          await prisma.actionEdge.create({ data: data as never });
+          // Check if referenced todos exist before creating actionEdge
+          const fromTodoId = data.fromTodoId as string;
+          const toTodoId = data.toTodoId as string;
+          
+          if (fromTodoId && toTodoId) {
+            const [fromTodo, toTodo] = await Promise.all([
+              prisma.todo.findUnique({ where: { id: fromTodoId } }),
+              prisma.todo.findUnique({ where: { id: toTodoId } }),
+            ]);
+            
+            if (!fromTodo || !toTodo) {
+              console.warn(`[sync] Skipping actionEdge ${recordId}: referenced todo missing (from=${fromTodoId} exists=${!!fromTodo}, to=${toTodoId} exists=${!!toTodo})`);
+              return;
+            }
+          }
+          
+          await prisma.actionEdge.create({ data: data as never }).catch((err) => {
+            console.error(`[sync] Failed to create actionEdge ${recordId}:`, err);
+          });
         }
       }
       break;
