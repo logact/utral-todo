@@ -18,8 +18,6 @@ import { PluseList } from './pages/PluseList';
 import { PluseRun } from './pages/PluseRun';
 import { Goals } from './pages/Goals';
 import { GoalDetailPage } from './pages/GoalDetailPage';
-import { Roadmaps } from './pages/Roadmaps';
-import { RoadmapPage } from './pages/Roadmap';
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const [quickModalOpen, setQuickModalOpen] = useState(false);
@@ -165,22 +163,6 @@ export default function App() {
           element={
             <AppLayout>
               <GoalDetailPage />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/roadmaps"
-          element={
-            <AppLayout>
-              <Roadmaps />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/roadmap/:id"
-          element={
-            <AppLayout>
-              <RoadmapPage />
             </AppLayout>
           }
         />

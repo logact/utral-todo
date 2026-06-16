@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, RepeatOccurrence, Roadmap, Plan } from '../types';
+import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, RepeatOccurrence, Plan } from '../types';
 
 export interface SyncQueueItem {
   id: string;
@@ -21,7 +21,6 @@ const db = new Dexie('TodoScheduleDB') as Dexie & {
   relations: EntityTable<TodoRelation, 'id'>;
   todoLogs: EntityTable<TodoLog, 'id'>;
   actionEdges: EntityTable<ActionEdge, 'id'>;
-  roadmaps: EntityTable<Roadmap, 'id'>;
   plans: EntityTable<Plan, 'id'>;
   pluses: EntityTable<Pluse, 'id'>;
   timerSessions: EntityTable<TimerSession, 'id'>;
@@ -131,21 +130,18 @@ db.version(12).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId',
 });
 
 db.version(13).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
 });
 
 db.version(14).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
 });
 
@@ -153,7 +149,6 @@ db.version(15).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
 });
 
@@ -161,7 +156,6 @@ db.version(16).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
 });
@@ -170,7 +164,6 @@ db.version(17).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
 }).upgrade(async (tx) => {
@@ -186,7 +179,6 @@ db.version(18).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
 }).upgrade(async (tx) => {
@@ -215,7 +207,6 @@ db.version(19).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
 });
@@ -224,7 +215,6 @@ db.version(20).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt',
   todoLogs: 'id, todoId, type, createdAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt',
   pluses: 'id, createdAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -234,7 +224,6 @@ db.version(21).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -257,7 +246,6 @@ db.version(22).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -269,7 +257,6 @@ db.version(23).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -290,7 +277,6 @@ db.version(24).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -310,7 +296,6 @@ db.version(25).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -359,7 +344,6 @@ db.version(26).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -372,7 +356,6 @@ db.version(27).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -385,7 +368,6 @@ db.version(28).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -398,7 +380,6 @@ db.version(29).stores({
   todos: 'id, nodeType, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -455,7 +436,6 @@ db.version(32).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -468,7 +448,6 @@ db.version(33).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -481,7 +460,6 @@ db.version(34).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -511,7 +489,6 @@ db.version(35).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -537,7 +514,6 @@ db.version(36).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -570,7 +546,6 @@ db.version(38).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -645,7 +620,6 @@ db.version(39).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -663,12 +637,27 @@ db.version(39).stores({
   }
 });
 
+db.version(40).stores({
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, isSystemPlan, updatedAt',
+}).upgrade(async () => {
+  // v40 removes roadmaps from the app schema; the legacy object store will remain
+  // in IndexedDB until the database is deleted, but is no longer accessible.
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();
   await db.todoLogs.clear();
   await db.actionEdges.clear();
-  await db.roadmaps.clear();
   await db.plans.clear();
   await db.pluses.clear();
   await db.timerSessions.clear();

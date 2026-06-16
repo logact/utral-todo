@@ -1,4 +1,4 @@
-import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, TimerSession, Roadmap, Plan } from '../types';
+import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, TimerSession, Plan } from '../types';
 
 export function parseDate(value: unknown): Date | undefined {
   if (value === null || value === undefined) return undefined;
@@ -131,26 +131,6 @@ export function parseTimerSession(data: unknown): TimerSession {
     status: s.status as TimerSession['status'],
     createdAt: parseDate(s.createdAt)!,
     updatedAt: parseDate(s.updatedAt)!,
-  };
-}
-
-export function parseRoadmap(data: unknown): Roadmap {
-  const r = data as Record<string, unknown>;
-  const phasesRaw = r.phases as Array<Record<string, unknown>> | undefined;
-  const phases: Roadmap['phases'] = (phasesRaw ?? []).map((p) => ({
-    id: p.id as string,
-    title: p.title as string,
-    order: (p.order as number) ?? 0,
-    todoIds: (p.todoIds as string[]) ?? [],
-    startAt: parseDate(p.startAt),
-    endAt: parseDate(p.endAt),
-  }));
-  return {
-    id: r.id as string,
-    goalTodoId: r.goalTodoId as string,
-    phases,
-    createdAt: parseDate(r.createdAt)!,
-    updatedAt: parseDate(r.updatedAt) ?? parseDate(r.createdAt)!,
   };
 }
 

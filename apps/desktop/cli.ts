@@ -294,47 +294,6 @@ async function deleteTodoLog(id: string) {
   if (!quietMode) console.log('Deleted todo log:', id);
 }
 
-// ─── Roadmaps ───────────────────────────────────────────────────────────────
-
-async function listRoadmaps() {
-  const res = await callCli('roadmaps', 'list', {});
-  if (res.error) { console.error(res.error); return; }
-  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'goalTodoId', 'createdAt', 'updatedAt'])));
-}
-
-async function getRoadmap(id: string) {
-  const res = await callCli('roadmaps', 'get', { id });
-  if (res.error) { console.error(res.error); return; }
-  printOutput(res.data);
-}
-
-async function createRoadmap(args: Record<string, string | boolean>) {
-  const res = await callCli('roadmaps', 'create', args);
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Created roadmap:', (res.data as Record<string, unknown>)?.id);
-  printOutput(res.data);
-}
-
-async function updateRoadmap(id: string, args: Record<string, string | boolean>) {
-  const res = await callCli('roadmaps', 'update', { ...args, id });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Updated roadmap:', id);
-  printOutput(res.data);
-}
-
-async function setRoadmapPhases(id: string, args: Record<string, string | boolean>) {
-  const res = await callCli('roadmaps', 'set-phases', { id, phases: args.phases });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Updated roadmap phases:', id);
-  printOutput(res.data);
-}
-
-async function deleteRoadmap(id: string) {
-  const res = await callCli('roadmaps', 'delete', { id });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Deleted roadmap:', id);
-}
-
 // ─── Action Edges ───────────────────────────────────────────────────────────
 
 async function listActionEdges() {
@@ -518,14 +477,6 @@ Entities & Actions:
     create --todoId=... --type=... --content="..."
     delete <id>
 
-  roadmaps
-    list
-    get <id>
-    create --goalTodoId=... [--phases='[...]']
-    update <id> [--phases=...]
-    set-phases <id> --phases='[...]'
-    delete <id>
-
   action-edges
     list
     create --fromTodoId=... --toTodoId=... --type=insight|try|pre_do
@@ -617,18 +568,6 @@ async function main() {
           case 'list': await listTodoLogs(args); break;
           case 'create': await createTodoLog(args); break;
           case 'delete': if (!id) fail('ID required'); await deleteTodoLog(id); break;
-          default: console.log(usage); process.exit(2);
-        }
-        break;
-
-      case 'roadmaps':
-        switch (action) {
-          case 'list': await listRoadmaps(); break;
-          case 'get': if (!id) fail('ID required'); await getRoadmap(id); break;
-          case 'create': await createRoadmap(args); break;
-          case 'update': if (!id) fail('ID required'); await updateRoadmap(id, args); break;
-          case 'set-phases': if (!id) fail('ID required'); await setRoadmapPhases(id, args); break;
-          case 'delete': if (!id) fail('ID required'); await deleteRoadmap(id); break;
           default: console.log(usage); process.exit(2);
         }
         break;
