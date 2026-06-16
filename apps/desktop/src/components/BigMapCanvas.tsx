@@ -1059,14 +1059,14 @@ export function BigMapCanvas({
           style={{ width, height, left: 0, top: 0, overflow: 'visible' }}
         >
           <defs>
-            <marker id="arrow-pre_do" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L7,3 z" fill={EDGE_COLORS.pre_do} />
+            <marker id="arrow-pre_do" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L5,3 z" fill={EDGE_COLORS.pre_do} />
             </marker>
-            <marker id="arrow-parent_child" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L7,3 z" fill={EDGE_COLORS.parent_child} />
+            <marker id="arrow-parent_child" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L5,3 z" fill={EDGE_COLORS.parent_child} />
             </marker>
-            <marker id="arrow-to_achieve" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L7,3 z" fill={EDGE_COLORS.to_achieve} />
+            <marker id="arrow-to_achieve" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L5,3 z" fill={EDGE_COLORS.to_achieve} />
             </marker>
             {(['parent_of', 'achieves', 'ordered_before'] as const).map((type) => {
               const isOrder = type === 'ordered_before';
@@ -1074,14 +1074,14 @@ export function BigMapCanvas({
                 <marker
                   key={type}
                   id={`arrow-${type}`}
-                  markerWidth={isOrder ? 12 : 8}
-                  markerHeight={isOrder ? 12 : 8}
-                  refX={isOrder ? 10 : 7}
-                  refY={isOrder ? 5 : 3}
+                  markerWidth={isOrder ? 8 : 6}
+                  markerHeight={isOrder ? 8 : 6}
+                  refX={isOrder ? 7 : 5}
+                  refY={isOrder ? 4 : 3}
                   orient="auto"
                 >
                   <path
-                    d={isOrder ? 'M0,0 L0,10 L10,5 z' : 'M0,0 L0,6 L7,3 z'}
+                    d={isOrder ? 'M0,0 L0,8 L7,4 z' : 'M0,0 L0,6 L5,3 z'}
                     fill={ROAD_EDGE_COLORS[type]}
                   />
                 </marker>
@@ -1141,9 +1141,9 @@ export function BigMapCanvas({
                   d={`M ${fromX} ${fromY} Q ${ctrlX} ${ctrlY} ${toX} ${toY}`}
                   fill="none"
                   stroke={color}
-                  strokeWidth={isHovered ? 2.5 : 1.5}
+                  strokeWidth={isHovered ? 2 : 1.25}
                   strokeDasharray={dash}
-                  opacity={isHovered ? 1 : 0.6}
+                  opacity={isHovered ? 1 : 0.7}
                   markerEnd={`url(#arrow-${edge.type})`}
                   style={{ transition: 'all 0.2s' }}
                   className="pointer-events-auto cursor-pointer"
@@ -1213,9 +1213,9 @@ export function BigMapCanvas({
                   d={`M ${fromX} ${fromY} Q ${ctrlX} ${ctrlY} ${toX} ${toY}`}
                   fill="none"
                   stroke={color}
-                  strokeWidth={isHovered ? 2.5 : 1.5}
+                  strokeWidth={isHovered ? 2 : 1.25}
                   strokeDasharray={dash}
-                  opacity={isHovered ? 1 : 0.6}
+                  opacity={isHovered ? 1 : 0.7}
                   markerEnd={`url(#arrow-${edge.type})`}
                   style={{ transition: 'all 0.2s' }}
                   className="pointer-events-auto cursor-pointer"
