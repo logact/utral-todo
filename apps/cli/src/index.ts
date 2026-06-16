@@ -9,7 +9,6 @@ import { registerTimerCommand } from "./commands/timer.js";
 import { registerRelationCommand } from "./commands/relation.js";
 import { registerLogCommand } from "./commands/log.js";
 import { registerActionEdgeCommand } from "./commands/action-edge.js";
-import { registerRoadmapCommand } from "./commands/roadmap.js";
 import { registerHealthCommand } from "./commands/health.js";
 import { registerSyncCommand } from "./commands/sync.js";
 import { registerConfigCommand } from "./commands/config.js";
@@ -39,7 +38,6 @@ registerTimerCommand(program);
 registerRelationCommand(program);
 registerLogCommand(program);
 registerActionEdgeCommand(program);
-registerRoadmapCommand(program);
 registerSyncCommand(program);
 
 program.parse();

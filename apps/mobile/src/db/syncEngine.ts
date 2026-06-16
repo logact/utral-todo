@@ -77,7 +77,6 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
       case 'todoRelation': await db.relations.delete(event.recordId).catch(() => {}); break;
       case 'todoLog': await db.todoLogs.delete(event.recordId).catch(() => {}); break;
       case 'actionEdge': await db.actionEdges.delete(event.recordId).catch(() => {}); break;
-      case 'roadmap': await db.roadmaps.delete(event.recordId).catch(() => {}); break;
       case 'pluse': await db.pluses.delete(event.recordId).catch(() => {}); break;
       case 'timerSession': await db.timerSessions.delete(event.recordId).catch(() => {}); break;
       case 'repeatOccurrence': await db.repeatOccurrences.delete(event.recordId).catch(() => {}); break;
@@ -124,7 +123,6 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
     case 'todoRelation': await applyToTable(db.relations as never); break;
     case 'todoLog': await applyToTable(db.todoLogs as never); break;
     case 'actionEdge': await applyToTable(db.actionEdges as never); break;
-    case 'roadmap': await applyToTable(db.roadmaps as never); break;
     case 'pluse': await applyToTable(db.pluses as never); break;
     case 'timerSession': await applyToTable(db.timerSessions as never); break;
     case 'repeatOccurrence': await applyToTable(db.repeatOccurrences as never); break;
@@ -169,7 +167,6 @@ export async function processQueue(): Promise<void> {
               case 'relations': return db.relations.get(item.recordId);
               case 'todoLogs': return db.todoLogs.get(item.recordId);
               case 'actionEdges': return db.actionEdges.get(item.recordId);
-              case 'roadmaps': return db.roadmaps.get(item.recordId);
               case 'pluses': return db.pluses.get(item.recordId);
               case 'timerSessions': return db.timerSessions.get(item.recordId);
               case 'repeatOccurrences': return db.repeatOccurrences.get(item.recordId);
@@ -187,7 +184,6 @@ export async function processQueue(): Promise<void> {
                    item.table === 'relations' ? 'todoRelation' :
                    item.table === 'todoLogs' ? 'todoLog' :
                    item.table === 'actionEdges' ? 'actionEdge' :
-                   item.table === 'roadmaps' ? 'roadmap' :
                    item.table === 'pluses' ? 'pluse' :
                    item.table === 'timerSessions' ? 'timerSession' :
                    item.table === 'repeatOccurrences' ? 'repeatOccurrence' : item.table,

@@ -88,14 +88,6 @@ model TimerSession {
   updatedAt      DateTime @updatedAt
 }
 
-model Roadmap {
-  id         String   @id @default(uuid())
-  goalTodoId String   @unique
-  phases     Json     // RoadmapPhase[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-
 model Plan {
   id         String   @id @default(uuid())
   goalTodoId String

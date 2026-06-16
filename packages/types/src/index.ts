@@ -23,23 +23,6 @@ export interface ActionEdge {
   updatedAt: Date;
 }
 
-export interface RoadmapPhase {
-  id: string;
-  title: string;
-  order: number;
-  todoIds: string[];
-  startAt?: Date;
-  endAt?: Date;
-}
-
-export interface Roadmap {
-  id: string;
-  goalTodoId: string;
-  phases: RoadmapPhase[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface Plan {
   id: string;
   goalTodoId: string;
@@ -204,7 +187,6 @@ export interface SyncPayload {
   relations?: TodoRelation[];
   todoLogs?: TodoLog[];
   actionEdges?: ActionEdge[];
-  roadmaps?: Roadmap[];
   plans?: Plan[];
   pluses?: Pluse[];
   timerSessions?: TimerSession[];
@@ -234,7 +216,6 @@ export interface SyncResult {
     relations: number;
     todoLogs: number;
     actionEdges: number;
-    roadmaps: number;
     plans: number;
     pluses: number;
     timerSessions: number;
@@ -244,7 +225,6 @@ export interface SyncResult {
     relations: number;
     todoLogs: number;
     actionEdges: number;
-    roadmaps: number;
     plans: number;
     pluses: number;
     timerSessions: number;

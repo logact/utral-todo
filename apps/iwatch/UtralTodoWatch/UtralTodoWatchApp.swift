@@ -19,7 +19,6 @@ let sharedWatchModelContainer: ModelContainer = {
         TodoLog.self,
         TodoRelation.self,
         TimerSession.self,
-        Roadmap.self,
         ActionEdge.self,
         Pluse.self,
         SyncEvent.self,

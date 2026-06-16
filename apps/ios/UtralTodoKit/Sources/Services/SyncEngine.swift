@@ -209,8 +209,6 @@ public final class SyncEngine: ObservableObject {
             await applyTodoRelationEvent(recordId: recordId, operation: event.operation, payload: payload)
         case "todoLog":
             await applyTodoLogEvent(recordId: recordId, operation: event.operation, payload: payload)
-        case "roadmap":
-            await applyRoadmapEvent(recordId: recordId, operation: event.operation, payload: payload)
         case "actionEdge":
             await applyActionEdgeEvent(recordId: recordId, operation: event.operation, payload: payload)
         default:
@@ -425,63 +423,6 @@ public final class SyncEngine: ObservableObject {
             )
             if let updatedAt = remoteUpdatedAt { log.updatedAt = updatedAt }
             modelContext.insert(log)
-        }
-        try? modelContext.save()
-    }
-
-    private func applyRoadmapEvent(recordId: String, operation: String, payload: Data?) async {
-        if operation == "delete" {
-            if let roadmap = try? modelContext.fetch(FetchDescriptor<Roadmap>(predicate: #Predicate { $0.id == recordId })).first {
-                modelContext.delete(roadmap)
-                try? modelContext.save()
-            }
-            return
-        }
-
-        guard let payload,
-              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
-
-        let remoteUpdatedAt = parseDate(json["updatedAt"])
-
-        if let roadmap = try? modelContext.fetch(FetchDescriptor<Roadmap>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= roadmap.updatedAt { return }
-            if let goalTodoId = json["goalTodoId"] as? String { roadmap.goalTodoId = goalTodoId }
-            if let phasesArray = json["phases"] as? [[String: Any]] {
-                let phases: [RoadmapPhase] = phasesArray.compactMap { dict in
-                    guard let id = dict["id"] as? String,
-                          let title = dict["title"] as? String else { return nil }
-                    return RoadmapPhase(
-                        id: id,
-                        title: title,
-                        order: dict["order"] as? Int ?? 0,
-                        todoIds: dict["todoIds"] as? [String] ?? [],
-                        startAt: self.parseDate(dict["startAt"]),
-                        endAt: self.parseDate(dict["endAt"])
-                    )
-                }
-                roadmap.phases = phases
-            }
-            roadmap.updatedAt = remoteUpdatedAt ?? Date()
-        } else if operation == "create" || operation == "update" {
-            let phases: [RoadmapPhase] = (json["phases"] as? [[String: Any]])?.compactMap { dict in
-                guard let id = dict["id"] as? String,
-                      let title = dict["title"] as? String else { return nil }
-                return RoadmapPhase(
-                    id: id,
-                    title: title,
-                    order: dict["order"] as? Int ?? 0,
-                    todoIds: dict["todoIds"] as? [String] ?? [],
-                    startAt: self.parseDate(dict["startAt"]),
-                    endAt: self.parseDate(dict["endAt"])
-                )
-            } ?? []
-            let roadmap = Roadmap(
-                id: recordId,
-                goalTodoId: (json["goalTodoId"] as? String) ?? "",
-                phases: phases
-            )
-            if let updatedAt = remoteUpdatedAt { roadmap.updatedAt = updatedAt }
-            modelContext.insert(roadmap)
         }
         try? modelContext.save()
     }

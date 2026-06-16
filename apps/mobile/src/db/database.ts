@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, RepeatOccurrence, Roadmap } from '@utral/types';
+import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, RepeatOccurrence } from '@utral/types';
 
 export interface SyncQueueItem {
   id: string;
@@ -21,7 +21,6 @@ const db = new Dexie('UtralMobileDB') as Dexie & {
   relations: EntityTable<TodoRelation, 'id'>;
   todoLogs: EntityTable<TodoLog, 'id'>;
   actionEdges: EntityTable<ActionEdge, 'id'>;
-  roadmaps: EntityTable<Roadmap, 'id'>;
   pluses: EntityTable<Pluse, 'id'>;
   timerSessions: EntityTable<TimerSession, 'id'>;
   repeatOccurrences: EntityTable<RepeatOccurrence, 'id'>;
@@ -33,7 +32,6 @@ db.version(1).stores({
   todos: 'id, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -80,7 +78,6 @@ db.version(4).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -93,7 +90,6 @@ db.version(5).stores({
   todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
   relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   todoLogs: 'id, todoId, type, createdAt, updatedAt',
-  roadmaps: 'id, goalTodoId, updatedAt',
   actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
   pluses: 'id, createdAt, updatedAt',
   timerSessions: 'id, type, status, createdAt, updatedAt',
@@ -103,6 +99,21 @@ db.version(5).stores({
 }).upgrade((tx) => {
   // Drop the projects table in v5
   return tx.table('projects').clear();
+});
+
+db.version(6).stores({
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+}).upgrade(() => {
+  // v6 removes roadmaps from the app schema; the legacy object store will remain
+  // in IndexedDB until the database is deleted, but is no longer accessible.
 });
 
 export { db };
