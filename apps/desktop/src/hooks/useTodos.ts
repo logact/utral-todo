@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useDbChangeRefresh } from './useDbChangeRefresh';
 import {
   getTodaysTodos,
   getAllTodos,
@@ -36,19 +37,7 @@ export function useTodos() {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   const add = useCallback(
     async (
@@ -151,19 +140,7 @@ export function useTodaysTodos() {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
     if (isVirtualTodoId(id)) {
@@ -218,19 +195,7 @@ export function useTodayData() {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
     const updateTodoFn = (t: Todo) => ({
@@ -327,19 +292,7 @@ export function useScheduleTodos() {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   const todoMapByDate = useMemo(() => {
     const map = new Map<string, Todo[]>();

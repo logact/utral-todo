@@ -17,6 +17,7 @@ import {
 import type { Pluse, Todo } from '../types';
 import { getAllPluses, createPluse, deletePluse, updatePluse } from '../db/pluse';
 import { getAllTodos } from '../db/todos';
+import { useDbChangeRefresh } from '../hooks/useDbChangeRefresh';
 import { formatSeconds } from '../utils/date';
 
 /* ---------- Helpers ---------- */
@@ -544,19 +545,7 @@ export function PluseList() {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    loadData();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => loadData(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [loadData]);
+  useDbChangeRefresh(loadData);
 
   async function handleCreate() {
     if (!newName.trim() || newIntervals.length === 0) return;

@@ -448,6 +448,11 @@ export async function onLocalChange(
     retryCount: 0,
   });
 
+  // Notify any mounted React hooks/pages that local data changed
+  window.dispatchEvent(
+    new CustomEvent('db:changed', { detail: { table, operation, recordId } })
+  );
+
   // Debounce queue processing
   setTimeout(() => {
     processQueue().catch(() => {});

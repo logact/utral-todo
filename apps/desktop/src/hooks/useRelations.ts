@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   getAllRelations,
   createRelation,
   deleteRelation,
   getRelationsForTodo,
 } from '../db/relations';
+import { useDbChangeRefresh } from './useDbChangeRefresh';
 import type { TodoRelation, TodoRelationType } from '../types';
 
 export function useRelations() {
@@ -18,19 +19,7 @@ export function useRelations() {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   const add = useCallback(
     async (fromTodoId: string, toTodoId: string, type: TodoRelationType) => {
@@ -66,19 +55,7 @@ export function useTodoRelations(todoId: string) {
     setIsLoading(false);
   }, [todoId]);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   return { outgoing, incoming, isLoading, refresh };
 }

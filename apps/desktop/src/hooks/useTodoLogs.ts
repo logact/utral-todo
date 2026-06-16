@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { getTodoLogs, createTodoLog, deleteTodoLog } from '../db/todoLogs';
+import { useDbChangeRefresh } from './useDbChangeRefresh';
 import type { TodoLog, TodoLogType } from '../types';
 
 export function useTodoLogs(todoId: string) {
@@ -13,19 +14,7 @@ export function useTodoLogs(todoId: string) {
     setIsLoading(false);
   }, [todoId]);
 
-  useEffect(() => {
-    refresh();
-    let timeout: ReturnType<typeof setTimeout>;
-    const handler = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => refresh(), 100);
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
-    };
-  }, [refresh]);
+  useDbChangeRefresh(refresh);
 
   const add = useCallback(
     async (type: TodoLogType, content: string, options?: { minutesSpent?: number; metadata?: Record<string, unknown> }) => {
