@@ -910,7 +910,7 @@ export function BigMapCanvas({
   );
 
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent | React.MouseEvent) => {
       if (connectMode && connectSourceId && !isInteractionDragging) {
         dragInfoRef.current = {
           mode: 'connect',
@@ -934,7 +934,7 @@ export function BigMapCanvas({
         }
       }
       if (!isInteractionDragging) {
-        onMouseMove(e);
+        onMouseMove(e as React.MouseEvent);
       }
     },
     [connectMode, connectSourceId, connectEdgeType, isInteractionDragging, toCanvasPoint, onMouseMove]
@@ -977,7 +977,7 @@ export function BigMapCanvas({
       handleMouseMove(e);
     };
 
-    const handleGlobalMouseUp = (e: MouseEvent) => {
+    const handleGlobalMouseUp = () => {
       handleMouseUp();
     };
 
