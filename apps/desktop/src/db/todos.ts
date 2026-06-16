@@ -119,42 +119,44 @@ export async function getRootGoal(): Promise<Todo | undefined> {
 }
 
 export async function ensureRootGoal(): Promise<Todo> {
-  const existing = await getRootGoal();
-  if (existing) return existing;
+  return db.transaction('rw', db.todos, db.plans, async () => {
+    const existing = await db.todos.get(ROOT_GOAL_ID);
+    if (existing) return existing as Todo;
 
-  const now = new Date();
-  const rootGoal: Todo = {
-    id: ROOT_GOAL_ID,
-    nodeType: 'goal',
-    title: 'Root Goal',
-    description: '',
-    isRootGoal: true,
-    goalStatus: 'active',
-    tags: [],
-    order: 0,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await db.todos.add(rootGoal);
-  onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
+    const now = new Date();
+    const rootGoal: Todo = {
+      id: ROOT_GOAL_ID,
+      nodeType: 'goal',
+      title: 'Root Goal',
+      description: '',
+      isRootGoal: true,
+      goalStatus: 'active',
+      tags: [],
+      order: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.todos.add(rootGoal);
+    onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
 
-  const plan: Plan = {
-    id: crypto.randomUUID(),
-    goalTodoId: rootGoal.id,
-    title: 'Root Road',
-    nodeIds: [],
-    edgeIds: [],
-    isSystemPlan: true,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await db.plans.add(plan);
-  onLocalChange('plans', 'create', plan.id).catch(() => {});
+    const plan: Plan = {
+      id: crypto.randomUUID(),
+      goalTodoId: rootGoal.id,
+      title: 'Root Road',
+      nodeIds: [],
+      edgeIds: [],
+      isSystemPlan: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.plans.add(plan);
+    onLocalChange('plans', 'create', plan.id).catch(() => {});
 
-  await db.todos.update(rootGoal.id, { activePlanId: plan.id, updatedAt: new Date() });
-  onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
+    await db.todos.update(rootGoal.id, { activePlanId: plan.id, updatedAt: new Date() });
+    onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
 
-  return { ...rootGoal, activePlanId: plan.id };
+    return { ...rootGoal, activePlanId: plan.id };
+  });
 }
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {

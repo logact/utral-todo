@@ -654,8 +654,7 @@ db.version(39).stores({
   syncState: 'key',
   plans: 'id, goalTodoId, isSystemPlan, updatedAt',
 }).upgrade(async (tx) => {
-  // Clear orphaned project data
-  await tx.table('projects').clear();
+  // Remove orphaned projectId references left over from the removed projects table
   const todos = await tx.table('todos').toArray();
   for (const todo of todos) {
     if (todo.projectId !== undefined) {
