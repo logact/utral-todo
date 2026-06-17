@@ -351,6 +351,7 @@ export function PluseRun() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
+  const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
   const intervalStartRef = useRef<number>(0);
   const [smoothElapsed, setSmoothElapsed] = useState(0);
@@ -391,6 +392,10 @@ export function PluseRun() {
   useEffect(() => {
     return () => {
       timerNotifyCancelAll();
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current);
+        autoAdvanceRef.current = null;
+      }
     };
   }, []);
 
@@ -482,10 +487,14 @@ export function PluseRun() {
 
     if (elapsedSeconds >= itemDurationSeconds) {
       console.log('[PluseRun] interval complete, advancing...', { currentIndex, shouldAutoAdvance });
-      if (soundEnabled && !completedRef.current) playBeep();
+      if (soundEnabled && !completedRef.current) {
+        playBeep();
+        completedRef.current = true;
+      }
 
       if (currentIndex < expandedIntervals.length - 1) {
         if (timerRef.current) clearInterval(timerRef.current);
+        if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
         setIsRunning(false);
         timerNotifyCancel(`pluse-timer-${pluse?.id}`);
         showBrowserNotification(
@@ -496,8 +505,9 @@ export function PluseRun() {
         setElapsedSeconds(0);
         if (shouldAutoAdvance) {
           console.log('[PluseRun] scheduling auto-advance in 2s');
-          setTimeout(() => {
+          autoAdvanceRef.current = setTimeout(() => {
             console.log('[PluseRun] auto-advance timeout fired');
+            autoAdvanceRef.current = null;
             setIsRunning(true);
             if (soundEnabled) playBeep(660, 150);
           }, 2000);
@@ -506,6 +516,7 @@ export function PluseRun() {
         // Last interval finished
         console.log('[PluseRun] last interval complete', { shouldAutoAdvance });
         if (timerRef.current) clearInterval(timerRef.current);
+        if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
         setIsRunning(false);
         timerNotifyCancel(`pluse-timer-${pluse?.id}`);
         if (shouldAutoAdvance) {
@@ -519,8 +530,9 @@ export function PluseRun() {
             `${pluse?.name} — Round complete`,
             'Restarting from interval 1...'
           );
-          setTimeout(() => {
+          autoAdvanceRef.current = setTimeout(() => {
             console.log('[PluseRun] auto-restart timeout fired');
+            autoAdvanceRef.current = null;
             setIsRunning(true);
             if (soundEnabled) playBeep(660, 150);
           }, 2000);
@@ -556,6 +568,10 @@ export function PluseRun() {
   }
 
   function restart() {
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current);
+      autoAdvanceRef.current = null;
+    }
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setSmoothElapsed(0);
@@ -573,6 +589,10 @@ export function PluseRun() {
     if (!showConfirmEnd) {
       setShowConfirmEnd(true);
       return;
+    }
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current);
+      autoAdvanceRef.current = null;
     }
     setIsRunning(false);
     if (pluse) {
