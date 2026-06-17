@@ -269,13 +269,6 @@ export function useTodayData() {
   }, [refreshScheduled, refreshInProgress, refreshOverdue, refreshSuggested, refreshGoals]);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
-    const updateTodoFn = (t: Todo) => ({
-      ...t,
-      status,
-      completedAt: status === 'done' ? new Date() : undefined,
-      startedAt: status === 'in_progress' ? new Date() : status === 'pending' ? undefined : t.startedAt,
-    });
-
     if (isVirtualTodoId(id)) {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;

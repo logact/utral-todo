@@ -33,7 +33,7 @@ import {
   formatDuration,
   formatTime,
   formatSeconds,
-  type TimeOfDay,
+
 } from '../utils/date';
 import type { Todo, TodoStatus, Priority, Pluse } from '../types';
 
@@ -1202,7 +1202,6 @@ export function Today() {
   const totalActive = allActiveTodos.length;
 
   // Check if any time slot has tasks
-  const hasTimeSlotTasks = TIME_SLOTS.some((slot) => (timeSlotGroups.get(slot.id)?.length ?? 0) > 0);
 
   const hasAnything =
     totalActive > 0 || suggested.length > 0 || doneTodos.length > 0;
