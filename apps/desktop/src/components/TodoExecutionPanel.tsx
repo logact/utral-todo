@@ -34,6 +34,7 @@ import type { Todo, RepeatRule, ActionEdge, TodoStatus, TodoRelationType } from 
 export function TodoExecutionPanel({
   todoId,
   onNavigate,
+  onTitleClick,
   showBreadcrumbs = true,
   autoStart = false,
   todayTodos,
@@ -42,6 +43,7 @@ export function TodoExecutionPanel({
 }: {
   todoId: string;
   onNavigate?: (path: string) => void;
+  onTitleClick?: (todoId: string) => void;
   showBreadcrumbs?: boolean;
   autoStart?: boolean;
   todayTodos?: Todo[];
@@ -351,15 +353,28 @@ export function TodoExecutionPanel({
           </button>
 
           <div className="flex-1 min-w-0">
-            <h1
-              className={`text-xl font-semibold ${
-                isDone
-                  ? 'text-slate-400 dark:text-slate-500 line-through'
-                  : 'text-slate-900 dark:text-slate-100'
-              }`}
-            >
-              {todo.title}
-            </h1>
+            {onTitleClick ? (
+              <button
+                onClick={() => onTitleClick(todo.id)}
+                className={`text-xl font-semibold text-left hover:underline ${
+                  isDone
+                    ? 'text-slate-400 dark:text-slate-500 line-through'
+                    : 'text-slate-900 dark:text-slate-100'
+                }`}
+              >
+                {todo.title}
+              </button>
+            ) : (
+              <h1
+                className={`text-xl font-semibold ${
+                  isDone
+                    ? 'text-slate-400 dark:text-slate-500 line-through'
+                    : 'text-slate-900 dark:text-slate-100'
+                }`}
+              >
+                {todo.title}
+              </h1>
+            )}
 
             <div className="flex items-center gap-3 mt-3 flex-wrap">
               <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">

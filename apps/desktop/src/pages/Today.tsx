@@ -745,6 +745,7 @@ function CompactTodoRow({
   selected,
   onSelect,
   onToggle,
+  onTitleClick,
   accent,
   dragHandle,
 }: {
@@ -752,6 +753,7 @@ function CompactTodoRow({
   selected: boolean;
   onSelect: (id: string) => void;
   onToggle: (id: string, status: TodoStatus) => void;
+  onTitleClick?: (id: string) => void;
   accent?: 'none' | 'urgent' | 'focus' | 'goal';
   dragHandle?: React.ReactNode;
 }) {
@@ -785,7 +787,7 @@ function CompactTodoRow({
         )}
       </button>
 
-      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(todo.id)}>
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => (onTitleClick ?? onSelect)(todo.id)}>
         <span
           className={`text-sm font-medium truncate block w-full ${
             isDone
@@ -857,11 +859,13 @@ function SortableCompactTodoRow({
   selectedTodoId,
   onSelect,
   onToggle,
+  onTitleClick,
 }: {
   item: DisplayItem;
   selectedTodoId: string | null;
   onSelect: (id: string) => void;
   onToggle: (id: string, status: TodoStatus) => void;
+  onTitleClick?: (id: string) => void;
 }) {
   const {
     attributes,
@@ -895,6 +899,7 @@ function SortableCompactTodoRow({
         selected={selectedTodoId === item.todo.id}
         onSelect={onSelect}
         onToggle={onToggle}
+        onTitleClick={onTitleClick}
         accent={getAccent(item.todo, item.section)}
         dragHandle={dragHandle}
       />
@@ -1262,6 +1267,7 @@ export function Today() {
                             selectedTodoId={selectedTodoId}
                             onSelect={handleSelectTodo}
                             onToggle={toggleTodo}
+                            onTitleClick={(id) => navigate(`/todo/${id}`)}
                           />
                         </div>
                       );
@@ -1325,6 +1331,7 @@ export function Today() {
               <TodoExecutionPanel
                 todoId={panelTodoId ?? selectedTodoId}
                 onNavigate={handleNavigate}
+                onTitleClick={(id) => navigate(`/todo/${id}`)}
                 showBreadcrumbs={true}
                 todayTodos={allActiveTodos}
                 onSwitchTodo={handleSelectTodo}

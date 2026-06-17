@@ -36,6 +36,7 @@ export function TodoExecute() {
       <TodoExecutionPanel
         todoId={id}
         onNavigate={(path) => navigate(path)}
+        onTitleClick={(todoId) => navigate(`/todo/${todoId}`)}
         showBreadcrumbs
         autoStart
       />

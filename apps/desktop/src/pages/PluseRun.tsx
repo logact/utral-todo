@@ -875,6 +875,7 @@ export function PluseRun() {
             <TodoExecutionPanel
               todoId={anchoredTodo.id}
               onNavigate={(path) => navigate(path)}
+              onTitleClick={(todoId) => navigate(`/todo/${todoId}`)}
               showBreadcrumbs={false}
             />
           </div>
