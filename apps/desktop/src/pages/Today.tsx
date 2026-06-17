@@ -1145,14 +1145,11 @@ export function Today() {
     }
   }
 
-  // Build time slot groups
-  const timeSlotGroups = useMemo(() => {
-    const groups = new Map<string, Todo[]>();
-    for (const slot of TIME_SLOTS) {
-      groups.set(slot.id, []);
-    }
-    return groups;
-  }, []);
+  // Build time slot groups (must not memoize – addActive mutates the map)
+  const timeSlotGroups = new Map<string, Todo[]>();
+  for (const slot of TIME_SLOTS) {
+    timeSlotGroups.set(slot.id, []);
+  }
 
   const allActiveTodos: Todo[] = [];
   const doneTodos: Todo[] = [];
