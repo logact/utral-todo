@@ -30,6 +30,7 @@ import { inferRelationBetween } from '../utils/relations';
 export interface RoadToGoalGraphProps {
   goalId: string;
   highlightTodoId?: string;
+  centerTodoId?: string;
   mode?: 'page' | 'card';
   title?: string;
   editing?: boolean;
@@ -147,6 +148,7 @@ const EMPTY_LAYOUT: LayoutResult = {
 export function RoadToGoalGraph({
   goalId,
   highlightTodoId,
+  centerTodoId,
   mode = 'card',
   title = 'Road to Goal',
   editing = false,
@@ -294,14 +296,17 @@ export function RoadToGoalGraph({
   }, [todos, showPending, showInProgress, showDone, goalId, goalTodo]);
 
   // Compute layout: full graph by default, or BFS-limited neighborhood when layersAround is set.
+  // When centerTodoId is provided, center the BFS on that todo to show its road to the closest goal.
   const layoutResult = useMemo<LayoutResult>(() => {
     if (isLoading) return EMPTY_LAYOUT;
     if (containerWidth === 0) return EMPTY_LAYOUT;
-    if (layersAround !== undefined && layersAround >= 0) {
-      return computeGoalRoadLayout(goalId, filteredTodos, relations, layersAround, containerWidth, execLogs);
+    const effectiveLayers = layersAround ?? (centerTodoId ? 2 : undefined);
+    const center = centerTodoId ?? goalId;
+    if (effectiveLayers !== undefined && effectiveLayers >= 0) {
+      return computeGoalRoadLayout(center, filteredTodos, relations, effectiveLayers, containerWidth, execLogs);
     }
     return computeUnifiedGraphLayout(filteredTodos, relations, containerWidth, execLogs);
-  }, [isLoading, filteredTodos, relations, containerWidth, layersAround, goalId, execLogs]);
+  }, [isLoading, filteredTodos, relations, containerWidth, layersAround, centerTodoId, goalId, execLogs]);
 
   // Auto-fit on first load; center on the focus goal.
   const handleFit = useCallback(() => {
@@ -317,7 +322,8 @@ export function RoadToGoalGraph({
   const handleInitialView = useCallback(() => {
     if (!canvasContainer || layoutResult.width === 0) return;
 
-    const node = layoutResult.nodes.find((n) => n.todo.id === goalId);
+    const focusId = centerTodoId ?? goalId;
+    const node = layoutResult.nodes.find((n) => n.todo.id === focusId);
     if (node) {
       const padding = 40;
       const scaleX = (canvasContainer.clientWidth - padding * 2) / layoutResult.width;
@@ -328,7 +334,7 @@ export function RoadToGoalGraph({
     }
 
     handleFit();
-  }, [layoutResult, goalId, viewport, handleFit, canvasContainer]);
+  }, [layoutResult, centerTodoId, goalId, viewport, handleFit, canvasContainer]);
 
   useEffect(() => {
     if (!isLoading && !hasFitted && layoutResult.width > 0 && canvasContainer) {
@@ -452,7 +458,7 @@ export function RoadToGoalGraph({
           onMouseMove={viewport.handleMouseMove}
           onMouseUp={viewport.handleMouseUp}
           mode="neighborhood"
-          centerTodoId={goalId}
+          centerTodoId={centerTodoId ?? goalId}
           highlightTodoId={highlightTodoId}
           onNodeClick={onNodeClick}
           editing={editing}

@@ -410,13 +410,15 @@ export function TodoDetail() {
   const sharedSections = (
     <>
       {/* Road to Goal */}
-      {todo && parentGoal?.nodeType === 'goal' && (
+      {todo && (
         <RoadToGoalGraph
-          goalId={parentGoal.id}
+          goalId={parentGoal?.nodeType === 'goal' ? parentGoal.id : todo.id}
+          centerTodoId={todo.id}
           highlightTodoId={todo.id}
           mode="card"
           title="Road to Goal"
           editing
+          layersAround={3}
           onNodeClick={(todoId) => navigate(`/todo/${todoId}`)}
           onCreateRelation={handleCreateRelation}
           onDeleteRelation={handleDeleteRelation}

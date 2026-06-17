@@ -498,9 +498,9 @@ export function computeGoalRoadLayout(
   }
 
   for (const todo of todos) {
-    if (todo.parentId && todo.nodeType === 'goal') {
+    if (todo.parentId) {
       const parent = todoMap.get(todo.parentId);
-      if (parent?.nodeType === 'goal') {
+      if (parent) {
         upNeighbors.get(todo.id)!.push(todo.parentId);
         downNeighbors.get(todo.parentId)!.push(todo.id);
       }
