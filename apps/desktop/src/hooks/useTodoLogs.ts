@@ -14,7 +14,7 @@ export function useTodoLogs(todoId: string) {
     setIsLoading(false);
   }, [todoId]);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['todoLogs', 'todos'] });
 
   const add = useCallback(
     async (type: TodoLogType, content: string, options?: { minutesSpent?: number; metadata?: Record<string, unknown> }) => {

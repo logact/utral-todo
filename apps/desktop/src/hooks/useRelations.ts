@@ -19,7 +19,7 @@ export function useRelations() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['relations', 'todos'] });
 
   const add = useCallback(
     async (fromTodoId: string, toTodoId: string, type: TodoRelationType) => {
@@ -55,7 +55,7 @@ export function useTodoRelations(todoId: string) {
     setIsLoading(false);
   }, [todoId]);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['relations', 'todos'] });
 
   return { outgoing, incoming, isLoading, refresh };
 }

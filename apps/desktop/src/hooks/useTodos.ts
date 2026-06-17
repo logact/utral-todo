@@ -37,7 +37,7 @@ export function useTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences'] });
 
   const add = useCallback(
     async (
@@ -140,7 +140,7 @@ export function useTodaysTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences', 'pluses', 'actionEdges', 'plans'] });
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
     if (isVirtualTodoId(id)) {
@@ -169,33 +169,104 @@ export function useTodaysTodos() {
   return { todos, isLoading, refresh, setStatus };
 }
 
-export function useTodayData() {
+export function useTodayScheduled() {
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [overdue, setOverdue] = useState<Todo[]>([]);
-  const [inProgress, setInProgress] = useState<Todo[]>([]);
-  const [suggested, setSuggested] = useState<Todo[]>([]);
-  const [todayGoals, setTodayGoals] = useState<Todo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const [todayTodos, overdueTodos, progressTodos, suggestTodos, goals] =
-      await Promise.all([
-        getTodaysTodos(),
-        getOverdueTodos(),
-        getInProgressTodos(),
-        getUnscheduledHighPriorityTodos(),
-        getTodaysGoals(),
-      ]);
-    setTodos(todayTodos);
-    setOverdue(overdueTodos);
-    setInProgress(progressTodos);
-    setSuggested(suggestTodos);
-    setTodayGoals(goals);
+    const today = await getTodaysTodos();
+    setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences'] });
+
+  return { todos, isLoading, refresh };
+}
+
+export function useTodayInProgress() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    const today = await getInProgressTodos();
+    setTodos(today);
+    setIsLoading(false);
+  }, []);
+
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
+
+  return { todos, isLoading, refresh };
+}
+
+export function useTodayOverdue() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    const today = await getOverdueTodos();
+    setTodos(today);
+    setIsLoading(false);
+  }, []);
+
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
+
+  return { todos, isLoading, refresh };
+}
+
+export function useTodayGoals() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    const today = await getTodaysGoals();
+    setTodos(today);
+    setIsLoading(false);
+  }, []);
+
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations'] });
+
+  return { todos, isLoading, refresh };
+}
+
+export function useTodaySuggested() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    const today = await getUnscheduledHighPriorityTodos();
+    setTodos(today);
+    setIsLoading(false);
+  }, []);
+
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
+
+  return { todos, isLoading, refresh };
+}
+
+export function useTodayData() {
+  const { todos: scheduled, isLoading: scheduledLoading, refresh: refreshScheduled } = useTodayScheduled();
+  const { todos: inProgress, isLoading: inProgressLoading, refresh: refreshInProgress } = useTodayInProgress();
+  const { todos: overdue, isLoading: overdueLoading, refresh: refreshOverdue } = useTodayOverdue();
+  const { todos: suggested, isLoading: suggestedLoading, refresh: refreshSuggested } = useTodaySuggested();
+  const { todos: todayGoals, isLoading: goalsLoading, refresh: refreshGoals } = useTodayGoals();
+
+  const isLoading = scheduledLoading || inProgressLoading || overdueLoading || suggestedLoading || goalsLoading;
+
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      refreshScheduled(),
+      refreshInProgress(),
+      refreshOverdue(),
+      refreshSuggested(),
+      refreshGoals(),
+    ]);
+  }, [refreshScheduled, refreshInProgress, refreshOverdue, refreshSuggested, refreshGoals]);
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
     const updateTodoFn = (t: Todo) => ({
@@ -209,52 +280,21 @@ export function useTodayData() {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;
       await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
-      setTodos((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
-      setOverdue((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
       return;
     }
 
     await updateTodoStatus(id, status);
-    setTodos((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
-    setOverdue((prev) => prev.map((t) => (t.id === id ? updateTodoFn(t) : t)));
-    setInProgress((prev) => {
-      const exists = prev.find((t) => t.id === id);
-      if (status === 'in_progress') {
-        if (exists) {
-          return prev.map((t) => (t.id === id ? updateTodoFn(t) : t));
-        }
-        const todo = [...todos, ...overdue, ...suggested].find((t) => t.id === id);
-        if (todo) {
-          return [...prev, updateTodoFn(todo)];
-        }
-        return prev;
-      }
-      return prev.filter((t) => t.id !== id);
-    });
-    setSuggested((prev) => prev.filter((t) => t.id !== id));
-  }, [todos, overdue, suggested]);
+    await refresh();
+  }, [refresh]);
 
   const schedule = useCallback(async (id: string, date: Date) => {
     if (isVirtualTodoId(id)) return;
     await updateTodoSchedule(id, date);
-    // Refresh everything since a scheduled todo may now appear in today's list
-    const [todayTodos, overdueTodos, progressTodos, suggestTodos, goals] =
-      await Promise.all([
-        getTodaysTodos(),
-        getOverdueTodos(),
-        getInProgressTodos(),
-        getUnscheduledHighPriorityTodos(),
-        getTodaysGoals(),
-      ]);
-    setTodos(todayTodos);
-    setOverdue(overdueTodos);
-    setInProgress(progressTodos);
-    setSuggested(suggestTodos);
-    setTodayGoals(goals);
-  }, []);
+    await refresh();
+  }, [refresh]);
 
   return {
-    todos,
+    todos: scheduled,
     overdue,
     inProgress,
     suggested,
@@ -292,7 +332,7 @@ export function useScheduleTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh);
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences'] });
 
   const todoMapByDate = useMemo(() => {
     const map = new Map<string, Todo[]>();
