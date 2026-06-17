@@ -19,6 +19,7 @@ import {
 } from '../db/relations';
 import { formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
+import { LabelPicker } from '../components/LabelPicker';
 import type { Todo, GoalStatus, TodoRelationType } from '../types';
 
 const goalStatusConfig: Record<string, { label: string; color: string }> = {
@@ -47,7 +48,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   const [editTargetDate, setEditTargetDate] = useState(goal.targetDate ? new Date(goal.targetDate).toISOString().split('T')[0] : '');
   const [editGoalStatus, setEditGoalStatus] = useState<GoalStatus>(goal.goalStatus ?? 'active');
   const [editTags, setEditTags] = useState<string[]>([...goal.tags]);
-  const [editTagInput, setEditTagInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // Track whether edit form has been initialized
@@ -69,7 +69,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     setEditTargetDate(g.targetDate ? new Date(g.targetDate).toISOString().split('T')[0] : '');
     setEditGoalStatus(g.goalStatus ?? 'active');
     setEditTags([...g.tags]);
-    setEditTagInput('');
   }
 
   function startEditing() {
@@ -100,32 +99,6 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     setIsEditing(false);
     setIsPropertiesOpen(false);
     setIsSaving(false);
-  }
-
-  function handleEditTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addEditTag();
-    }
-    if (e.key === 'Backspace' && !editTagInput && editTags.length > 0) {
-      setEditTags((prev) => prev.slice(0, -1));
-    }
-  }
-
-  function addEditTag() {
-    const raw = editTagInput.trim();
-    if (!raw) return;
-    const newTags = raw.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
-    const combined = [...editTags];
-    for (const t of newTags) {
-      if (!combined.includes(t)) combined.push(t);
-    }
-    setEditTags(combined);
-    setEditTagInput('');
-  }
-
-  function removeEditTag(tag: string) {
-    setEditTags((prev) => prev.filter((t) => t !== tag));
   }
 
   async function handleCreateRelation(fromTodoId: string, toTodoId: string, type: TodoRelationType) {
@@ -326,32 +299,8 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Tags</label>
-        <div className="w-full min-h-[2.75rem] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 flex flex-wrap items-center gap-1.5">
-          {editTags.map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400"
-            >
-              {tag}
-              <button type="button" onClick={() => removeEditTag(tag)} className="hover:text-indigo-900 dark:hover:text-indigo-200">
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-          <input
-            type="text"
-            value={editTagInput}
-            onChange={(e) => setEditTagInput(e.target.value)}
-            onKeyDown={handleEditTagKeyDown}
-            onBlur={addEditTag}
-            placeholder={editTags.length === 0 ? 'Type and press Enter...' : ''}
-            className="flex-1 min-w-[100px] text-sm bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
-          />
-        </div>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-          Press Enter or comma to add a tag
-        </p>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Labels</label>
+        <LabelPicker tags={editTags} onChange={setEditTags} />
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-2">

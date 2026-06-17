@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, CalendarCheck, CalendarDays, Settings, Network, Timer, ChevronLeft, ChevronRight, ChevronDown, ListTodo, Zap, Target, CheckSquare } from 'lucide-react';
+import { Plus, CalendarCheck, CalendarDays, Settings, Network, Timer, ChevronLeft, ChevronRight, ChevronDown, ListTodo, Zap, Target, CheckSquare, Tag } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
 
   { path: '/schedule', icon: CalendarDays, label: 'Schedule' },
   { path: '/pluses', icon: Timer, label: 'Pluse' },
+  { path: '/labels', icon: Tag, label: 'Labels' },
   { path: '/map', icon: Network, label: 'Road to Goal' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];

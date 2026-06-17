@@ -21,6 +21,7 @@ import syncRouter from './routes/sync.js';
 import devicesRouter from './routes/devices.js';
 import mobileRouter from './routes/mobile.js';
 import watchRouter from './routes/watch.js';
+import labelsRouter from './routes/labels.js';
 
 export const prisma = new PrismaClient();
 
@@ -56,6 +57,7 @@ app.use('/api/sync', syncRouter);
 app.use('/api/devices', devicesRouter);
 app.use('/api/mobile', mobileRouter);
 app.use('/api/watch', watchRouter);
+app.use('/api/labels', labelsRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });

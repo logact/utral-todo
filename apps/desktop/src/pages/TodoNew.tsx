@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, X, GitBranch, Repeat, Target, CheckSquare } from 'lucide-react';
+import { ArrowLeft, ArrowRight, GitBranch, Repeat, Target, CheckSquare } from 'lucide-react';
 import { createTodo, createGoal, getTodo, getAllTodos } from '../db/todos';
 import { createRelation } from '../db/relations';
+import { LabelPicker } from '../components/LabelPicker';
 import type { Todo, RepeatRule, GoalStatus, TaskPattern } from '../types';
 
 export function TodoNew() {
@@ -27,7 +28,6 @@ export function TodoNew() {
 
   // Tags
   const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState('');
 
   // Repeat
   const [hasRepeat, setHasRepeat] = useState(false);
@@ -102,32 +102,6 @@ export function TodoNew() {
     }
 
     navigate('/');
-  }
-
-  function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addTag();
-    }
-    if (e.key === 'Backspace' && !tagInput && tags.length > 0) {
-      setTags((prev) => prev.slice(0, -1));
-    }
-  }
-
-  function addTag() {
-    const raw = tagInput.trim();
-    if (!raw) return;
-    const newTags = raw.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
-    const combined = [...tags];
-    for (const t of newTags) {
-      if (!combined.includes(t)) combined.push(t);
-    }
-    setTags(combined);
-    setTagInput('');
-  }
-
-  function removeTag(tag: string) {
-    setTags((prev) => prev.filter((t) => t !== tag));
   }
 
   const canSubmit = title.trim();
@@ -263,37 +237,9 @@ export function TodoNew() {
 
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-            Tags
+            Labels
           </label>
-          <div className="w-full min-h-[2.75rem] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 flex flex-wrap items-center gap-1.5">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400"
-              >
-                {tag}
-                <button
-                  type="button"
-                  onClick={() => removeTag(tag)}
-                  className="hover:text-indigo-900 dark:hover:text-indigo-200"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-            <input
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={handleTagKeyDown}
-              onBlur={addTag}
-              placeholder={tags.length === 0 ? 'Type and press Enter...' : ''}
-              className="flex-1 min-w-[100px] text-sm bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
-            />
-          </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-            Press Enter or comma to add a tag
-          </p>
+          <LabelPicker tags={tags} onChange={setTags} />
         </div>
 
         {isGoal ? (

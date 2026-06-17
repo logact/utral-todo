@@ -12,6 +12,7 @@ import { registerActionEdgeCommand } from "./commands/action-edge.js";
 import { registerHealthCommand } from "./commands/health.js";
 import { registerSyncCommand } from "./commands/sync.js";
 import { registerConfigCommand } from "./commands/config.js";
+import { registerLabelCommand } from "./commands/label.js";
 
 const cfg = readConfig();
 
@@ -39,5 +40,6 @@ registerRelationCommand(program);
 registerLogCommand(program);
 registerActionEdgeCommand(program);
 registerSyncCommand(program);
+registerLabelCommand(program);
 
 program.parse();

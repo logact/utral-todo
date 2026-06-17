@@ -16,6 +16,7 @@ import { Schedule } from './pages/Schedule';
 import { Settings } from './pages/Settings';
 import { PluseList } from './pages/PluseList';
 import { PluseRun } from './pages/PluseRun';
+import { Labels } from './pages/Labels';
 
 
 function AppLayout({ children }: { children: React.ReactNode }) {
@@ -155,6 +156,14 @@ export default function App() {
           element={
             <AppLayout>
               <Settings />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/labels"
+          element={
+            <AppLayout>
+              <Labels />
             </AppLayout>
           }
         />

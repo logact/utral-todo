@@ -192,6 +192,7 @@ export interface SyncPayload {
   pluses?: Pluse[];
   timerSessions?: TimerSession[];
   repeatOccurrences?: RepeatOccurrence[];
+  labels?: Label[];
 }
 
 export interface SyncEvent {
@@ -220,6 +221,7 @@ export interface SyncResult {
     plans: number;
     pluses: number;
     timerSessions: number;
+    labels: number;
   };
   pushed: {
     todos: number;
@@ -229,6 +231,7 @@ export interface SyncResult {
     plans: number;
     pluses: number;
     timerSessions: number;
+    labels: number;
   };
   error?: string;
 }
@@ -244,6 +247,11 @@ export interface Device {
   appVersion?: string;
   lastSeenAt: Date;
   createdAt: Date;
+}
+
+export interface Label {
+  name: string;
+  count: number;
 }
 
 export interface MobileTodo {
