@@ -1248,8 +1248,8 @@ export function BigMapCanvas({
           {execLogNodes.map((execNode) => {
             const parent = nodeMap.get(execNode.todoId);
             if (!parent) return null;
-            const parentW = parent.todo.nodeType === 'goal' ? GOAL_W : NODE_W;
-            const fromX = parent.x + parentW / 2;
+            const parentCircleSize = parent.todo.nodeType === 'goal' ? GOAL_CIRCLE_SIZE : NODE_CIRCLE_SIZE;
+            const fromX = parent.x + parentCircleSize / 2;
             const fromY = parent.y;
             const toX = execNode.x - SATELLITE_SIZE / 2;
             const toY = execNode.y;
