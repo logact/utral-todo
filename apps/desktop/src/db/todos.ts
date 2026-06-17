@@ -253,6 +253,9 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
   if (existing?.isRootGoal) {
     throw new Error('Cannot modify the root goal');
   }
+  if (existing?.isSystemTask) {
+    throw new Error('Cannot modify system tasks');
+  }
   await db.todos.update(id, { ...updates, updatedAt: new Date() });
   onLocalChange('todos', 'update', id).catch(() => {});
 }
@@ -261,6 +264,9 @@ export async function deleteTodo(id: string): Promise<void> {
   const todo = await db.todos.get(id);
   if (todo?.isRootGoal) {
     throw new Error('Cannot delete the root goal');
+  }
+  if (todo?.isSystemTask) {
+    throw new Error('Cannot delete system tasks');
   }
 
   if (todo?.nodeType === 'goal') {

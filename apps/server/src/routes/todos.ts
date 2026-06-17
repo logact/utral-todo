@@ -282,9 +282,12 @@ router.patch('/:id', async (req, res) => {
 
   validateNodeType(req.body);
 
+  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
+  if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
+
   // Validate that a goal's parent must be a goal
   if (req.body.parentId) {
-    const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
     const isGoal = req.body.nodeType === 'goal' || (!req.body.nodeType && existingTodo?.nodeType === 'goal');
     if (isGoal) {
       const parent = await prisma.todo.findUnique({ where: { id: req.body.parentId } });
@@ -317,6 +320,10 @@ router.patch('/:id', async (req, res) => {
 
 router.patch('/:id/status', async (req, res) => {
   const { status } = req.body;
+  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
+  if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
+
   const data: Prisma.TodoUpdateInput = { status };
   if (status === 'in_progress') {
     data.startedAt = new Date();
@@ -335,6 +342,10 @@ router.patch('/:id/status', async (req, res) => {
 
 router.patch('/:id/schedule', async (req, res) => {
   const { scheduledDate } = req.body;
+  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
+  if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
+
   const todo = await prisma.todo.update({
     where: { id: req.params.id },
     data: { scheduledDate: scheduledDate ? new Date(scheduledDate) : null },
@@ -345,6 +356,10 @@ router.patch('/:id/schedule', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
+
+  const existingTodo = await prisma.todo.findUnique({ where: { id } });
+  if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
+  if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot delete system tasks' });
 
   // Delete assigned instances first
   const assignedRelations = await prisma.todoRelation.findMany({
@@ -453,6 +468,10 @@ router.post('/sync-repeats', async (req, res) => {
 
 router.patch('/:id/reorder', async (req, res) => {
   const { order } = req.body;
+  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
+  if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
+
   const todo = await prisma.todo.update({
     where: { id: req.params.id },
     data: { order: order ?? 0 },
@@ -487,6 +506,7 @@ router.patch('/:id/repeat-rule', async (req, res) => {
   const { rule } = req.body;
   const template = await prisma.todo.findUnique({ where: { id: req.params.id } });
   if (!template) return res.status(404).json({ error: 'Todo not found' });
+  if (template.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
 
   const updatedTodo = await prisma.todo.update({
     where: { id: req.params.id },

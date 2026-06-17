@@ -35,6 +35,7 @@ model Todo {
   goalStatus       String?        // 'active' | 'paused' | 'achieved' | 'abandoned'
   activePlanId     String?
   isRootGoal       Boolean?       @default(false)
+  isSystemTask     Boolean?       @default(false)
 
   parent           Todo?          @relation("TodoChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children         Todo[]         @relation("TodoChildren")

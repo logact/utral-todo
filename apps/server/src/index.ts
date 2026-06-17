@@ -130,12 +130,59 @@ async function runDataMigrations(): Promise<void> {
   console.log(`Migrated ${pluses.length} pluses to seconds`);
 }
 
+/* ---------- System task seeding ---------- */
+
+const SYSTEM_TASKS = [
+  { id: 'system:day-startup', title: 'Day Startup Plan', description: 'Plan your day and set priorities', scheduledTime: '06:00' },
+  { id: 'system:morning-summary', title: 'Morning Summary', description: 'Review morning progress and adjust plans', scheduledTime: '12:00' },
+  { id: 'system:afternoon-startup', title: 'Afternoon Startup Plan', description: 'Plan afternoon tasks and refocus', scheduledTime: '13:00' },
+  { id: 'system:afternoon-summary', title: 'Afternoon Summary', description: 'Review afternoon progress and plan evening', scheduledTime: '17:00' },
+  { id: 'system:evening-startup', title: 'Evening Startup', description: 'Review day and plan evening tasks', scheduledTime: '19:00' },
+  { id: 'system:evening-summary', title: 'Evening Summary', description: 'Reflect on the day and prepare for tomorrow', scheduledTime: '21:30' },
+];
+
+async function seedSystemTasks(): Promise<void> {
+  const existing = await prisma.todo.findMany({
+    where: { isSystemTask: true },
+  });
+  const existingIds = new Set(existing.map((t) => t.id));
+
+  const now = new Date();
+  const scheduledDate = new Date();
+  scheduledDate.setHours(0, 0, 0, 0);
+
+  for (const task of SYSTEM_TASKS) {
+    if (existingIds.has(task.id)) continue;
+
+    await prisma.todo.create({
+      data: {
+        id: task.id,
+        nodeType: 'task',
+        pattern: 'task',
+        title: task.title,
+        description: task.description,
+        status: 'pending',
+        priority: 'medium',
+        estimatedMinutes: 15,
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+        scheduledDate,
+        repeatRule: { type: 'daily' },
+        order: 0,
+        isSystemTask: true,
+      },
+    });
+  }
+}
+
 /* ---------- Start ---------- */
 
 const PORT = process.env.PORT || 3001;
 
 runDataMigrations()
   .then(() => runPlanMigration())
+  .then(() => seedSystemTasks())
   .then(() => {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);

@@ -653,6 +653,57 @@ db.version(40).stores({
   // in IndexedDB until the database is deleted, but is no longer accessible.
 });
 
+const SYSTEM_TASKS = [
+  { id: 'system:day-startup', title: 'Day Startup Plan', description: 'Plan your day and set priorities', scheduledTime: '06:00' },
+  { id: 'system:morning-summary', title: 'Morning Summary', description: 'Review morning progress and adjust plans', scheduledTime: '12:00' },
+  { id: 'system:afternoon-startup', title: 'Afternoon Startup Plan', description: 'Plan afternoon tasks and refocus', scheduledTime: '13:00' },
+  { id: 'system:afternoon-summary', title: 'Afternoon Summary', description: 'Review afternoon progress and plan evening', scheduledTime: '17:00' },
+  { id: 'system:evening-startup', title: 'Evening Startup', description: 'Review day and plan evening tasks', scheduledTime: '19:00' },
+  { id: 'system:evening-summary', title: 'Evening Summary', description: 'Reflect on the day and prepare for tomorrow', scheduledTime: '21:30' },
+];
+
+db.version(41).stores({
+  todos: 'id, nodeType, pattern, parentId, status, scheduledDate, dueDate, createdAt, updatedAt, order, startedAt, isRootGoal, isSystemTask, [status+scheduledDate]',
+  relations: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  todoLogs: 'id, todoId, type, createdAt, updatedAt',
+  actionEdges: 'id, fromTodoId, toTodoId, type, createdAt, updatedAt',
+  pluses: 'id, createdAt, updatedAt',
+  timerSessions: 'id, type, status, createdAt, updatedAt',
+  repeatOccurrences: 'id, templateId, date',
+  syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
+  syncState: 'key',
+  plans: 'id, goalTodoId, isSystemPlan, updatedAt',
+}).upgrade(async (tx) => {
+  const todos = await tx.table('todos').toArray();
+  const now = new Date();
+
+  for (const task of SYSTEM_TASKS) {
+    const exists = todos.some((t) => t.id === task.id);
+    if (exists) continue;
+
+    const scheduledDate = new Date();
+    scheduledDate.setHours(0, 0, 0, 0);
+
+    await tx.table('todos').add({
+      id: task.id,
+      nodeType: 'task',
+      pattern: 'task',
+      title: task.title,
+      description: task.description,
+      status: 'pending',
+      priority: 'medium',
+      estimatedMinutes: 15,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+      scheduledDate,
+      repeatRule: { type: 'daily' },
+      order: 0,
+      isSystemTask: true,
+    });
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();

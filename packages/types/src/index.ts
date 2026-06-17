@@ -88,6 +88,7 @@ export interface TodoBase {
   parentId?: string;
   activePlanId?: string;
   isRootGoal?: boolean;
+  isSystemTask?: boolean;
   tags: string[];
   order: number;
   createdAt: Date;
