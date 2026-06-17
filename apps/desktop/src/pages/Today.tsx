@@ -1,23 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import {
   CheckCircle2,
   Circle,
   Clock,
@@ -27,19 +10,15 @@ import {
   SkipForward,
   X,
   ChevronDown,
-  AlertTriangle,
+  ChevronRight,
   Zap,
   Flame,
-  Sun,
-  Sunset,
-  Moon,
   Target,
   CalendarCheck,
-  GripVertical,
   Flag,
 } from 'lucide-react';
 import { useTodayData } from '../hooks/useTodos';
-import { getInProgressTodos, reorderTodos, getAllTodos } from '../db/todos';
+import { getInProgressTodos, getAllTodos } from '../db/todos';
 import { getAllPluses } from '../db/pluse';
 import { createTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
@@ -54,7 +33,6 @@ import {
   formatDuration,
   formatTime,
   formatSeconds,
-  getTimeOfDay,
   type TimeOfDay,
 } from '../utils/date';
 import type { Todo, TodoStatus, Priority, Pluse } from '../types';
@@ -827,93 +805,222 @@ function CompactTodoRow({
   );
 }
 
-/* ─── Sortable CompactTodoRow ─── */
+/* ─── Time Slot ─── */
 
-type SectionType = 'in_progress' | 'overdue' | 'morning' | 'afternoon' | 'evening' | 'anytime' | 'done';
-
-interface DisplayItem {
+interface TimeSlotConfig {
   id: string;
-  todo: Todo;
-  section: SectionType;
+  milestoneId: string;
+  title: string;
+  time: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  icon: typeof Flag;
+  color: string;
+  bgColor: string;
+  darkBgColor: string;
 }
 
-const sectionConfig: Record<SectionType, { label: string; icon: typeof Zap; color: string }> = {
-  in_progress: { label: 'In Progress', icon: Zap, color: 'text-amber-600 dark:text-amber-400' },
-  overdue: { label: 'Overdue', icon: AlertTriangle, color: 'text-rose-600 dark:text-rose-400' },
-  morning: { label: 'Morning', icon: Sun, color: 'text-slate-500 dark:text-slate-400' },
-  afternoon: { label: 'Afternoon', icon: Sunset, color: 'text-slate-500 dark:text-slate-400' },
-  evening: { label: 'Evening', icon: Moon, color: 'text-slate-500 dark:text-slate-400' },
-  anytime: { label: 'Anytime', icon: Target, color: 'text-slate-500 dark:text-slate-400' },
-  done: { label: 'Done', icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400' },
-};
+const TIME_SLOTS: TimeSlotConfig[] = [
+  {
+    id: 'slot-morning',
+    milestoneId: 'system:day-startup',
+    title: 'Day Startup Plan',
+    time: '06:00',
+    startHour: 6,
+    startMinute: 0,
+    endHour: 12,
+    endMinute: 0,
+    icon: Flag,
+    color: 'text-indigo-600 dark:text-indigo-400',
+    bgColor: 'bg-indigo-50',
+    darkBgColor: 'dark:bg-indigo-950/30',
+  },
+  {
+    id: 'slot-midday',
+    milestoneId: 'system:morning-summary',
+    title: 'Morning Summary',
+    time: '12:00',
+    startHour: 12,
+    startMinute: 0,
+    endHour: 13,
+    endMinute: 0,
+    icon: CheckCircle2,
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bgColor: 'bg-emerald-50',
+    darkBgColor: 'dark:bg-emerald-950/30',
+  },
+  {
+    id: 'slot-afternoon',
+    milestoneId: 'system:afternoon-startup',
+    title: 'Afternoon Startup Plan',
+    time: '13:00',
+    startHour: 13,
+    startMinute: 0,
+    endHour: 17,
+    endMinute: 0,
+    icon: Flag,
+    color: 'text-indigo-600 dark:text-indigo-400',
+    bgColor: 'bg-indigo-50',
+    darkBgColor: 'dark:bg-indigo-950/30',
+  },
+  {
+    id: 'slot-late-afternoon',
+    milestoneId: 'system:afternoon-summary',
+    title: 'Afternoon Summary',
+    time: '17:00',
+    startHour: 17,
+    startMinute: 0,
+    endHour: 19,
+    endMinute: 0,
+    icon: CheckCircle2,
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bgColor: 'bg-emerald-50',
+    darkBgColor: 'dark:bg-emerald-950/30',
+  },
+  {
+    id: 'slot-evening',
+    milestoneId: 'system:evening-startup',
+    title: 'Evening Startup',
+    time: '19:00',
+    startHour: 19,
+    startMinute: 0,
+    endHour: 21,
+    endMinute: 30,
+    icon: Flag,
+    color: 'text-indigo-600 dark:text-indigo-400',
+    bgColor: 'bg-indigo-50',
+    darkBgColor: 'dark:bg-indigo-950/30',
+  },
+  {
+    id: 'slot-night',
+    milestoneId: 'system:evening-summary',
+    title: 'Evening Summary',
+    time: '21:30',
+    startHour: 21,
+    startMinute: 30,
+    endHour: 24,
+    endMinute: 0,
+    icon: CheckCircle2,
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bgColor: 'bg-emerald-50',
+    darkBgColor: 'dark:bg-emerald-950/30',
+  },
+];
 
-function getAccent(todo: Todo, section: SectionType): 'none' | 'urgent' | 'focus' | 'goal' {
-  if (todo.nodeType === 'goal') return 'goal';
-  if (section === 'in_progress') return 'focus';
-  if (section === 'overdue') return 'urgent';
-  return 'none';
+function getTimeSlotForTodo(todo: Todo): string | null {
+  if (!todo.scheduledDate) return null;
+  const date = new Date(todo.scheduledDate);
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const timeInMinutes = hour * 60 + minute;
+
+  for (const slot of TIME_SLOTS) {
+    const startInMinutes = slot.startHour * 60 + slot.startMinute;
+    const endInMinutes = slot.endHour * 60 + slot.endMinute;
+    if (timeInMinutes >= startInMinutes && timeInMinutes < endInMinutes) {
+      return slot.id;
+    }
+  }
+  return null;
 }
 
-function SortableCompactTodoRow({
-  item,
+function TimeSlotHeader({
+  config,
+  isCollapsed,
+  onToggle,
+  taskCount,
+}: {
+  config: TimeSlotConfig;
+  isCollapsed: boolean;
+  onToggle: () => void;
+  taskCount: number;
+}) {
+  const Icon = config.icon;
+
+  return (
+    <button
+      onClick={onToggle}
+      className={`w-full flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50`}
+    >
+      <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${config.bgColor} ${config.darkBgColor} ${config.color}`}>
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0 text-left">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+            {config.title}
+          </span>
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+            {config.time}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {taskCount > 0 && (
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+            {taskCount}
+          </span>
+        )}
+        {isCollapsed ? (
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+        )}
+      </div>
+    </button>
+  );
+}
+
+function TimeSlotSection({
+  config,
+  todos,
   selectedTodoId,
   onSelect,
   onToggle,
   onTitleClick,
+  isCollapsed,
+  onToggleCollapse,
 }: {
-  item: DisplayItem;
+  config: TimeSlotConfig;
+  todos: Todo[];
   selectedTodoId: string | null;
   onSelect: (id: string) => void;
   onToggle: (id: string, status: TodoStatus) => void;
   onTitleClick?: (id: string) => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  const dragHandle = (
-    <button
-      {...attributes}
-      {...listeners}
-      className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-400 dark:hover:text-slate-500"
-    >
-      <GripVertical className="w-3.5 h-3.5" />
-    </button>
-  );
-
   return (
-    <div ref={setNodeRef} style={style}>
-      <CompactTodoRow
-        todo={item.todo}
-        selected={selectedTodoId === item.todo.id}
-        onSelect={onSelect}
-        onToggle={onToggle}
-        onTitleClick={onTitleClick}
-        accent={getAccent(item.todo, item.section)}
-        dragHandle={dragHandle}
+    <div className="mb-1">
+      <TimeSlotHeader
+        config={config}
+        isCollapsed={isCollapsed}
+        onToggle={onToggleCollapse}
+        taskCount={todos.length}
       />
-    </div>
-  );
-}
-
-function SectionHeader({ section }: { section: SectionType }) {
-  const cfg = sectionConfig[section];
-  const Icon = cfg.icon;
-  return (
-    <div className={`flex items-center gap-1 text-[10px] font-medium ${cfg.color} uppercase tracking-wider px-2 py-1`}>
-      <Icon className="w-3 h-3" />
-      {cfg.label}
+      {!isCollapsed && todos.length > 0 && (
+        <div className="ml-4 pl-4 border-l border-slate-200 dark:border-slate-700 space-y-0.5">
+          {todos.map((todo) => (
+            <CompactTodoRow
+              key={todo.id}
+              todo={todo}
+              selected={selectedTodoId === todo.id}
+              onSelect={onSelect}
+              onToggle={onToggle}
+              onTitleClick={onTitleClick}
+            />
+          ))}
+        </div>
+      )}
+      {!isCollapsed && todos.length === 0 && (
+        <div className="ml-4 pl-4 border-l border-slate-200 dark:border-slate-700 py-2">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">
+            No tasks scheduled
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -939,6 +1046,7 @@ export function Today() {
   const [pluses, setPluses] = useState<Pluse[]>([]);
   const [plusesLoading, setPlusesLoading] = useState(true);
   const [activePluse, setActivePluse] = useState<Pluse | null>(null);
+  const [collapsedSlots, setCollapsedSlots] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     getAllPluses().then((all) => {
@@ -958,6 +1066,18 @@ export function Today() {
       setSelectedTodoId(inProgress[0].id);
     }
   }, [inProgress, selectedTodoId]);
+
+  const toggleSlotCollapse = useCallback((slotId: string) => {
+    setCollapsedSlots((prev) => {
+      const next = new Set(prev);
+      if (next.has(slotId)) {
+        next.delete(slotId);
+      } else {
+        next.add(slotId);
+      }
+      return next;
+    });
+  }, []);
 
   async function toggleTodo(todoId: string, currentStatus: TodoStatus) {
     const newStatus: TodoStatus = currentStatus === 'done' ? 'pending' : 'done';
@@ -1025,13 +1145,14 @@ export function Today() {
     }
   }
 
-  // Build flat todo list: in-progress -> overdue -> scheduled -> anytime -> done
-  const timeGroups = new Map<TimeOfDay | 'none', Todo[]>([
-    ['morning', []],
-    ['afternoon', []],
-    ['evening', []],
-    ['none', []],
-  ]);
+  // Build time slot groups
+  const timeSlotGroups = useMemo(() => {
+    const groups = new Map<string, Todo[]>();
+    for (const slot of TIME_SLOTS) {
+      groups.set(slot.id, []);
+    }
+    return groups;
+  }, []);
 
   const allActiveTodos: Todo[] = [];
   const doneTodos: Todo[] = [];
@@ -1051,10 +1172,12 @@ export function Today() {
     }
     if (seenActive.has(todo.id)) return;
     seenActive.add(todo.id);
-    if (!todo.scheduledDate) {
-      timeGroups.get('none')!.push(todo);
-    } else {
-      timeGroups.get(getTimeOfDay(todo.scheduledDate))!.push(todo);
+    // Skip system tasks - they're shown as time slot headers
+    if (todo.isSystemTask) return;
+    
+    const slotId = getTimeSlotForTodo(todo);
+    if (slotId) {
+      timeSlotGroups.get(slotId)!.push(todo);
     }
   }
 
@@ -1062,7 +1185,8 @@ export function Today() {
   for (const todo of overdue) addActive(todo);
   for (const todo of todos) addActive(todo);
 
-  for (const [, list] of timeGroups) {
+  // Sort tasks within each slot
+  for (const [, list] of timeSlotGroups) {
     list.sort((a, b) => a.order - b.order);
   }
 
@@ -1073,48 +1197,15 @@ export function Today() {
   };
   for (const todo of inProgress) pushActiveOrdered(todo);
   for (const todo of overdue) pushActiveOrdered(todo);
-  for (const slot of ['morning', 'afternoon', 'evening', 'none'] as const) {
-    for (const todo of timeGroups.get(slot)!) pushActiveOrdered(todo);
-  }
-
-  // Build flat display items for sortable list
-  const displayItems: DisplayItem[] = [
-    ...inProgress.filter((t) => t.status !== 'done').map((t) => ({ id: t.id, todo: t, section: 'in_progress' as SectionType })),
-    ...overdue.filter((t) => t.status !== 'done').map((t) => ({ id: t.id, todo: t, section: 'overdue' as SectionType })),
-    ...timeGroups.get('morning')!.map((t) => ({ id: t.id, todo: t, section: 'morning' as SectionType })),
-    ...timeGroups.get('afternoon')!.map((t) => ({ id: t.id, todo: t, section: 'afternoon' as SectionType })),
-    ...timeGroups.get('evening')!.map((t) => ({ id: t.id, todo: t, section: 'evening' as SectionType })),
-    ...timeGroups.get('none')!.map((t) => ({ id: t.id, todo: t, section: 'anytime' as SectionType })),
-    ...doneTodos.map((t) => ({ id: t.id, todo: t, section: 'done' as SectionType })),
-  ];
-
-  // DnD sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = displayItems.findIndex((i) => i.id === active.id);
-    const newIndex = displayItems.findIndex((i) => i.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reordered = arrayMove(displayItems, oldIndex, newIndex);
-    const orderedIds = reordered.map((i) => i.id);
-
-    await reorderTodos(orderedIds);
-    await refresh();
+  for (const slot of TIME_SLOTS) {
+    for (const todo of timeSlotGroups.get(slot.id)!) pushActiveOrdered(todo);
   }
 
   const doneCount = doneTodos.length;
   const totalActive = allActiveTodos.length;
+
+  // Check if any time slot has tasks
+  const hasTimeSlotTasks = TIME_SLOTS.some((slot) => (timeSlotGroups.get(slot.id)?.length ?? 0) > 0);
 
   const hasAnything =
     totalActive > 0 || suggested.length > 0 || doneTodos.length > 0;
@@ -1247,77 +1338,65 @@ export function Today() {
                 </p>
               </div>
             ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={displayItems.map((i) => i.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-0.5">
-                    {displayItems.map((item, index) => {
-                      const showHeader = index === 0 || displayItems[index - 1].section !== item.section;
-                      return (
-                        <div key={item.id}>
-                          {showHeader && <SectionHeader section={item.section} />}
-                          <SortableCompactTodoRow
-                            item={item}
-                            selectedTodoId={selectedTodoId}
-                            onSelect={handleSelectTodo}
-                            onToggle={toggleTodo}
-                            onTitleClick={(id) => navigate(`/todo/${id}`)}
-                          />
-                        </div>
-                      );
-                    })}
+              <div className="space-y-1">
+                {/* Time Slots */}
+                {TIME_SLOTS.map((slot) => (
+                  <TimeSlotSection
+                    key={slot.id}
+                    config={slot}
+                    todos={timeSlotGroups.get(slot.id) ?? []}
+                    selectedTodoId={selectedTodoId}
+                    onSelect={handleSelectTodo}
+                    onToggle={toggleTodo}
+                    onTitleClick={(id) => navigate(`/todo/${id}`)}
+                    isCollapsed={collapsedSlots.has(slot.id)}
+                    onToggleCollapse={() => toggleSlotCollapse(slot.id)}
+                  />
+                ))}
 
-                    {/* Suggested (not sortable) */}
-                    {suggested.length > 0 && (
-                      <>
-                        <div className="flex items-center gap-1 text-[10px] font-medium text-orange-600 dark:text-orange-400 uppercase tracking-wider px-2 py-1">
-                          <Flame className="w-3 h-3" />
-                          Suggested
+                {/* Suggested (not sortable) */}
+                {suggested.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-orange-600 dark:text-orange-400 uppercase tracking-wider px-2 py-1">
+                      <Flame className="w-3 h-3" />
+                      Suggested
+                    </div>
+                    {suggested.slice(0, 3).map((todo) => (
+                      <div
+                        key={todo.id}
+                        className="flex items-start gap-2 py-1.5 px-2 -mx-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      >
+                        <div className="mt-0.5 shrink-0">
+                          <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600" />
                         </div>
-                        {suggested.slice(0, 3).map((todo) => (
-                          <div
-                            key={todo.id}
-                            className="flex items-start gap-2 py-1.5 px-2 -mx-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                        <div className="flex-1 min-w-0">
+                          <Link
+                            to={`/todo/${todo.id}`}
+                            className="text-sm text-left text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate block w-full"
                           >
-                            <div className="mt-0.5 shrink-0">
-                              <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <Link
-                                to={`/todo/${todo.id}`}
-                                className="text-sm text-left text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate block w-full"
-                              >
-                                {todo.title}
-                              </Link>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                                  {formatDuration(todo.estimatedMinutes ?? 60)}
-                                </span>
-                                <PriorityBadge priority={todo.priority ?? 'medium'} />
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => scheduleForToday(todo.id)}
-                              className="shrink-0 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
-                            >
-                              Add
-                            </button>
+                            {todo.title}
+                          </Link>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                              {formatDuration(todo.estimatedMinutes ?? 60)}
+                            </span>
+                            <PriorityBadge priority={todo.priority ?? 'medium'} />
                           </div>
-                        ))}
-                      </>
-                    )}
-
-                    {/* Spacer for WebKit scroll padding bug */}
-                    <div className="h-20" />
+                        </div>
+                        <button
+                          onClick={() => scheduleForToday(todo.id)}
+                          className="shrink-0 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                </SortableContext>
-              </DndContext>
+                )}
+
+                {/* Spacer for WebKit scroll padding bug */}
+                <div className="h-20" />
+              </div>
             )}
           </div>
         </div>
