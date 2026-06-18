@@ -85,4 +85,5 @@ export const nativeStorage = {
     callNative<boolean>('storage', 'setItem', { key, value }),
   removeItem: (key: string) =>
     callNative<boolean>('storage', 'removeItem', { key }),
+  clearAllData: () => callNative<boolean>('storage', 'clearAllData'),
 };

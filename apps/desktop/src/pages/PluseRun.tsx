@@ -27,6 +27,7 @@ import {
 import type { Pluse, Todo } from '../types';
 import { getPluse } from '../db/pluse';
 import { getAllTodos, updateTodoStatus } from '../db/todos';
+import { createTimerSession, updateTimerSession, getTimerSessions, getTimerSession } from '../db/timerSessions';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import { PulseEKG } from '../components/PulseEKG';
 import { formatSeconds } from '../utils/date';
@@ -343,6 +344,7 @@ export function PluseRun() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showConfirmEnd, setShowConfirmEnd] = useState(false);
   const [anchoredTodoId, setAnchoredTodoId] = useState<string | undefined>(undefined);
@@ -384,9 +386,73 @@ export function PluseRun() {
     };
   }, [loadPluse, id]);
 
+  // Sync remote timer session changes to local state
+  useEffect(() => {
+    if (!sessionId) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
+      if (detail?.table !== 'timerSession' || detail?.recordId !== sessionId) return;
+      getTimerSession(sessionId).then((session) => {
+        if (!session || session.status === 'completed') return;
+        setIsRunning(session.status === 'running');
+        setCurrentIndex(session.currentIndex);
+        if (session.status === 'paused') {
+          setElapsedSeconds(session.elapsedSeconds);
+        }
+        if (session.todoId !== undefined) {
+          setAnchoredTodoId(session.todoId ?? undefined);
+        }
+      });
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => window.removeEventListener('sync:remote-applied', handler);
+  }, [sessionId]);
+
   const expandedIntervals = pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : [];
   const currentDuration = expandedIntervals[currentIndex] || 0;
   const anchoredTodo = anchoredTodoId ? todos.find((t) => t.id === anchoredTodoId) : undefined;
+
+  // Restore existing timer session on mount
+  useEffect(() => {
+    if (!pluse) return;
+    getTimerSessions({ type: 'pluse' }).then((sessions) => {
+      const active = sessions.find((s) => s.pluseId === pluse.id && s.status !== 'completed');
+      if (!active) return;
+
+      setSessionId(active.id);
+      setCurrentIndex(active.currentIndex);
+
+      if (active.status === 'running' && active.startedAt) {
+        const runningElapsed = Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
+        const totalElapsed = active.elapsedSeconds + runningElapsed;
+        let idx = active.currentIndex;
+        let e = totalElapsed;
+        while (idx < expandedIntervals.length) {
+          const dur = expandedIntervals[idx];
+          if (e < dur) break;
+          e -= dur;
+          idx++;
+        }
+        if (idx >= expandedIntervals.length) {
+          setCurrentIndex(expandedIntervals.length - 1);
+          setElapsedSeconds(expandedIntervals[expandedIntervals.length - 1]);
+          setIsRunning(false);
+          setIsCompleted(true);
+          updateTimerSession(active.id, { status: 'completed', completedAt: new Date() });
+        } else {
+          setCurrentIndex(idx);
+          setElapsedSeconds(idx === active.currentIndex ? active.elapsedSeconds : 0);
+          setIsRunning(true);
+        }
+      } else if (active.status === 'paused') {
+        setElapsedSeconds(active.elapsedSeconds);
+        setIsRunning(false);
+      }
+      if (active.todoId) {
+        setAnchoredTodoId(active.todoId);
+      }
+    });
+  }, [pluse?.id]);
 
   // Cancel all timer notifications on unmount
   useEffect(() => {
@@ -447,6 +513,12 @@ export function PluseRun() {
     }
   }, [currentIndex, pluse]);
 
+  // Persist anchoredTodoId to session when it changes
+  useEffect(() => {
+    if (!sessionId) return;
+    updateTimerSession(sessionId, { todoId: anchoredTodoId ?? null }).catch(() => {});
+  }, [anchoredTodoId, sessionId]);
+
   // Schedule/cancel timer notifications
   useEffect(() => {
     if (!pluse) return;
@@ -493,22 +565,38 @@ export function PluseRun() {
       }
 
       if (currentIndex < expandedIntervals.length - 1) {
+        const nextIdx = currentIndex + 1;
         if (timerRef.current) clearInterval(timerRef.current);
         if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
         setIsRunning(false);
         timerNotifyCancel(`pluse-timer-${pluse?.id}`);
         showBrowserNotification(
           `${pluse?.name} — Interval ${currentIndex + 1} complete`,
-          `Interval ${currentIndex + 2} of ${expandedIntervals.length} is next.`
+          `Interval ${nextIdx + 1} of ${expandedIntervals.length} is next.`
         );
-        setCurrentIndex((prev) => prev + 1);
+        setCurrentIndex(nextIdx);
         setElapsedSeconds(0);
+        if (sessionId) {
+          updateTimerSession(sessionId, {
+            currentIndex: nextIdx,
+            elapsedSeconds: 0,
+            status: 'paused',
+            pausedAt: new Date(),
+          });
+        }
         if (shouldAutoAdvance) {
           console.log('[PluseRun] scheduling auto-advance in 2s');
           autoAdvanceRef.current = setTimeout(() => {
             console.log('[PluseRun] auto-advance timeout fired');
             autoAdvanceRef.current = null;
             setIsRunning(true);
+            if (sessionId) {
+              updateTimerSession(sessionId, {
+                status: 'running',
+                startedAt: new Date(),
+                pausedAt: null,
+              });
+            }
             if (soundEnabled) playBeep(660, 150);
           }, 2000);
         }
@@ -526,6 +614,14 @@ export function PluseRun() {
           setElapsedSeconds(0);
           setSmoothElapsed(0);
           completedRef.current = false;
+          if (sessionId) {
+            updateTimerSession(sessionId, {
+              currentIndex: 0,
+              elapsedSeconds: 0,
+              status: 'paused',
+              pausedAt: new Date(),
+            });
+          }
           showBrowserNotification(
             `${pluse?.name} — Round complete`,
             'Restarting from interval 1...'
@@ -534,11 +630,24 @@ export function PluseRun() {
             console.log('[PluseRun] auto-restart timeout fired');
             autoAdvanceRef.current = null;
             setIsRunning(true);
+            if (sessionId) {
+              updateTimerSession(sessionId, {
+                status: 'running',
+                startedAt: new Date(),
+                pausedAt: null,
+              });
+            }
             if (soundEnabled) playBeep(660, 150);
           }, 2000);
         } else {
           // Stop — user must manually restart
           setIsCompleted(true);
+          if (sessionId) {
+            updateTimerSession(sessionId, {
+              status: 'completed',
+              completedAt: new Date(),
+            });
+          }
           timerNotifySchedule(
             `pluse-done-${pluse?.id}`,
             `${pluse?.name} — Complete!`,
@@ -550,24 +659,63 @@ export function PluseRun() {
     }
   }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length, soundEnabled, playBeep, playFinish]);
 
-  function toggleRunning() {
-    setIsRunning((r) => {
-      if (!r) {
-        requestBrowserNotificationPermission().catch(() => {});
-      }
-      return !r;
-    });
-  }
-
-  function skipToNext() {
-    if (currentIndex < expandedIntervals.length - 1) {
+  async function toggleRunning() {
+    if (isRunning) {
+      // Pause
       setIsRunning(false);
-      setCurrentIndex((prev) => prev + 1);
-      setElapsedSeconds(0);
+      if (sessionId) {
+        await updateTimerSession(sessionId, {
+          status: 'paused',
+          elapsedSeconds,
+          pausedAt: new Date(),
+        });
+      }
+    } else {
+      // Start or Resume
+      requestBrowserNotificationPermission().catch(() => {});
+      setIsRunning(true);
+      if (sessionId) {
+        await updateTimerSession(sessionId, {
+          status: 'running',
+          startedAt: new Date(),
+          pausedAt: null,
+        });
+      } else if (pluse) {
+        const session = await createTimerSession({
+          type: 'pluse',
+          name: pluse.name,
+          pluseId: pluse.id,
+          todoId: anchoredTodoId,
+          intervals: pluse.intervals,
+          repeatCount: pluse.repeatCount,
+          currentIndex,
+          elapsedSeconds,
+          status: 'running',
+          startedAt: new Date(),
+        });
+        setSessionId(session.id);
+      }
     }
   }
 
-  function restart() {
+  async function skipToNext() {
+    if (currentIndex < expandedIntervals.length - 1) {
+      const nextIndex = currentIndex + 1;
+      setIsRunning(false);
+      setCurrentIndex(nextIndex);
+      setElapsedSeconds(0);
+      if (sessionId) {
+        await updateTimerSession(sessionId, {
+          currentIndex: nextIndex,
+          elapsedSeconds: 0,
+          status: 'paused',
+          pausedAt: new Date(),
+        });
+      }
+    }
+  }
+
+  async function restart() {
     if (autoAdvanceRef.current) {
       clearTimeout(autoAdvanceRef.current);
       autoAdvanceRef.current = null;
@@ -583,9 +731,17 @@ export function PluseRun() {
       timerNotifyCancel(`pluse-timer-${pluse.id}`);
       timerNotifyCancel(`pluse-done-${pluse.id}`);
     }
+    if (sessionId) {
+      await updateTimerSession(sessionId, {
+        currentIndex: 0,
+        elapsedSeconds: 0,
+        status: 'paused',
+        pausedAt: new Date(),
+      });
+    }
   }
 
-  function endSession() {
+  async function endSession() {
     if (!showConfirmEnd) {
       setShowConfirmEnd(true);
       return;
@@ -598,6 +754,12 @@ export function PluseRun() {
     if (pluse) {
       timerNotifyCancel(`pluse-timer-${pluse.id}`);
       timerNotifyCancel(`pluse-done-${pluse.id}`);
+    }
+    if (sessionId) {
+      await updateTimerSession(sessionId, {
+        status: 'completed',
+        completedAt: new Date(),
+      });
     }
     navigate('/pluses');
   }

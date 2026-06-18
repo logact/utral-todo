@@ -41,6 +41,12 @@ struct StorageModule: BridgeModule {
             }
             return .object(result)
 
+        case "clearAllData":
+            let domain = Bundle.main.bundleIdentifier!
+            defaults.removePersistentDomain(forName: domain)
+            defaults.synchronize()
+            return .bool(true)
+
         default:
             throw BridgeModuleError.unknownAction(action)
         }

@@ -746,7 +746,8 @@ function CompactTodoRow({
 
   return (
     <div
-      className={`flex items-start gap-2 py-1.5 px-2 -mx-2 rounded-md transition-colors ${
+      onClick={() => onSelect(todo.id)}
+      className={`flex items-start gap-2 py-1.5 px-2 -mx-2 rounded-md cursor-pointer transition-colors ${
         selected ? 'bg-indigo-50 dark:bg-indigo-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
       } ${accentClasses[accent || 'none']}`}
     >
@@ -1296,7 +1297,7 @@ export function Today() {
               {todayGoals.map((goal) => (
                 <button
                   key={goal.id}
-                  onClick={() => navigate(`/todo/${goal.id}`)}
+                  onClick={() => handleSelectTodo(goal.id)}
                   className="w-full flex items-center gap-2 text-left group"
                 >
                   <span className="flex-1 min-w-0 text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -1344,7 +1345,6 @@ export function Today() {
                     selectedTodoId={selectedTodoId}
                     onSelect={handleSelectTodo}
                     onToggle={toggleTodo}
-                    onTitleClick={(id) => navigate(`/todo/${id}`)}
                     isCollapsed={collapsedSlots.has(slot.id)}
                     onToggleCollapse={() => toggleSlotCollapse(slot.id)}
                   />

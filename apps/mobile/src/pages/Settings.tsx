@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Smartphone, Server, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
-import { nativeDevice, nativeNotification, isNativeShell } from '../bridge/native';
+import { Moon, Sun, Smartphone, Server, RefreshCw, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { nativeDevice, nativeNotification, isNativeShell, nativeStorage } from '../bridge/native';
 import { getSyncConfig, setSyncConfig, syncAll } from '../db/sync';
 import * as syncEngine from '../db/syncEngine';
 
@@ -15,6 +15,7 @@ export function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [syncError, setSyncError] = useState('');
   const [isConnected, setIsConnected] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   useEffect(() => {
     if (isNativeShell()) {
@@ -86,6 +87,28 @@ export function SettingsPage() {
       setSyncError(err instanceof Error ? err.message : String(err));
     }
     setTimeout(() => setSyncStatus('idle'), 3000);
+  }
+
+  async function handleClearAllData() {
+    if (!confirm('This will clear all local data. Continue?')) return;
+    setIsClearing(true);
+    try {
+      if (isNativeShell()) {
+        await nativeStorage.clearAllData();
+      }
+      localStorage.clear();
+      indexedDB.databases().then((dbs) => {
+        dbs.forEach((db) => {
+          if (db.name) indexedDB.deleteDatabase(db.name);
+        });
+      });
+      alert('All data cleared. The app will reload.');
+      window.location.reload();
+    } catch (err) {
+      alert('Failed to clear data: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsClearing(false);
+    }
   }
 
   return (
@@ -207,6 +230,20 @@ export function SettingsPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400 ml-8">{deviceInfo}</p>
         </div>
       )}
+
+      {/* Danger Zone */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-rose-200 dark:border-rose-900 overflow-hidden">
+        <button
+          onClick={handleClearAllData}
+          disabled={isClearing}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-rose-50 dark:active:bg-rose-950/50 disabled:opacity-50"
+        >
+          <Trash2 className="w-5 h-5 text-rose-500" />
+          <span className="flex-1 text-[15px] text-rose-600 dark:text-rose-400">
+            {isClearing ? 'Clearing...' : 'Clear All Data'}
+          </span>
+        </button>
+      </div>
 
       {/* About */}
       <div className="text-center py-4">
