@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  base: '/desktop/',
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {
