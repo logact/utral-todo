@@ -388,25 +388,33 @@ export function PluseRun() {
 
   // Sync remote timer session changes to local state
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !pluse?.id) return;
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
-      if (detail?.table !== 'timerSession' || detail?.recordId !== sessionId) return;
-      getTimerSession(sessionId).then((session) => {
-        if (!session || session.status === 'completed') return;
-        setIsRunning(session.status === 'running');
-        setCurrentIndex(session.currentIndex);
-        if (session.status === 'paused') {
-          setElapsedSeconds(session.elapsedSeconds);
+      if (detail?.table !== 'timerSession') return;
+      getTimerSessions({ type: 'pluse' }).then((sessions) => {
+        const active = sessions.find((s) => s.pluseId === pluse.id && s.status !== 'completed');
+        if (active && active.id !== sessionId) {
+          setSessionId(active.id);
         }
-        if (session.todoId !== undefined) {
-          setAnchoredTodoId(session.todoId ?? undefined);
+        if (!active || active.status === 'completed') return;
+        setCurrentIndex(active.currentIndex);
+        if (active.status === 'running' && active.startedAt) {
+          const awaySeconds = Math.floor((Date.now() - new Date(active.startedAt).getTime()) / 1000);
+          setElapsedSeconds(active.elapsedSeconds + awaySeconds);
+          setIsRunning(true);
+        } else if (active.status === 'paused') {
+          setElapsedSeconds(active.elapsedSeconds);
+          setIsRunning(false);
+        }
+        if (active.todoId !== undefined) {
+          setAnchoredTodoId(active.todoId ?? undefined);
         }
       });
     };
     window.addEventListener('sync:remote-applied', handler);
     return () => window.removeEventListener('sync:remote-applied', handler);
-  }, [sessionId]);
+  }, [sessionId, pluse?.id]);
 
   const expandedIntervals = pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : [];
   const currentDuration = expandedIntervals[currentIndex] || 0;
@@ -667,6 +675,7 @@ export function PluseRun() {
         await updateTimerSession(sessionId, {
           status: 'paused',
           elapsedSeconds,
+          currentIndex,
           pausedAt: new Date(),
         });
       }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Play,
   Pause,
@@ -114,7 +114,9 @@ export function PluseRun() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const todoId = searchParams.get('todoId');
+  const navSession = (location.state as { session?: TimerSession } | null)?.session;
 
   const [pluse, setPluse] = useState<Pluse | null>(null);
   const [todo, setTodo] = useState<Todo | null>(null);
@@ -129,6 +131,8 @@ export function PluseRun() {
   const hasStartedRef = useRef(false);
   const sessionRef = useRef<TimerSession | null>(null);
   const isRestoringRef = useRef(false);
+  const elapsedSecondsRef = useRef(0);
+  elapsedSecondsRef.current = elapsedSeconds;
 
   // Load pluse and todo
   useEffect(() => {
@@ -150,48 +154,55 @@ export function PluseRun() {
 
   // Restore active timer session on mount
   useEffect(() => {
-    if (!id || !todoId || !pluse) return;
+    if (!id || !todoId) return;
 
-    async function restore() {
-      const session = await getActiveTimerSession();
-      if (session && session.pluseId === id && session.todoId === todoId) {
-        isRestoringRef.current = true;
-        sessionRef.current = session;
-        setCurrentIndex(session.currentIndex);
+    async function restoreSession(session: TimerSession) {
+      isRestoringRef.current = true;
+      sessionRef.current = session;
+      setCurrentIndex(session.currentIndex);
 
-        if (session.status === 'running') {
-          const awaySeconds = Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000);
-          const totalElapsed = session.elapsedSeconds + awaySeconds;
-          setElapsedSeconds(totalElapsed);
-          setIsRunning(true);
-          // Reset startedAt to now so we don't double-count on next restore
-          await updateTimerSession(session.id, {
-            elapsedSeconds: totalElapsed,
-            startedAt: new Date(),
-          });
-        } else if (session.status === 'paused') {
-          setElapsedSeconds(session.elapsedSeconds);
-          setIsRunning(false);
-        } else if (session.status === 'completed') {
-          setIsCompleted(true);
-          setIsRunning(false);
-          setElapsedSeconds(session.elapsedSeconds);
-        }
-
-        if (session.status !== 'completed') {
-          hasStartedRef.current = true;
-          updateTodoStatus(todoId, 'in_progress').catch(() => {});
-        }
-
-        // Clear restoring flag after state settles
-        setTimeout(() => {
-          isRestoringRef.current = false;
-        }, 100);
+      if (session.status === 'running') {
+        const awaySeconds = Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000);
+        const totalElapsed = session.elapsedSeconds + awaySeconds;
+        setElapsedSeconds(totalElapsed);
+        setIsRunning(true);
+        await updateTimerSession(session.id, {
+          elapsedSeconds: totalElapsed,
+          startedAt: new Date(),
+        });
+      } else if (session.status === 'paused') {
+        setElapsedSeconds(session.elapsedSeconds);
+        setIsRunning(false);
+      } else if (session.status === 'completed') {
+        setIsCompleted(true);
+        setIsRunning(false);
+        setElapsedSeconds(session.elapsedSeconds);
       }
+
+      if (session.status !== 'completed') {
+        hasStartedRef.current = true;
+        updateTodoStatus(todoId, 'in_progress').catch(() => {});
+      }
+
+      setTimeout(() => {
+        isRestoringRef.current = false;
+      }, 100);
     }
 
-    restore();
-  }, [id, todoId, pluse]);
+    // Prefer session passed via navigation state (instant restore)
+    if (navSession && navSession.pluseId === id && navSession.todoId === todoId) {
+      restoreSession(navSession);
+      return;
+    }
+
+    // Fallback: query DB (waits for pluse to load for matching)
+    if (!pluse) return;
+    getActiveTimerSession().then((session) => {
+      if (session && session.pluseId === id && session.todoId === todoId) {
+        restoreSession(session);
+      }
+    });
+  }, [id, todoId, pluse, navSession]);
 
   // Timer tick
   useEffect(() => {
@@ -341,7 +352,7 @@ export function PluseRun() {
       setIsRunning(false);
       if (sessionRef.current) {
         await updateTimerSession(sessionRef.current.id, {
-          elapsedSeconds,
+          elapsedSeconds: elapsedSecondsRef.current,
           status: 'paused',
           pausedAt: new Date(),
         });
@@ -376,6 +387,7 @@ export function PluseRun() {
         await updateTimerSession(sessionRef.current.id, {
           status: 'running',
           startedAt: new Date(),
+          pausedAt: null,
         });
       }
       setIsRunning(true);

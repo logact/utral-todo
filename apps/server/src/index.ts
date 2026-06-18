@@ -69,6 +69,9 @@ app.delete('/api/all-data', async (_req, res) => {
   await prisma.todoRelation.deleteMany();
   await prisma.actionEdge.deleteMany();
   await prisma.pluse.deleteMany();
+  await prisma.repeatOccurrence.deleteMany();
+  await prisma.plan.deleteMany();
+  await prisma.syncEvent.deleteMany();
   await prisma.todo.deleteMany();
   res.status(204).send();
 });
@@ -182,11 +185,6 @@ async function seedSystemTasks(): Promise<void> {
 
 const PORT = process.env.PORT || 3001;
 
-runDataMigrations()
-  .then(() => runPlanMigration())
-  .then(() => seedSystemTasks())
-  .then(() => {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
-  });

@@ -37,13 +37,17 @@ function ActiveSessionCard({
   pluses,
   tick,
   onResume,
+  onPause,
   onStop,
+  onTapTimer,
 }: {
   session: TimerSession;
   pluses: Pluse[];
   tick: number;
   onResume: () => void;
+  onPause: () => void;
   onStop: () => void;
+  onTapTimer: () => void;
 }) {
   const pluse = pluses.find((p) => p.id === session.pluseId);
   const expanded = session.intervals ? expandIntervals(session.intervals, session.repeatCount) : [];
@@ -77,18 +81,31 @@ function ActiveSessionCard({
         </p>
       </div>
 
-      <div className="text-4xl font-mono font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+      <button
+        onClick={onTapTimer}
+        className="text-4xl font-mono font-semibold text-slate-900 dark:text-slate-100 tracking-tight active:scale-95 transition-transform"
+      >
         {formatCountdown(remainingSeconds)}
-      </div>
+      </button>
 
       <div className="flex items-center justify-center gap-2">
-        <button
-          onClick={onResume}
-          className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-medium bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
-        >
-          <Play className="w-3.5 h-3.5" />
-          Resume
-        </button>
+        {session.status === 'running' ? (
+          <button
+            onClick={onPause}
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 active:bg-amber-100 dark:active:bg-amber-950/50 transition-colors"
+          >
+            <Pause className="w-3.5 h-3.5" />
+            Pause
+          </button>
+        ) : (
+          <button
+            onClick={onResume}
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-medium bg-indigo-600 text-white active:bg-indigo-700 transition-colors"
+          >
+            <Play className="w-3.5 h-3.5" />
+            Resume
+          </button>
+        )}
         <button
           onClick={onStop}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 active:bg-slate-50 dark:active:bg-slate-700 transition-colors"
@@ -701,9 +718,28 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
     return () => clearInterval(interval);
   }, [activeSession]);
 
-  function handleResumeSession() {
+  async function handleResumeSession() {
     if (!activeSession) return;
-    navigate(`/pluse/${activeSession.pluseId}/run?todoId=${activeSession.todoId}`);
+    await updateTimerSession(activeSession.id, {
+      status: 'running',
+      startedAt: new Date(),
+      pausedAt: null,
+    });
+    setActiveSession({ ...activeSession, status: 'running', startedAt: new Date(), pausedAt: null });
+    nativeHaptic.impact('medium').catch(() => {});
+  }
+
+  async function handlePauseSession() {
+    if (!activeSession) return;
+    const now = Date.now();
+    const elapsed = activeSession.elapsedSeconds + Math.floor((now - new Date(activeSession.startedAt).getTime()) / 1000);
+    await updateTimerSession(activeSession.id, {
+      status: 'paused',
+      pausedAt: new Date(),
+      elapsedSeconds: elapsed,
+    });
+    setActiveSession({ ...activeSession, status: 'paused', pausedAt: new Date(), elapsedSeconds: elapsed });
+    nativeHaptic.impact('medium').catch(() => {});
   }
 
   async function handleStopSession() {
@@ -762,7 +798,9 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
               pluses={pluses}
               tick={sessionTick}
               onResume={handleResumeSession}
+              onPause={handlePauseSession}
               onStop={handleStopSession}
+              onTapTimer={() => navigate(`/pluse/${activeSession.pluseId}/run?todoId=${activeSession.todoId}`, { state: { session: activeSession } })}
             />
           ) : activePluse ? (
             <>

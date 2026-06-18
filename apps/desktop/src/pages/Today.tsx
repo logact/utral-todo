@@ -113,6 +113,47 @@ function TimerClock() {
     });
   }, []);
 
+  // Sync remote timer session changes (e.g. from iOS)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
+      if (detail?.table !== 'timerSession') return;
+      getTimerSessions({ type: 'stopwatch' }).then((sessions) => {
+        const active = sessions.find((s) => s.status !== 'completed');
+        if (!active) {
+          setSessionId(null);
+          setRunning(false);
+          setElapsedSeconds(0);
+          setStartTime(null);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return;
+        }
+        setSessionId(active.id);
+        if (active.status === 'running' && active.startedAt) {
+          const newStart = new Date(active.startedAt).getTime();
+          setElapsedSeconds(active.elapsedSeconds);
+          setStartTime(newStart);
+          setRunning(true);
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
+        } else {
+          setElapsedSeconds(active.elapsedSeconds);
+          setStartTime(null);
+          setRunning(false);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+        }
+      });
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => window.removeEventListener('sync:remote-applied', handler);
+  }, []);
+
   // Tick every second while running
   useEffect(() => {
     if (running) {
@@ -313,6 +354,50 @@ function PluseMiniTimer({
       }
     });
   }, [pluse.id, expandedIntervals, totalItems]);
+
+  // Sync remote timer session changes (e.g. from iOS)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
+      if (detail?.table !== 'timerSession') return;
+      getTimerSessions({ type: 'pluse' }).then((sessions) => {
+        const active = sessions.find((s) => s.pluseId === pluse.id && s.status !== 'completed');
+        if (!active) {
+          setSessionId(null);
+          setCurrentIndex(0);
+          setElapsedSeconds(0);
+          setIsRunning(false);
+          setIsCompleted(false);
+          setStartTime(null);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return;
+        }
+        setSessionId(active.id);
+        setCurrentIndex(active.currentIndex);
+        setIsCompleted(active.status === 'completed');
+        if (active.status === 'running' && active.startedAt) {
+          setElapsedSeconds(active.elapsedSeconds);
+          setStartTime(Date.now());
+          setIsRunning(true);
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
+        } else {
+          setElapsedSeconds(active.elapsedSeconds);
+          setIsRunning(false);
+          setStartTime(null);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+        }
+      });
+    };
+    window.addEventListener('sync:remote-applied', handler);
+    return () => window.removeEventListener('sync:remote-applied', handler);
+  }, [pluse.id]);
 
   const getElapsed = useCallback(() => {
     if (!isRunning || !startTime) return elapsedSeconds;

@@ -13,6 +13,7 @@ public final class SyncEngine: ObservableObject {
     private let modelContext: ModelContext
     private var sseTask: Task<Void, Never>?
     private var isOnline = true
+    private static let lastSyncAtKey = "syncLastSyncAt"
 
     public enum SyncStatus: String {
         case idle = "idle"
@@ -29,7 +30,10 @@ public final class SyncEngine: ObservableObject {
 
     public func start() {
         connectSSE()
-        Task { await processQueue() }
+        Task {
+            await catchUpIfNeeded()
+            await processQueue()
+        }
     }
 
     public func stop() {
@@ -41,9 +45,46 @@ public final class SyncEngine: ObservableObject {
         isOnline = online
         if online {
             status = .idle
-            Task { await processQueue() }
+            Task {
+                await catchUpIfNeeded()
+                await processQueue()
+            }
         } else {
             status = .offline
+        }
+    }
+
+    // MARK: - Last Sync Tracking
+
+    private func getLastSyncAt() -> Date? {
+        guard let interval = UserDefaults.standard.object(forKey: Self.lastSyncAtKey) as? TimeInterval else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: interval)
+    }
+
+    private func setLastSyncAt(_ date: Date) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: Self.lastSyncAtKey)
+    }
+
+    // MARK: - Catch-Up Sync
+
+    private func catchUpIfNeeded() async {
+        guard let lastSync = getLastSyncAt() else {
+            setLastSyncAt(Date())
+            return
+        }
+
+        do {
+            let events = try await syncService.fetchEvents(since: lastSync)
+            for event in events {
+                await applyRemoteEvent(event)
+            }
+            if !events.isEmpty {
+                setLastSyncAt(Date())
+            }
+        } catch {
+            lastError = "Catch-up fetch failed: \(error.localizedDescription)"
         }
     }
 
@@ -133,13 +174,18 @@ public final class SyncEngine: ObservableObject {
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true)
         components?.path = "/api/sync/stream"
 
+        var queryItems = [URLQueryItem(name: "deviceId", value: await api.deviceId)]
+        if let token = await api.apiToken {
+            queryItems.append(URLQueryItem(name: "token", value: token))
+        }
+        if let lastSync = getLastSyncAt() {
+            queryItems.append(URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: lastSync)))
+        }
+        components?.queryItems = queryItems
+
         guard let url = components?.url else { return }
 
         var request = URLRequest(url: url)
-        request.setValue(await api.deviceId, forHTTPHeaderField: "x-device-id")
-        if let token = await api.apiToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
 
         do {
             let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -185,8 +231,12 @@ public final class SyncEngine: ObservableObject {
                 for event in delta.events {
                     await applyRemoteEvent(event)
                 }
+                if !delta.events.isEmpty {
+                    setLastSyncAt(Date())
+                }
             } else if let single = try? decoder.decode(SSESingle.self, from: data) {
                 await applyRemoteEvent(single.event)
+                setLastSyncAt(Date())
             }
         } catch {
             print("[sync] Failed to parse SSE data:", error)

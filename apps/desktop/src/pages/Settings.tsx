@@ -22,6 +22,9 @@ export function Settings() {
   const [saved, setSaved] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [cleared, setCleared] = useState(false);
+  const [confirmClearServer, setConfirmClearServer] = useState(false);
+  const [clearedServer, setClearedServer] = useState(false);
+  const [clearServerError, setClearServerError] = useState('');
   const { theme, toggleTheme } = useTheme();
 
   // Sync & Backup state
@@ -70,6 +73,39 @@ export function Settings() {
     setConfirmClear(false);
     setCleared(true);
     setTimeout(() => setCleared(false), 2000);
+  }
+
+  async function handleClearServer() {
+    if (!confirmClearServer) {
+      setConfirmClearServer(true);
+      return;
+    }
+    setClearServerError('');
+    const config = getSyncConfig();
+    if (!config?.serverUrl) {
+      setClearServerError('No server URL configured. Set one in Sync & Backup first.');
+      setConfirmClearServer(false);
+      return;
+    }
+    try {
+      const headers: Record<string, string> = {};
+      if (config.apiToken) {
+        headers['Authorization'] = `Bearer ${config.apiToken}`;
+      }
+      const res = await fetch(`${config.serverUrl}/api/all-data`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+      setConfirmClearServer(false);
+      setClearedServer(true);
+      setTimeout(() => setClearedServer(false), 2000);
+    } catch (err) {
+      setClearServerError(err instanceof Error ? err.message : 'Failed to clear server data');
+      setConfirmClearServer(false);
+    }
   }
 
   function handleSaveSyncConfig() {
@@ -393,6 +429,35 @@ export function Settings() {
             </button>
           )}
         </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleClearServer}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              confirmClearServer
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20'
+            }`}
+          >
+            <Trash2 className="w-4 h-4" />
+            {clearedServer ? 'Server Cleared!' : confirmClearServer ? 'Confirm Clear Server Data' : 'Clear Server Data'}
+          </button>
+          {confirmClearServer && (
+            <button
+              onClick={() => setConfirmClearServer(false)}
+              className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+
+        {clearServerError && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <p>{clearServerError}</p>
+          </div>
+        )}
       </div>
     </div>
   );
