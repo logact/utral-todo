@@ -408,9 +408,6 @@ db.version(30).stores({
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
-}).upgrade(async (tx) => {
-  // Drop the roadmaps table
-  await tx.table('roadmaps').clear();
 });
 
 db.version(31).stores({

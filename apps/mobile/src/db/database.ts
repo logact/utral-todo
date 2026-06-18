@@ -50,9 +50,6 @@ db.version(2).stores({
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
-}).upgrade((tx) => {
-  // Drop the roadmaps table in v2
-  return tx.table('roadmaps').clear();
 });
 
 db.version(3).stores({
@@ -96,9 +93,6 @@ db.version(5).stores({
   repeatOccurrences: 'id, templateId, date',
   syncQueue: 'id, table, operation, recordId, createdAt, retryCount',
   syncState: 'key',
-}).upgrade((tx) => {
-  // Drop the projects table in v5
-  return tx.table('projects').clear();
 });
 
 db.version(6).stores({
