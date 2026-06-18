@@ -68,7 +68,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/desktop">
       <Routes>
         <Route
           path="/"
