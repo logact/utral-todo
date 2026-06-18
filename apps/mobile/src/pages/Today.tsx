@@ -725,7 +725,7 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
       startedAt: new Date(),
       pausedAt: null,
     });
-    setActiveSession({ ...activeSession, status: 'running', startedAt: new Date(), pausedAt: null });
+    setActiveSession({ ...activeSession, status: 'running', startedAt: new Date(), pausedAt: undefined });
     nativeHaptic.impact('medium').catch(() => {});
   }
 

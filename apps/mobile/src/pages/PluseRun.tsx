@@ -181,7 +181,9 @@ export function PluseRun() {
 
       if (session.status !== 'completed') {
         hasStartedRef.current = true;
-        updateTodoStatus(todoId, 'in_progress').catch(() => {});
+        if (todoId) {
+          updateTodoStatus(todoId, 'in_progress').catch(() => {});
+        }
       }
 
       setTimeout(() => {
