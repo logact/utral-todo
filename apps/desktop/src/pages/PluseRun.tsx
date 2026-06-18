@@ -27,7 +27,7 @@ import {
 import type { Pluse, Todo } from '../types';
 import { getPluse } from '../db/pluse';
 import { getAllTodos, updateTodoStatus } from '../db/todos';
-import { createTimerSession, updateTimerSession, getTimerSessions, getTimerSession } from '../db/timerSessions';
+import { createTimerSession, updateTimerSession, getTimerSessions } from '../db/timerSessions';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import { PulseEKG } from '../components/PulseEKG';
 import { formatSeconds } from '../utils/date';
