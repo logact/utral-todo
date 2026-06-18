@@ -723,7 +723,7 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
     await updateTimerSession(activeSession.id, {
       status: 'running',
       startedAt: new Date(),
-      pausedAt: null,
+      pausedAt: undefined,
     });
     setActiveSession({ ...activeSession, status: 'running', startedAt: new Date(), pausedAt: undefined });
     nativeHaptic.impact('medium').catch(() => {});

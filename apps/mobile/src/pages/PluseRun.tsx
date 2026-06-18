@@ -389,7 +389,7 @@ export function PluseRun() {
         await updateTimerSession(sessionRef.current.id, {
           status: 'running',
           startedAt: new Date(),
-          pausedAt: null,
+          pausedAt: undefined,
         });
       }
       setIsRunning(true);
