@@ -1,33 +1,6 @@
-services:
-  app:
-    build:
-      context: ../..
-      dockerfile: apps/server/Dockerfile
-    container_name: utral-todo-server
-    restart: unless-stopped
-    expose:
-      - "3001"
-    volumes:
-      - /var/lib/utral-todo/data:/var/lib/utral-todo/data
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - DATABASE_URL=${DATABASE_URL}
-      - API_TOKEN=${API_TOKEN:-}
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  nginx:
-    image: nginx:alpine
-    container_name: utral-todo-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - app
+# This file is now deprecated.
+# Nginx is integrated into the main container via the Dockerfile.
+# Use docker-compose.yml instead, which exposes port 80 internally.
+#
+# For external nginx reverse proxy, use the standard docker-compose.yml
+# and configure your external nginx to proxy to the container's port 80.
