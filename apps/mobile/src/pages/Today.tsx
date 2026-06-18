@@ -988,6 +988,7 @@ function TodoItem({
       </button>
 
       <button
+        type="button"
         onClick={() => {
           if (canFocus && onFocus) {
             onFocus();
