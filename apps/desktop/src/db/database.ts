@@ -106,7 +106,7 @@ db.version(10).stores({
           status: step.isCompleted ? 'done' : 'pending',
           priority: todo.priority || 'medium',
           estimatedMinutes: 15,
-          tags: [],
+          tags: [] as string[],
           createdAt: new Date(),
           order: i,
         };
@@ -573,7 +573,7 @@ db.version(38).stores({
       description: '',
       isRootGoal: true,
       goalStatus: 'active',
-      tags: [],
+      tags: [] as string[],
       order: 0,
       createdAt: now,
       updatedAt: now,
