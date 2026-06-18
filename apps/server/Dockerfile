@@ -49,7 +49,7 @@ COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/prisma ./prisma
 COPY --from=builder /app/apps/server/package.json ./
 COPY --from=builder /app/apps/server/node_modules ./node_modules
-COPY apps/server/docker-entrypoint.sh ./
+COPY --from=builder /app/apps/server/docker-entrypoint.sh ./
 
 # Copy workspace packages so symlinks in node_modules resolve
 COPY --from=builder /app/packages/types /app/packages/types
@@ -58,7 +58,8 @@ COPY --from=builder /app/packages/types /app/packages/types
 COPY --from=builder /app/apps/desktop/dist /app/static/desktop
 COPY --from=builder /app/apps/mobile/dist /app/static/mobile
 
-# Copy nginx configuration
+# Remove default nginx config and copy ours
+RUN rm -f /etc/nginx/http.d/default.conf
 COPY apps/server/nginx.conf /etc/nginx/http.d/default.conf
 
 # Create data directory for SQLite
