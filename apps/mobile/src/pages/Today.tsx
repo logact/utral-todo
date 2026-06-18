@@ -987,7 +987,14 @@ function TodoItem({
         )}
       </button>
 
-      <Link to={`/todo/${todo.id}`} className="flex-1 min-w-0">
+      <button
+        onClick={() => {
+          if (canFocus && onFocus) {
+            onFocus();
+          }
+        }}
+        className="flex-1 min-w-0 text-left"
+      >
         <p
           className={`text-[15px] font-medium truncate ${
             isDone
@@ -1014,20 +1021,7 @@ function TodoItem({
             </span>
           )}
         </div>
-      </Link>
-
-      {canFocus && onFocus && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onFocus();
-          }}
-          className="mt-0.5 shrink-0 p-1.5 rounded-lg text-slate-400 dark:text-slate-500 active:text-amber-600 dark:active:text-amber-400 active:bg-amber-50 dark:active:bg-amber-950/30 transition-colors"
-          title="Set as current focus"
-        >
-          <Target className="w-4 h-4" />
-        </button>
-      )}
+      </button>
     </div>
   );
 }

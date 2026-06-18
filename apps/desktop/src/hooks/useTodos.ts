@@ -37,7 +37,7 @@ export function useTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence'] });
 
   const add = useCallback(
     async (
@@ -140,7 +140,7 @@ export function useTodaysTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences', 'pluses', 'actionEdges', 'plans'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence', 'pluses', 'pluse', 'actionEdges', 'actionEdge', 'plans', 'plan'] });
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
     if (isVirtualTodoId(id)) {
@@ -180,7 +180,7 @@ export function useTodayScheduled() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence'] });
 
   return { todos, isLoading, refresh };
 }
@@ -196,7 +196,7 @@ export function useTodayInProgress() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo'] });
 
   return { todos, isLoading, refresh };
 }
@@ -212,7 +212,7 @@ export function useTodayOverdue() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo'] });
 
   return { todos, isLoading, refresh };
 }
@@ -228,7 +228,7 @@ export function useTodayGoals() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'relations'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation'] });
 
   return { todos, isLoading, refresh };
 }
@@ -244,7 +244,7 @@ export function useTodaySuggested() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo'] });
 
   return { todos, isLoading, refresh };
 }
@@ -325,7 +325,7 @@ export function useScheduleTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'repeatOccurrences'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence'] });
 
   const todoMapByDate = useMemo(() => {
     const map = new Map<string, Todo[]>();

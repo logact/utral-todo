@@ -1148,10 +1148,17 @@ export function Today() {
 
   // Auto-select first in-progress todo
   useEffect(() => {
-    if (inProgress.length > 0 && !selectedTodoId) {
-      setSelectedTodoId(inProgress[0].id);
+    if (inProgress.length > 0) {
+      // Auto-select if: no todo selected, or current selection is not in_progress
+      // This ensures remote focused task changes (e.g. from iOS) are reflected
+      const currentSelected = selectedTodoId
+        ? inProgress.find((t) => t.id === selectedTodoId) ?? overdue.find((t) => t.id === selectedTodoId) ?? todos.find((t) => t.id === selectedTodoId)
+        : null;
+      if (!selectedTodoId || (currentSelected && currentSelected.status !== 'in_progress')) {
+        setSelectedTodoId(inProgress[0].id);
+      }
     }
-  }, [inProgress, selectedTodoId]);
+  }, [inProgress, selectedTodoId, overdue, todos]);
 
   const toggleSlotCollapse = useCallback((slotId: string) => {
     setCollapsedSlots((prev) => {
