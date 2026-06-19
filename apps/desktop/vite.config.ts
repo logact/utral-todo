@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  base: '/desktop/',
+  base: process.env.TAURI_ENV_PLATFORM ? '/' : '/desktop/',
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {

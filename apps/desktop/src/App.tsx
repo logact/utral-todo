@@ -50,6 +50,8 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+
 export default function App() {
   useCliBridge();
   useSync();
@@ -68,7 +70,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter basename="/desktop">
+    <BrowserRouter basename={isTauri ? '/' : '/desktop'}>
       <Routes>
         <Route
           path="/"
