@@ -1,6 +1,6 @@
 name: UtralTodo
 options:
-  bundleIdPrefix: com.utral
+  bundleIdPrefix: com.logat
 
 targets:
   UtralTodo:
@@ -16,11 +16,53 @@ targets:
         UIBackgroundModes:
           - fetch
           - remote-notification
+    entitlements:
+      path: UtralTodo/UtralTodo.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.logat.utralTodo
+        aps-environment: development
+        com.apple.developer.activitykit: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.utral.UtralTodo
+        PRODUCT_BUNDLE_IDENTIFIER: com.logat.utralTodo
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
+        IPHONEOS_DEPLOYMENT_TARGET: 18.0
+        DEVELOPMENT_TEAM: VW8PZV3Z69
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: UtralTodoWidget
+        embed: true
+      - package: UtralTodoKit
+
+  UtralTodoWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - UtralTodoWidget
+    info:
+      path: UtralTodoWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: UtralTodoWidget/UtralTodoWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.logat.utralTodo
+        com.apple.developer.activitykit: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.logat.utralTodo.Widget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.10"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        IPHONEOS_DEPLOYMENT_TARGET: 18.0
+        DEVELOPMENT_TEAM: VW8PZV3Z69
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: UtralTodoKit
 
   UtralTodoWatch:
     type: application
@@ -32,10 +74,10 @@ targets:
     info:
       path: ../iwatch/UtralTodoWatch/Info.plist
       properties:
-        WKCompanionAppBundleIdentifier: com.utral.UtralTodo
+        WKCompanionAppBundleIdentifier: com.logat.utralTodo
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.utral.UtralTodoWatch
+        PRODUCT_BUNDLE_IDENTIFIER: com.logat.utralTodoWatch
         SWIFT_VERSION: "5.10"
 
 packages:

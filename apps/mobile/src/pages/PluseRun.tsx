@@ -19,7 +19,7 @@ import {
   updateTimerSession,
   deleteTimerSession,
 } from '../db/timerSessions';
-import { nativeHaptic, nativeNotification, isNativeShell } from '../bridge/native';
+import { nativeHaptic, nativeNotification, nativeTimer, nativeLiveActivity, isNativeShell } from '../bridge/native';
 
 /* ---------- Browser Notification helpers ---------- */
 let browserNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -33,7 +33,17 @@ async function requestBrowserNotificationPermission(): Promise<boolean> {
 }
 
 function showBrowserNotification(title: string, body: string): void {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (typeof window === 'undefined') return;
+  if (isNativeShell()) {
+    nativeTimer.schedule({
+      id: `notif-${Date.now()}`,
+      title,
+      body,
+      seconds: 1,
+    }).catch(() => {});
+    return;
+  }
+  if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') {
     new Notification(title, { body });
   }
@@ -67,8 +77,7 @@ function cancelAllBrowserNotifications(): void {
 /* ---------- Unified timer notification ---------- */
 function timerNotifySchedule(id: string, title: string, body: string, seconds: number): void {
   if (isNativeShell()) {
-    const ms = Date.now() + Math.max(1000, seconds * 1000);
-    nativeNotification.schedule({ id, title, body, date: ms }).catch(() => {});
+    nativeTimer.schedule({ id, title, body, seconds }).catch(() => {});
   } else {
     scheduleBrowserNotification(id, title, body, seconds);
   }
@@ -110,6 +119,36 @@ function expandIntervals(intervals: number[], repeatCount: number): number[] {
   return result;
 }
 
+/* ---------- Timer sync with retry ---------- */
+const MAX_SYNC_RETRIES = 3;
+
+async function syncTimerStateWithRetry(
+  sessionId: string,
+  elapsedSeconds: number,
+  currentIndex: number,
+  status: string,
+  startedAt?: Date
+): Promise<void> {
+  if (!isNativeShell()) return;
+
+  for (let attempt = 0; attempt <= MAX_SYNC_RETRIES; attempt++) {
+    try {
+      await nativeTimer.syncTimerState({
+        sessionId,
+        elapsedSeconds,
+        currentIndex,
+        status,
+        startedAt: startedAt?.getTime(),
+      });
+      return;
+    } catch {
+      if (attempt < MAX_SYNC_RETRIES) {
+        await new Promise((r) => setTimeout(r, Math.min(1000 * Math.pow(2, attempt), 5000)));
+      }
+    }
+  }
+}
+
 export function PluseRun() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -133,6 +172,8 @@ export function PluseRun() {
   const isRestoringRef = useRef(false);
   const elapsedSecondsRef = useRef(0);
   elapsedSecondsRef.current = elapsedSeconds;
+  const currentIndexRef = useRef(0);
+  currentIndexRef.current = currentIndex;
 
   // Load pluse and todo
   useEffect(() => {
@@ -211,6 +252,18 @@ export function PluseRun() {
     if (isRunning) {
       timerRef.current = setInterval(() => {
         setElapsedSeconds((prev) => prev + 1);
+
+        // Update live activity countdown
+        if (isNativeShell() && sessionRef.current && pluse) {
+          const next = elapsedSecondsRef.current + 1;
+          nativeLiveActivity.update({
+            currentIndex: currentIndexRef.current,
+            elapsedSeconds: next,
+            isRunning: true,
+            isCompleted: false,
+            timerName: pluse.name,
+          }).catch(() => {});
+        }
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -222,6 +275,108 @@ export function PluseRun() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRunning]);
+
+  // Periodic sync while timer is running (every 30s)
+  useEffect(() => {
+    if (!isRunning || !sessionRef.current) return;
+
+    const syncInterval = setInterval(() => {
+      if (sessionRef.current && isRunning) {
+        syncTimerStateWithRetry(
+          sessionRef.current.id,
+          elapsedSecondsRef.current,
+          currentIndex,
+          'running',
+          sessionRef.current.startedAt
+        ).catch(() => {});
+      }
+    }, 30000);
+
+    return () => clearInterval(syncInterval);
+  }, [isRunning, currentIndex]);
+
+  // Handle app returning from background - recalculate timer state
+  useEffect(() => {
+    if (!isNativeShell() || !sessionRef.current) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && sessionRef.current) {
+        const result = await nativeTimer.getElapsedOnResume(sessionRef.current.id);
+        if (!result.found) return;
+
+        if (result.shouldComplete) {
+          // Timer completed while in background
+          setIsRunning(false);
+          setIsCompleted(true);
+          setElapsedSeconds(result.elapsed);
+          setCurrentIndex(result.currentIndex);
+          nativeHaptic.notification('success').catch(() => {});
+          timerNotifyCancel(`pluse-timer-${pluse?.id}`);
+
+          await updateTimerSession(sessionRef.current.id, {
+            status: 'completed',
+            completedAt: new Date(),
+            elapsedSeconds: result.elapsed,
+            currentIndex: result.currentIndex,
+          });
+          nativeTimer.stopBackground(sessionRef.current.id).catch(() => {});
+          syncTimerStateWithRetry(
+            sessionRef.current.id,
+            result.elapsed,
+            result.currentIndex,
+            'completed',
+            sessionRef.current.startedAt
+          ).catch(() => {});
+        } else if (result.completedIntervals && result.completedIntervals.length > 0) {
+          // Some intervals completed while in background
+          const lastCompleted = result.completedIntervals[result.completedIntervals.length - 1];
+          const expanded = expandIntervals(pluse?.intervals || [], pluse?.repeatCount || 1);
+          const nextIndex = lastCompleted + 1;
+
+          if (nextIndex < expanded.length) {
+            setCurrentIndex(result.currentIndex);
+            setElapsedSeconds(result.elapsed);
+
+            // Update session to next interval
+            await updateTimerSession(sessionRef.current.id, {
+              currentIndex: result.currentIndex,
+              elapsedSeconds: result.elapsed,
+              status: 'paused',
+            });
+
+            // Show notification about completed intervals
+            showBrowserNotification(
+              `${pluse?.name} — Intervals completed`,
+              `Completed ${result.completedIntervals.length} interval(s) while away.`
+            );
+          } else {
+            // All intervals completed
+            setIsRunning(false);
+            setIsCompleted(true);
+            setElapsedSeconds(result.elapsed);
+            setCurrentIndex(result.currentIndex);
+            nativeHaptic.notification('success').catch(() => {});
+
+            await updateTimerSession(sessionRef.current.id, {
+              status: 'completed',
+              completedAt: new Date(),
+              elapsedSeconds: result.elapsed,
+              currentIndex: result.currentIndex,
+            });
+            nativeTimer.stopBackground(sessionRef.current.id).catch(() => {});
+            nativeLiveActivity.end(true).catch(() => {});
+          }
+        } else {
+          // No intervals completed, just update elapsed
+          setElapsedSeconds(result.elapsed);
+          setCurrentIndex(result.currentIndex);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [pluse]);
 
   // Auto-set todo to in_progress on first play (only for new sessions, not restored)
   useEffect(() => {
@@ -235,6 +390,10 @@ export function PluseRun() {
   useEffect(() => {
     return () => {
       timerNotifyCancelAll();
+      if (sessionRef.current) {
+        nativeTimer.stopBackground(sessionRef.current.id).catch(() => {});
+        nativeLiveActivity.end(false).catch(() => {});
+      }
     };
   }, []);
 
@@ -340,6 +499,14 @@ export function PluseRun() {
               status: 'completed',
               completedAt: new Date(),
             }).catch(() => {});
+            nativeLiveActivity.end(true).catch(() => {});
+            syncTimerStateWithRetry(
+              sessionRef.current.id,
+              elapsedSeconds,
+              currentIndex,
+              'completed',
+              sessionRef.current.startedAt
+            ).catch(() => {});
           }
         }
       }
@@ -358,10 +525,21 @@ export function PluseRun() {
           status: 'paused',
           pausedAt: new Date(),
         });
+        nativeTimer.stopBackground(sessionRef.current.id).catch(() => {});
+        syncTimerStateWithRetry(
+          sessionRef.current.id,
+          elapsedSecondsRef.current,
+          currentIndex,
+          'paused',
+          sessionRef.current.startedAt
+        ).catch(() => {});
       }
     } else {
       // Starting or resuming
       requestBrowserNotificationPermission().catch(() => {});
+      if (isNativeShell()) {
+        nativeNotification.requestPermission().catch(() => {});
+      }
       if (!sessionRef.current && pluse && todoId) {
         // Mark any existing active session as completed before creating new one
         const existing = await getActiveTimerSession();
@@ -392,6 +570,44 @@ export function PluseRun() {
           pausedAt: undefined,
         });
       }
+
+      // Start background timer on native side
+      if (isNativeShell() && sessionRef.current && pluse) {
+        const remaining = currentDuration - elapsedSeconds;
+        const endTime = Date.now() + remaining * 1000;
+        nativeTimer.startBackground({
+          id: sessionRef.current.id,
+          endTime,
+          intervals: pluse.intervals,
+          repeatCount: pluse.repeatCount,
+          currentIndex,
+          elapsedSeconds,
+          pluseId: pluse.id,
+          todoId: todoId || undefined,
+        }).catch(() => {});
+
+        // Start Live Activity
+        nativeLiveActivity.start({
+          sessionId: sessionRef.current.id,
+          timerName: pluse.name,
+          pluseId: pluse.id,
+          todoId: todoId || undefined,
+          intervals: pluse.intervals,
+          repeatCount: pluse.repeatCount,
+          currentIndex,
+          elapsedSeconds,
+        }).catch(() => {});
+
+        // Sync timer state to server
+        syncTimerStateWithRetry(
+          sessionRef.current.id,
+          elapsedSeconds,
+          currentIndex,
+          'running',
+          sessionRef.current.startedAt
+        ).catch(() => {});
+      }
+
       setIsRunning(true);
     }
   }
@@ -410,6 +626,14 @@ export function PluseRun() {
         elapsedSeconds: 0,
         status: 'paused',
       });
+      nativeTimer.stopBackground(sessionRef.current.id).catch(() => {});
+      syncTimerStateWithRetry(
+        sessionRef.current.id,
+        0,
+        nextIndex,
+        'paused',
+        sessionRef.current.startedAt
+      ).catch(() => {});
     }
   }
 
@@ -428,6 +652,8 @@ export function PluseRun() {
     }
 
     if (sessionRef.current) {
+      nativeTimer.stopBackground(sessionRef.current.id).catch(() => {});
+      nativeLiveActivity.end(false).catch(() => {});
       await deleteTimerSession(sessionRef.current.id);
       sessionRef.current = null;
     }

@@ -87,3 +87,70 @@ export const nativeStorage = {
     callNative<boolean>('storage', 'removeItem', { key }),
   clearAllData: () => callNative<boolean>('storage', 'clearAllData'),
 };
+
+export interface TimerBackgroundResult {
+  found: boolean;
+  elapsed?: number;
+  currentIndex?: number;
+  shouldComplete?: boolean;
+  completedIntervals?: number[];
+}
+
+export const nativeTimer = {
+  schedule: (options: { id: string; title: string; body?: string; seconds: number }) =>
+    callNative<boolean>('timer', 'schedule', options),
+  startBackground: (options: {
+    id: string;
+    endTime: number;
+    intervals: number[];
+    repeatCount: number;
+    currentIndex: number;
+    elapsedSeconds: number;
+    pluseId?: string;
+    todoId?: string;
+    startedAt?: number;
+  }) => callNative<boolean>('timer', 'startBackground', options),
+  stopBackground: (id: string) =>
+    callNative<boolean>('timer', 'stopBackground', { id }),
+  stopAllBackground: () =>
+    callNative<boolean>('timer', 'stopAllBackground'),
+  getElapsedOnResume: (id: string) =>
+    callNative<TimerBackgroundResult>('timer', 'getElapsedOnResume', { id }),
+  getActiveTimerId: () =>
+    callNative<string | null>('timer', 'getActiveTimerId'),
+  syncTimerState: (options: {
+    sessionId: string;
+    elapsedSeconds: number;
+    currentIndex: number;
+    status: string;
+    startedAt?: number;
+  }) => callNative<boolean>('timer', 'syncTimerState', options),
+  stopSync: (sessionId: string) =>
+    callNative<boolean>('timer', 'stopSync', { sessionId }),
+};
+
+export const nativeLiveActivity = {
+  start: (options: {
+    sessionId: string;
+    timerName: string;
+    pluseId: string;
+    todoId?: string;
+    intervals: number[];
+    repeatCount: number;
+    currentIndex?: number;
+    elapsedSeconds?: number;
+  }) => callNative<boolean>('liveActivity', 'start', options),
+  update: (options: {
+    currentIndex: number;
+    elapsedSeconds: number;
+    isRunning: boolean;
+    isCompleted: boolean;
+    timerName?: string;
+  }) => callNative<boolean>('liveActivity', 'update', options),
+  end: (isCompleted?: boolean) =>
+    callNative<boolean>('liveActivity', 'end', { isCompleted }),
+  isEnabled: () =>
+    callNative<boolean>('liveActivity', 'isEnabled'),
+  restore: () =>
+    callNative<boolean>('liveActivity', 'restore'),
+};

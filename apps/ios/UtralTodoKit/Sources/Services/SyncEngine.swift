@@ -185,7 +185,7 @@ public final class SyncEngine: ObservableObject {
 
         guard let url = components?.url else { return }
 
-        var request = URLRequest(url: url)
+        let request = URLRequest(url: url)
 
         do {
             let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -238,8 +238,6 @@ public final class SyncEngine: ObservableObject {
                 await applyRemoteEvent(single.event)
                 setLastSyncAt(Date())
             }
-        } catch {
-            print("[sync] Failed to parse SSE data:", error)
         }
     }
 
@@ -343,7 +341,7 @@ public final class SyncEngine: ObservableObject {
             let pluse = Pluse(
                 id: recordId,
                 name: (json["name"] as? String) ?? "",
-                desc: (json["description"] as? String) ?? "",
+                description: (json["description"] as? String) ?? "",
                 intervals: intervals,
                 repeatCount: (json["repeatCount"] as? Int) ?? 1,
                 intervalTodos: intervalTodos,

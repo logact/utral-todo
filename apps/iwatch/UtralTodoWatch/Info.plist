@@ -19,6 +19,6 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.utral.UtralTodo</string>
+	<string>com.logat.utralTodo</string>
 </dict>
 </plist>

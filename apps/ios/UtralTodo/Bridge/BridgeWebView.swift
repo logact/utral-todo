@@ -41,6 +41,20 @@ struct BridgeWebView: UIViewRepresentable {
         let handler = BridgeMessageHandler(webView: webView)
         config.userContentController.add(handler, name: "bridge")
 
+        let errorScript = WKUserScript(
+            source: """
+                window.onerror = function(msg, url, line, col, error) {
+                    console.error('[JS Error]', msg, url, line, col, error);
+                };
+                window.addEventListener('unhandledrejection', function(e) {
+                    console.error('[Unhandled Promise]', e.reason);
+                });
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        config.userContentController.addUserScript(errorScript)
+
         DispatchQueue.main.async {
             onBridgeReady(handler)
         }
@@ -56,21 +70,9 @@ struct BridgeWebView: UIViewRepresentable {
     }
 
     private func loadContent(in webView: WKWebView) {
-        // Development: load from Vite dev server if reachable
-        #if DEBUG
-        if let url = URL(string: "http://192.168.1.86:1421/") {
-            var request = URLRequest(url: url)
-            request.setValue("true", forHTTPHeaderField: "X-Utral-iOS")
-            webView.load(request)
-            return
-        }
-        #endif
-
-        // Production: load bundled assets
-        if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "www") {
+        if let url = Bundle.main.url(forResource: "index", withExtension: "html") {
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         } else {
-            // Fallback error page
             let html = """
                 <html><body style="font-family:system-ui;padding:40px;text-align:center;">
                 <h1>Utral Todo</h1>
@@ -98,7 +100,6 @@ struct BridgeWebView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            // Allow all navigation within the app
             decisionHandler(.allow)
         }
     }

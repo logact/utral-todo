@@ -61,10 +61,15 @@ function getAPNSHost(): string {
   return APNS_SANDBOX ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
 }
 
+export type ApnsPushType = 'background' | 'alert' | 'liveactivity';
+
 export interface ApnsNotification {
   deviceToken: string;
   payload: Record<string, unknown>;
   priority?: number;
+  pushType?: ApnsPushType;
+  apnsExpiration?: number;
+  apnsCollapseId?: string;
 }
 
 let http2Client: http2.ClientHttp2Session | null = null;
@@ -117,16 +122,25 @@ export async function sendNotification(notification: ApnsNotification): Promise<
   }
 
   return new Promise((resolve) => {
-    const req = client.request({
+    const headers: Record<string, string> = {
       ':method': 'POST',
       ':path': `/3/device/${notification.deviceToken}`,
       ':authority': getAPNSHost(),
       'authorization': `bearer ${jwt}`,
       'apns-topic': APNS_BUNDLE_ID!,
-      'apns-push-type': 'background',
+      'apns-push-type': notification.pushType ?? 'background',
       'apns-priority': String(notification.priority ?? 5),
       'content-type': 'application/json',
-    });
+    };
+
+    if (notification.apnsExpiration !== undefined) {
+      headers['apns-expiration'] = String(notification.apnsExpiration);
+    }
+    if (notification.apnsCollapseId) {
+      headers['apns-collapse-id'] = notification.apnsCollapseId;
+    }
+
+    const req = client.request(headers);
 
     let responseData = '';
     req.on('response', (headers) => {

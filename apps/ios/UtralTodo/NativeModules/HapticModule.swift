@@ -1,5 +1,6 @@
 import UIKit
 
+@MainActor
 struct HapticModule: BridgeModule {
     let name = "haptic"
 

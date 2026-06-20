@@ -34,6 +34,10 @@ struct SyncModule: BridgeModule {
             try await registerDeviceWithServer()
             return .bool(true)
 
+        case "syncPendingTimers":
+            await TimerSyncCoordinator.flushPendingSyncs()
+            return .bool(true)
+
         default:
             throw BridgeModuleError.unknownAction(action)
         }
@@ -73,7 +77,7 @@ struct SyncModule: BridgeModule {
         let body: [String: String?] = [
             "deviceId": id,
             "platform": "ios",
-            "name": UIDevice.current.name,
+            "name": await MainActor.run { UIDevice.current.name },
             "pushToken": pushToken,
             "appVersion": appVersion,
         ]

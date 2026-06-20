@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Localhost Test</title>
+</head>
+<body>
+  <h1>Localhost Connectivity Test</h1>
+  <pre id="log"></pre>
+
+  <script>
+    const log = document.getElementById('log');
+    function out(msg) {
+      log.textContent += msg + '\n';
+      console.log(msg);
+    }
+
+    async function runTests() {
+      out('--- Test 1: Basic fetch to /api/projects ---');
+      try {
+        const res = await fetch('http://localhost:3001/api/projects');
+        out('Status: ' + res.status);
+        const data = await res.json();
+        out('Projects count: ' + data.length);
+      } catch (e) {
+        out('FAIL: ' + e.message);
+      }
+
+      out('');
+      out('--- Test 2: EventSource to /api/sync/stream ---');
+      try {
+        const es = new EventSource('http://localhost:3001/api/sync/stream?deviceId=browser-test');
+
+        let opened = false;
+        es.onopen = () => {
+          opened = true;
+          out('EventSource OPENED successfully');
+          setTimeout(() => {
+            es.close();
+            out('EventSource closed after 3s');
+          }, 3000);
+        };
+
+        es.onmessage = (e) => {
+          out('Message: ' + e.data.slice(0, 50));
+        };
+
+        es.onerror = (e) => {
+          if (!opened) {
+            out('EventSource ERROR (before open)');
+          } else {
+            out('EventSource error (after open, likely closed)');
+          }
+        };
+
+        setTimeout(() => {
+          if (!opened) {
+            out('TIMEOUT: EventSource did not open within 5s');
+            es.close();
+          }
+        }, 5000);
+      } catch (e) {
+        out('FAIL: ' + e.message);
+      }
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

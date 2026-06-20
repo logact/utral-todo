@@ -244,7 +244,18 @@ function TodoSelector({
 /* ---------- Browser Notification helpers ---------- */
 let browserNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+function isTauriApp(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+}
+
 async function requestBrowserNotificationPermission(): Promise<boolean> {
+  if (isTauriApp()) {
+    const { requestPermission, isPermissionGranted } = await import('@tauri-apps/plugin-notification');
+    let granted = await isPermissionGranted();
+    if (granted) return true;
+    const result = await requestPermission();
+    return result === 'granted';
+  }
   if (typeof window === 'undefined' || !('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
   if (Notification.permission === 'denied') return false;
@@ -253,6 +264,12 @@ async function requestBrowserNotificationPermission(): Promise<boolean> {
 }
 
 function showBrowserNotification(title: string, body: string): void {
+  if (isTauriApp()) {
+    import('@tauri-apps/plugin-notification').then(({ sendNotification }) => {
+      sendNotification({ title, body });
+    });
+    return;
+  }
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission === 'granted') {
     new Notification(title, { body });
@@ -286,25 +303,22 @@ function cancelAllBrowserNotifications(): void {
 
 /* ---------- Native bridge helpers ---------- */
 function isNativeShell(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).__bridge__?.isNative;
+  return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 }
 
 async function nativeTimerSchedule(id: string, title: string, body: string, seconds: number): Promise<void> {
-  const bridge = (window as any).__bridge__;
-  if (!bridge?.call) return;
-  await bridge.call('timer', 'schedule', { id, title, body, seconds });
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('timer_schedule', { id, title, body, seconds });
 }
 
 async function nativeTimerCancel(id: string): Promise<void> {
-  const bridge = (window as any).__bridge__;
-  if (!bridge?.call) return;
-  await bridge.call('timer', 'cancel', { id });
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('timer_cancel', { id });
 }
 
 async function nativeTimerCancelAll(): Promise<void> {
-  const bridge = (window as any).__bridge__;
-  if (!bridge?.call) return;
-  await bridge.call('timer', 'cancelAll', {});
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('timer_cancel_all');
 }
 
 /* ---------- Unified timer notification ---------- */

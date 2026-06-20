@@ -5,7 +5,7 @@ import { getTodaysTodos, getInProgressTodos, getOverdueTodos, getAllTodos, updat
 import { getAllPluses } from '../db/pluse';
 import { getActiveTimerSession, updateTimerSession } from '../db/timerSessions';
 import type { Todo, Pluse, TimerSession } from '@utral/types';
-import { nativeHaptic } from '../bridge/native';
+import { nativeHaptic, nativeTimer, isNativeShell } from '../bridge/native';
 
 /* ─── Helpers ─── */
 
@@ -651,6 +651,44 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [refresh]);
+
+  // Sync timer state from background on resume
+  useEffect(() => {
+    if (!isNativeShell() || !activeSession || activeSession.status !== 'running') return;
+
+    async function handleResume() {
+      if (!activeSession) return;
+      const result = await nativeTimer.getElapsedOnResume(activeSession.id);
+      if (!result.found) return;
+
+      if (result.shouldComplete) {
+        await updateTimerSession(activeSession.id, {
+          status: 'completed',
+          completedAt: new Date(),
+          elapsedSeconds: result.elapsed,
+          currentIndex: result.currentIndex,
+        });
+        nativeTimer.stopBackground(activeSession.id).catch(() => {});
+        refresh();
+      } else if (result.completedIntervals && result.completedIntervals.length > 0) {
+        await updateTimerSession(activeSession.id, {
+          currentIndex: result.currentIndex,
+          elapsedSeconds: result.elapsed,
+          status: 'paused',
+        });
+        refresh();
+      }
+    }
+
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        handleResume();
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [activeSession, refresh]);
 
   // Refresh when remote sync data arrives
   useEffect(() => {

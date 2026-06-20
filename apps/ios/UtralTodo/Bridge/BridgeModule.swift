@@ -31,4 +31,9 @@ extension BridgeValue {
         if case .int(let value) = self { return Double(value) }
         return nil
     }
+
+    var asArray: [BridgeValue]? {
+        if case .array(let value) = self { return value }
+        return nil
+    }
 }

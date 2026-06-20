@@ -24,7 +24,9 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r exec rm -rf dist node_modules/.cache",
-    "cli": "node apps/cli/dist/index.js"
+    "cli": "node apps/cli/dist/index.js",
+    "ios:dev": "bash apps/ios/dev.sh",
+    "ios:archive": "cd apps/ios && pnpm --filter mobile build && cp -r ../mobile/dist/* UtralTodo/www/ && xcodegen generate && xcodebuild -project UtralTodo.xcodeproj -scheme UtralTodo -configuration Release -archivePath .build/UtralTodo.xcarchive archive"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",

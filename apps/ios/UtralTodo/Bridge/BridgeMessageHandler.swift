@@ -23,6 +23,7 @@ final class BridgeMessageHandler: NSObject, WKScriptMessageHandler {
         register(DeviceModule())
         register(StorageModule())
         register(SyncModule())
+        register(LiveActivityModule())
     }
 
     func userContentController(

@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "utral-todo-desktop",
   "version": "0.1.0",
-  "identifier": "com.utral.todo.desktop",
+  "identifier": "com.logat.utralTodo",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -35,6 +35,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "signingIdentity": "Apple Development: junliang long (V8HM678DGB)"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

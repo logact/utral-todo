@@ -1,5 +1,6 @@
 import UIKit
 
+@MainActor
 struct DeviceModule: BridgeModule {
     let name = "device"
 

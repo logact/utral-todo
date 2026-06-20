@@ -40,9 +40,17 @@ function PluseEditor({
   const [repeatCount, setRepeatCount] = useState(initialPluse?.repeatCount ?? 1);
   const [autoAdvance, setAutoAdvance] = useState(initialPluse?.autoAdvance ?? true);
 
-  function updateInterval(index: number, minutes: number) {
+  function updateIntervalMinutes(index: number, minutes: number) {
     const next = [...intervals];
-    next[index] = Math.max(1, minutes * 60);
+    const secs = intervals[index] % 60;
+    next[index] = Math.max(1, minutes * 60 + secs);
+    setIntervals(next);
+  }
+
+  function updateIntervalSeconds(index: number, seconds: number) {
+    const next = [...intervals];
+    const mins = Math.floor(intervals[index] / 60);
+    next[index] = Math.max(1, mins * 60 + seconds);
     setIntervals(next);
   }
 
@@ -81,6 +89,7 @@ function PluseEditor({
         <div className="space-y-2">
           {intervals.map((duration, idx) => {
             const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
             return (
               <div key={idx} className="flex items-center gap-2">
                 <span className="text-xs text-slate-400 dark:text-slate-500 w-16">
@@ -89,13 +98,24 @@ function PluseEditor({
                 <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 rounded-lg px-2 py-1.5 border border-slate-200 dark:border-slate-700">
                   <input
                     type="number"
-                    min={1}
+                    min={0}
                     max={999}
                     value={minutes}
-                    onChange={(e) => updateInterval(idx, parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateIntervalMinutes(idx, parseInt(e.target.value) || 0)}
                     className="w-10 text-xs bg-transparent text-slate-900 dark:text-slate-100 focus:outline-none text-center"
                   />
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">min</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 rounded-lg px-2 py-1.5 border border-slate-200 dark:border-slate-700">
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={seconds}
+                    onChange={(e) => updateIntervalSeconds(idx, parseInt(e.target.value) || 0)}
+                    className="w-10 text-xs bg-transparent text-slate-900 dark:text-slate-100 focus:outline-none text-center"
+                  />
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">sec</span>
                 </div>
                 <div className="flex items-center gap-0.5 ml-auto">
                   <button

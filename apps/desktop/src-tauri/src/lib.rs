@@ -5,8 +5,10 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_notification::NotificationExt;
 
 type ResponseMap = Arc<Mutex<HashMap<String, Option<serde_json::Value>>>>;
+type TimerMap = Arc<Mutex<HashMap<String, bool>>>;
 
 #[derive(Clone, Serialize)]
 struct CliRequestEvent {
@@ -159,13 +161,59 @@ fn wait_for_response(
     None
 }
 
+#[tauri::command]
+fn timer_schedule(
+    app: AppHandle,
+    timers: tauri::State<'_, TimerMap>,
+    id: String,
+    title: String,
+    body: String,
+    seconds: u64,
+) {
+    {
+        let mut map = timers.lock().unwrap();
+        map.insert(id.clone(), false);
+    }
+
+    let timers_clone = timers.inner().clone();
+    let id_clone = id.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_secs(seconds));
+        let cancelled = {
+            let map = timers_clone.lock().unwrap();
+            map.get(&id_clone).copied().unwrap_or(true)
+        };
+        if cancelled {
+            return;
+        }
+        let _ = app.notification().builder().title(title).body(body).show();
+    });
+}
+
+#[tauri::command]
+fn timer_cancel(timers: tauri::State<'_, TimerMap>, id: String) {
+    let mut map = timers.lock().unwrap();
+    map.insert(id, true);
+}
+
+#[tauri::command]
+fn timer_cancel_all(timers: tauri::State<'_, TimerMap>) {
+    let mut map = timers.lock().unwrap();
+    for v in map.values_mut() {
+        *v = true;
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let responses: ResponseMap = Arc::new(Mutex::new(HashMap::new()));
+    let timers: TimerMap = Arc::new(Mutex::new(HashMap::new()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(responses.clone())
+        .manage(timers.clone())
         .setup(move |app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -178,7 +226,7 @@ pub fn run() {
             start_cli_server(app.handle().clone(), responses.clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![cli_respond])
+        .invoke_handler(tauri::generate_handler![cli_respond, timer_schedule, timer_cancel, timer_cancel_all])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../index.js';
 import { logChange } from '../sync/log.js';
+import { sendLiveActivityPush, sendLiveActivityEnd } from '../apns/liveActivity.js';
 
 const router = Router();
 
@@ -55,6 +56,23 @@ router.post('/', async (req, res) => {
     },
   });
   await logChange(req, 'timerSession', 'create', session.id, session);
+
+  if (status === 'running' && intervals) {
+    const deviceId = req.headers['x-device-id'] as string | undefined;
+    sendLiveActivityPush({
+      sessionId: session.id,
+      contentState: {
+        timerName: name ?? 'Timer',
+        currentIndex: currentIndex ?? 0,
+        totalIntervals: (intervals as number[]).length * (repeatCount ?? 1),
+        elapsedSeconds: elapsedSeconds ?? 0,
+        intervalDuration: (intervals as number[])[currentIndex ?? 0] ?? 60,
+        isRunning: true,
+        isCompleted: false,
+      },
+    }, deviceId).catch(() => {});
+  }
+
   res.status(201).json(session);
 });
 
@@ -90,6 +108,62 @@ router.patch('/:id', async (req, res) => {
     },
   });
   await logChange(req, 'timerSession', 'update', session.id, session);
+
+  const deviceId = req.headers['x-device-id'] as string | undefined;
+  const sessionIntervals = (session.intervals as number[]) ?? [];
+  const sessionRepeatCount = session.repeatCount ?? 1;
+  const totalIntervals = sessionIntervals.length * sessionRepeatCount;
+  const currentDuration = (session.currentIndex ?? 0) < sessionIntervals.length
+    ? sessionIntervals[session.currentIndex ?? 0]
+    : 0;
+
+  if (status === 'completed') {
+    sendLiveActivityEnd(session.id, true, deviceId).catch(() => {});
+  } else if (status === 'running') {
+    sendLiveActivityPush({
+      sessionId: session.id,
+      contentState: {
+        timerName: name ?? session.name ?? 'Timer',
+        currentIndex: session.currentIndex ?? 0,
+        totalIntervals,
+        elapsedSeconds: session.elapsedSeconds ?? 0,
+        intervalDuration: currentDuration,
+        isRunning: true,
+        isCompleted: false,
+      },
+    }, deviceId).catch(() => {});
+  } else if (status === 'paused') {
+    sendLiveActivityPush({
+      sessionId: session.id,
+      contentState: {
+        timerName: name ?? session.name ?? 'Timer',
+        currentIndex: session.currentIndex ?? 0,
+        totalIntervals,
+        elapsedSeconds: session.elapsedSeconds ?? 0,
+        intervalDuration: currentDuration,
+        isRunning: false,
+        isCompleted: false,
+      },
+    }, deviceId).catch(() => {});
+  }
+
+  res.json(session);
+});
+
+router.patch('/:id/timer-state', async (req, res) => {
+  const { elapsedSeconds, currentIndex, status, startedAt } = req.body;
+
+  const session = await prisma.timerSession.update({
+    where: { id: req.params.id },
+    data: {
+      ...(elapsedSeconds !== undefined ? { elapsedSeconds } : {}),
+      ...(currentIndex !== undefined ? { currentIndex } : {}),
+      ...(status !== undefined ? { status } : {}),
+      ...(startedAt !== undefined ? { startedAt: new Date(startedAt) } : {}),
+    },
+  });
+  await logChange(req, 'timerSession', 'update', session.id, session);
+
   res.json(session);
 });
 
