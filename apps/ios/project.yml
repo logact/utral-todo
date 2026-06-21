@@ -16,13 +16,24 @@ targets:
         UIBackgroundModes:
           - fetch
           - remote-notification
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        CFBundleIconName: AppIcon
+        CFBundleDisplayName: Utral Todo
     entitlements:
       path: UtralTodo/UtralTodo.entitlements
       properties:
         com.apple.security.application-groups:
           - group.com.logat.utralTodo
         aps-environment: development
-        com.apple.developer.activitykit: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.logat.utralTodo
@@ -31,6 +42,7 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: 18.0
         DEVELOPMENT_TEAM: VW8PZV3Z69
         CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: UtralTodoWidget
         embed: true
@@ -46,12 +58,12 @@ targets:
       properties:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        CFBundleDisplayName: Utral Todo Widget
     entitlements:
       path: UtralTodoWidget/UtralTodoWidget.entitlements
       properties:
         com.apple.security.application-groups:
           - group.com.logat.utralTodo
-        com.apple.developer.activitykit: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.logat.utralTodo.Widget

@@ -21,6 +21,7 @@
 		87A50E7BDC38BC7530173DAD /* TimerSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80AC447CE57CC5FE3A043046 /* TimerSyncCoordinator.swift */; };
 		897FACD145E48A08B0CE226F /* UtralTodoKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5E8F9872888DB852801649C9 /* UtralTodoKit */; };
 		8C7B5DE3E4B952F7D82C199C /* index-59l6qkWb.js in Resources */ = {isa = PBXBuildFile; fileRef = A6ADF4E64E901A14B20F4FB5 /* index-59l6qkWb.js */; };
+		8C987FA9AAE4F4416FCA5BA0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 68304C6F63E3772159796139 /* Assets.xcassets */; };
 		99C3B40DC4A44073B699EB37 /* BridgeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5882C828E3B2B9519D54C8 /* BridgeTypes.swift */; };
 		99FA030D16CC2D384441A27F /* CameraModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A42F5255CFADA11105E9DB5 /* CameraModule.swift */; };
 		9B4E09311ECACC3FA9DABAC6 /* BridgeModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E5089D42C8015FF5D4B43E /* BridgeModule.swift */; };
@@ -35,6 +36,7 @@
 		EDAD9CCBE282B34A054FB7A1 /* BridgeModuleError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DED0B62F9DC46415593765D /* BridgeModuleError.swift */; };
 		EF0FD73EBF62DE5BA92FC325 /* BridgeWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 916DB30A97B21B0F00F9ED98 /* BridgeWebView.swift */; };
 		F1BC9AC2EFFDE852E8D3B0EB /* UtralTodoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA58CE26ECEA19174CC1112 /* UtralTodoApp.swift */; };
+		F8D946140464BFA1B7883854 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 446C797EE0EC5F0A244B6502 /* Assets.xcassets */; };
 		FB7E8340311B839CDB63B77B /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55BF84C58049940410652C4 /* LiveActivityManager.swift */; };
 		FCB1A6F60EA18816DC8B0F87 /* LiveActivityModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2A96DE0D8A9A163BFDE5AC /* LiveActivityModule.swift */; };
 /* End PBXBuildFile section */
@@ -70,12 +72,14 @@
 		2C3ECF47550EBE23440BCF1A /* TimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerView.swift; sourceTree = "<group>"; };
 		3A20ADF36A4CB11621F00AFE /* TimerBackgroundService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerBackgroundService.swift; sourceTree = "<group>"; };
 		3A42F5255CFADA11105E9DB5 /* CameraModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraModule.swift; sourceTree = "<group>"; };
-		4650C39295C46F7BD720DDBA /* UtralTodoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UtralTodoKit; path = UtralTodoKit; sourceTree = SOURCE_ROOT; };
+		446C797EE0EC5F0A244B6502 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4650C39295C46F7BD720DDBA /* UtralTodoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; path = UtralTodoKit; sourceTree = SOURCE_ROOT; };
 		4C85C76B6D2CDE82D5F7CF9A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		52BE91916CFBDA91F29DD120 /* UtralTodoWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = UtralTodoWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5C0FBB2AD5AAF229561CCC6C /* test-localhost.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = "test-localhost.html"; sourceTree = "<group>"; };
 		5DED0B62F9DC46415593765D /* BridgeModuleError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeModuleError.swift; sourceTree = "<group>"; };
 		64E1C9126EC6C2BBC74F73D3 /* HapticModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticModule.swift; sourceTree = "<group>"; };
+		68304C6F63E3772159796139 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6D8C23BAA72E4EA3DEED9553 /* SyncModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncModule.swift; sourceTree = "<group>"; };
 		6FC31CE3DD5A4789D835358A /* StorageModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageModule.swift; sourceTree = "<group>"; };
 		80AC447CE57CC5FE3A043046 /* TimerSyncCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerSyncCoordinator.swift; sourceTree = "<group>"; };
@@ -211,6 +215,7 @@
 		5BC83E06A133080E3581C95A /* UtralTodoWidget */ = {
 			isa = PBXGroup;
 			children = (
+				446C797EE0EC5F0A244B6502 /* Assets.xcassets */,
 				0DD7C796204C2A39B863B899 /* Info.plist */,
 				CD655BBEA3E3A1A70EC60394 /* UtralTodoWidget.entitlements */,
 				C818E7DAC22837101044D351 /* UtralTodoWidget.swift */,
@@ -240,6 +245,7 @@
 		C2348E82F1504D8DEAB50316 /* UtralTodo */ = {
 			isa = PBXGroup;
 			children = (
+				68304C6F63E3772159796139 /* Assets.xcassets */,
 				4C85C76B6D2CDE82D5F7CF9A /* Info.plist */,
 				8A7234E09F6A81B63A304372 /* UtralTodo.entitlements */,
 				FAA58CE26ECEA19174CC1112 /* UtralTodoApp.swift */,
@@ -259,6 +265,7 @@
 			buildConfigurationList = 4D3FFE4843A058F4347F2209 /* Build configuration list for PBXNativeTarget "UtralTodoWidget" */;
 			buildPhases = (
 				D132AF3901E27E7C9A3E2124 /* Sources */,
+				3BF4AA03D41E527D9AC51D55 /* Resources */,
 				C2F0FEBBCD6517D734CFAA87 /* Frameworks */,
 			);
 			buildRules = (
@@ -362,9 +369,18 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8C987FA9AAE4F4416FCA5BA0 /* Assets.xcassets in Resources */,
 				8C7B5DE3E4B952F7D82C199C /* index-59l6qkWb.js in Resources */,
 				32C80D344DCE1EAAE60A8B5C /* index.html in Resources */,
 				4649A6F0E8F1DC06FB24DE64 /* test-localhost.html in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3BF4AA03D41E527D9AC51D55 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F8D946140464BFA1B7883854 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -661,7 +677,7 @@
 				61A6EB3E2494D0E6A6CDACBD /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		4D3FFE4843A058F4347F2209 /* Build configuration list for PBXNativeTarget "UtralTodoWidget" */ = {
 			isa = XCConfigurationList;
@@ -670,7 +686,7 @@
 				A320B13CBC8749D361D9A374 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		9BEAF49AC8B1B441702F7BF7 /* Build configuration list for PBXProject "UtralTodo" */ = {
 			isa = XCConfigurationList;
@@ -679,7 +695,7 @@
 				8AF53EDEA54D6CC0DD3EEC93 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		AB11A8D498284B0999AC463A /* Build configuration list for PBXNativeTarget "UtralTodo" */ = {
 			isa = XCConfigurationList;
@@ -688,7 +704,7 @@
 				7EECC48F674632C3EAFA29D3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 

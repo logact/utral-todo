@@ -263,11 +263,14 @@ async function requestBrowserNotificationPermission(): Promise<boolean> {
   return result === 'granted';
 }
 
-function showBrowserNotification(title: string, body: string): void {
+async function showBrowserNotification(title: string, body: string): Promise<void> {
   if (isTauriApp()) {
-    import('@tauri-apps/plugin-notification').then(({ sendNotification }) => {
-      sendNotification({ title, body });
-    });
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('send_notification', { title, body });
+    } catch (err) {
+      console.error('[PluseRun] Failed to send notification:', err);
+    }
     return;
   }
   if (typeof window === 'undefined' || !('Notification' in window)) return;

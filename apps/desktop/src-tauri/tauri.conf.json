@@ -37,7 +37,7 @@
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",
-      "signingIdentity": "Apple Development: junliang long (V8HM678DGB)"
+      "signingIdentity": "Developer ID Application: junliang long (VW8PZV3Z69)"
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"

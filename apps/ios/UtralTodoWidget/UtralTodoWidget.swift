@@ -3,6 +3,7 @@ import WidgetKit
 import ActivityKit
 import UtralTodoKit
 
+@main
 struct UtralTodoWidgetBundle: WidgetBundle {
     var body: some Widget {
         TimerLiveActivity()
