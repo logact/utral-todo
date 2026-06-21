@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_notification::NotificationExt;
 
 type ResponseMap = Arc<Mutex<HashMap<String, Option<serde_json::Value>>>>;
 type TimerMap = Arc<Mutex<HashMap<String, bool>>>;
@@ -161,15 +160,26 @@ fn wait_for_response(
     None
 }
 
+fn fire_notification(title: String, body: String) {
+    tauri::async_runtime::spawn(async move {
+        let notif = mac_usernotifications::Notification::new()
+            .title(title)
+            .message(body)
+            .default_sound();
+        let _ = notif.send().await;
+    });
+}
+
 #[tauri::command]
 fn timer_schedule(
-    app: AppHandle,
+    _app: AppHandle,
     timers: tauri::State<'_, TimerMap>,
     id: String,
     title: String,
     body: String,
     seconds: u64,
 ) {
+    println!("[timer_schedule] id='{}' title='{}' seconds={}", id, title, seconds);
     {
         let mut map = timers.lock().unwrap();
         map.insert(id.clone(), false);
@@ -186,58 +196,47 @@ fn timer_schedule(
         if cancelled {
             return;
         }
-        #[cfg(target_os = "macos")]
-        {
-            let script = format!(
-                "display notification \"{}\" with title \"{}\"",
-                body.replace('\\', "\\\\").replace('"', "\\\""),
-                title.replace('\\', "\\\\").replace('"', "\\\"")
-            );
-            let _ = std::process::Command::new("osascript").arg("-e").arg(&script).output();
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = app.notification().builder().title(title).body(body).show();
-        }
+        fire_notification(title, body);
     });
 }
 
 #[tauri::command]
 fn send_notification(_app: AppHandle, title: String, body: String) -> Result<(), String> {
-    println!("[send_notification] Sending: title='{}', body='{}'", title, body);
+    fire_notification(title, body);
+    Ok(())
+}
+
+#[tauri::command]
+async fn request_notification_auth() -> Result<bool, String> {
+    let log = |msg: &str| {
+        let _ = std::fs::OpenOptions::new().create(true).append(true)
+            .open("/tmp/utral-notif-debug.log")
+            .and_then(|mut f| {
+                use std::io::Write;
+                write!(f, "{}\n", msg)
+            });
+    };
+    log("request_notification_auth called");
 
     #[cfg(target_os = "macos")]
     {
-        let script = format!(
-            "display notification \"{}\" with title \"{}\"",
-            body.replace('\\', "\\\\").replace('"', "\\\""),
-            title.replace('\\', "\\\\").replace('"', "\\\"")
-        );
-        match std::process::Command::new("osascript").arg("-e").arg(&script).output() {
-            Ok(output) => {
-                if output.status.success() {
-                    println!("[send_notification] osascript notification sent successfully");
-                    return Ok(());
-                }
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                eprintln!("[send_notification] osascript failed: {}", stderr);
-            }
-            Err(e) => {
-                eprintln!("[send_notification] Failed to run osascript: {}", e);
-            }
-        }
-    }
+        log("calling mac_usernotifications::request_auth...");
+        let granted = mac_usernotifications::request_auth().await.unwrap_or(false);
+        log(&format!("auth granted={}", granted));
 
-    match _app.notification().builder().title(&title).body(&body).show() {
-        Ok(_) => {
-            println!("[send_notification] Notification sent via plugin");
-            Ok(())
+        if granted {
+            let notif = mac_usernotifications::Notification::new()
+                .title("Utral Todo")
+                .message("Notifications are enabled")
+                .default_sound();
+            let result = notif.send().await;
+            log(&format!("startup notification result: {:?}", result));
         }
-        Err(e) => {
-            eprintln!("[send_notification] Plugin notification also failed: {}", e);
-            Err(e.to_string())
-        }
+
+        return Ok(granted);
     }
+    #[cfg(not(target_os = "macos"))]
+    Ok(true)
 }
 
 #[tauri::command]
@@ -276,7 +275,7 @@ pub fn run() {
             start_cli_server(app.handle().clone(), responses.clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![cli_respond, send_notification, timer_schedule, timer_cancel, timer_cancel_all])
+        .invoke_handler(tauri::generate_handler![cli_respond, send_notification, request_notification_auth, timer_schedule, timer_cancel, timer_cancel_all])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -3,14 +3,19 @@ set -e
 
 APPLE_ID="${APPLE_ID:-logact@qq.com}"
 TEAM_ID="${TEAM_ID:-VW8PZV3Z69}"
-APP_SPECIFIC_PASSWORD="${APPLE_APP_PASSWORD:?Set APPLE_APP_PASSWORD env var (generate at appleid.apple.com > App-Specific Passwords)}"
+APP_SPECIFIC_PASSWORD="${APPLE_APP_PASSWORD:-}"
 
 BUNDLE_DIR="src-tauri/target/release/bundle/dmg"
 DMG_FILE=$(ls "$BUNDLE_DIR"/*.dmg 2>/dev/null | head -1)
 
 if [ -z "$DMG_FILE" ]; then
-  echo "No DMG found in $BUNDLE_DIR"
-  exit 1
+  echo "No DMG found — skipping notarization (build with --bundles dmg to create one)"
+  exit 0
+fi
+
+if [ -z "$APP_SPECIFIC_PASSWORD" ]; then
+  echo "APPLE_APP_PASSWORD not set — skipping notarization"
+  exit 0
 fi
 
 DMG_NAME=$(basename "$DMG_FILE")

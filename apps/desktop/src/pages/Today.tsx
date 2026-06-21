@@ -37,6 +37,26 @@ import {
 } from '../utils/date';
 import type { Todo, TodoStatus, Priority, Pluse } from '../types';
 
+function isTauriApp(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+}
+
+async function showBrowserNotification(title: string, body: string): Promise<void> {
+  if (isTauriApp()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('send_notification', { title, body });
+    } catch (err) {
+      console.error('[Today] Failed to send notification:', err);
+    }
+    return;
+  }
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body });
+  }
+}
+
 /* ─── Config ─── */
 
 const priorityConfig: Record<
@@ -458,6 +478,11 @@ function PluseMiniTimer({
           });
         }
 
+        showBrowserNotification(
+          `${pluse.name} — Interval ${currentIndex + 1} complete`,
+          `Interval ${nextIndex + 1} of ${totalItems} is next.`
+        );
+
         if (shouldAutoAdvance) {
           if (timeoutRef.current) clearTimeout(timeoutRef.current);
           timeoutRef.current = setTimeout(() => {
@@ -481,6 +506,11 @@ function PluseMiniTimer({
             completedAt: new Date(),
           });
         }
+
+        showBrowserNotification(
+          `${pluse.name} — Complete!`,
+          'All intervals finished. Great work!'
+        );
       }
     }
   }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse.autoAdvance]);

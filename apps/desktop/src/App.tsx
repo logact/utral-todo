@@ -69,6 +69,19 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    async function initNotifications() {
+      if (!isTauri) return;
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('request_notification_auth');
+      } catch (err) {
+        console.error('[App] Notification init failed:', err);
+      }
+    }
+    initNotifications();
+  }, []);
+
   return (
     <BrowserRouter basename={isTauri ? '/' : '/desktop'}>
       <Routes>

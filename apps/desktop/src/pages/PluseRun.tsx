@@ -264,11 +264,17 @@ async function requestBrowserNotificationPermission(): Promise<boolean> {
 }
 
 async function showBrowserNotification(title: string, body: string): Promise<void> {
+  const log = (msg: string) => {
+    try { (window as any).__TAURI_INTERNALS__.invoke('plugin:log|log', { level: 'info', message: `[PluseNotif] ${msg}` }).catch(() => {}); } catch {}
+  };
   if (isTauriApp()) {
+    log(`Tauri path: calling send_notification with title="${title}"`);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('send_notification', { title, body });
+      log('invoke succeeded');
     } catch (err) {
+      log(`invoke FAILED: ${err}`);
       console.error('[PluseRun] Failed to send notification:', err);
     }
     return;
@@ -572,18 +578,8 @@ export function PluseRun() {
     if (!pluse || isCompleted) return;
     const itemDurationSeconds = currentDuration;
     const shouldAutoAdvance = pluse.autoAdvance !== false;
-    console.log('[PluseRun] completion check', {
-      elapsedSeconds,
-      itemDurationSeconds,
-      currentIndex,
-      totalIntervals: expandedIntervals.length,
-      shouldAutoAdvance,
-      autoAdvanceValue: pluse.autoAdvance,
-      isRunning,
-    });
 
     if (elapsedSeconds >= itemDurationSeconds) {
-      console.log('[PluseRun] interval complete, advancing...', { currentIndex, shouldAutoAdvance });
       if (soundEnabled && !completedRef.current) {
         playBeep();
         completedRef.current = true;
