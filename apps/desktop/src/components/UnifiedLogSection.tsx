@@ -4,6 +4,7 @@ import {
   Play, Pause, NotebookPen, Target, Flag, ChevronDown, Plus
 } from 'lucide-react';
 import { formatDuration, formatTime } from '../utils/date';
+import { hlcToDate } from '../types';
 import { groupLogsByDayAndSession, logTypeColor, logTypeIcon } from './TraceView';
 import type { Todo, TodoLog, TodoStatus } from '../types';
 
@@ -29,7 +30,7 @@ function LogEntry({ log, onDelete }: { log: TodoLog; onDelete: (id: string) => v
         )}
       </div>
       <span className="text-[11px] text-slate-400 dark:text-slate-500 shrink-0 mt-0.5 font-mono">
-        {formatTime(log.createdAt)}
+        {formatTime(hlcToDate(log.createdAt))}
       </span>
       {log.type !== 'system' && (
         <button

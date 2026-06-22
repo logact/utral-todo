@@ -1,5 +1,6 @@
 import { db } from './database';
-import { onLocalChange } from './syncEngine';
+import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '../types';
 import type { ActionEdge, ActionEdgeType } from '../types';
 
 export async function createActionEdge(
@@ -7,14 +8,15 @@ export async function createActionEdge(
   toTodoId: string,
   type: ActionEdgeType
 ): Promise<ActionEdge> {
-  const now = new Date();
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const edge: ActionEdge = {
     id: crypto.randomUUID(),
     fromTodoId,
     toTodoId,
     type,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.actionEdges.add(edge);
   onLocalChange('actionEdges', 'create', edge.id).catch(() => {});
@@ -61,19 +63,35 @@ export async function updateActionEdge(
   id: string,
   updates: Partial<Pick<ActionEdge, 'type'>>
 ): Promise<void> {
-  await db.actionEdges.update(id, { ...updates, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.actionEdges.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.actionEdges.update(id, { ...updates, updatedAt: mergedUpdatedAt });
   onLocalChange('actionEdges', 'update', id).catch(() => {});
 }
 
 export async function deleteActionEdge(id: string): Promise<void> {
-  await db.actionEdges.delete(id);
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+  const existing = await db.actionEdges.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, hlc)
+    : hlc;
+  await db.actionEdges.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
   onLocalChange('actionEdges', 'delete', id).catch(() => {});
 }
 
 export async function deleteActionEdgesForTodo(todoId: string): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const all = await db.actionEdges.toArray();
   const toDelete = all.filter((e) => e.fromTodoId === todoId || e.toTodoId === todoId);
   for (const edge of toDelete) {
-    await db.actionEdges.delete(edge.id).catch(() => {});
+    const mergedUpdatedAt = edge.updatedAt
+      ? mergeHLC(edge.updatedAt, hlc)
+      : hlc;
+    await db.actionEdges.update(edge.id, { deletedAt: hlc, updatedAt: mergedUpdatedAt }).catch(() => {});
   }
 }

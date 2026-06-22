@@ -1,5 +1,6 @@
 import { db } from './database';
-import { onLocalChange } from './syncEngine';
+import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '../types';
 import type { Todo, TodoRelation, TodoRelationType } from '../types';
 
 export async function createRelation(
@@ -7,14 +8,15 @@ export async function createRelation(
   toTodoId: string,
   type: TodoRelationType
 ): Promise<TodoRelation> {
-  const now = new Date();
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const relation: TodoRelation = {
     id: crypto.randomUUID(),
     fromTodoId,
     toTodoId,
     type,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.relations.add(relation);
   onLocalChange('relations', 'create', relation.id).catch(() => {});
@@ -158,20 +160,36 @@ export async function updateRelation(
   id: string,
   updates: Partial<Pick<TodoRelation, 'type'>>
 ): Promise<void> {
-  await db.relations.update(id, { ...updates, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.relations.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.relations.update(id, { ...updates, updatedAt: mergedUpdatedAt });
   onLocalChange('relations', 'update', id).catch(() => {});
 }
 
 export async function deleteRelation(id: string): Promise<void> {
-  await db.relations.delete(id);
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+  const existing = await db.relations.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, hlc)
+    : hlc;
+  await db.relations.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
   onLocalChange('relations', 'delete', id).catch(() => {});
 }
 
 export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const all = await db.relations.toArray();
   const toDelete = all.filter((r) => r.fromTodoId === todoId || r.toTodoId === todoId);
   for (const rel of toDelete) {
-    await db.relations.delete(rel.id).catch(() => {});
+    const mergedUpdatedAt = rel.updatedAt
+      ? mergeHLC(rel.updatedAt, hlc)
+      : hlc;
+    await db.relations.update(rel.id, { deletedAt: hlc, updatedAt: mergedUpdatedAt }).catch(() => {});
   }
 }
 
@@ -237,8 +255,13 @@ export async function getTemplateForInstance(instanceId: string): Promise<Todo |
 
 export async function deleteAssignedInstances(templateId: string): Promise<void> {
   const instances = await getAssignedInstances(templateId);
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   for (const inst of instances) {
     await deleteRelationsInvolvingTodo(inst.id);
-    await db.todos.delete(inst.id).catch(() => {});
+    const mergedUpdatedAt = inst.updatedAt
+      ? mergeHLC(inst.updatedAt, hlc)
+      : hlc;
+    await db.todos.update(inst.id, { deletedAt: hlc, updatedAt: mergedUpdatedAt }).catch(() => {});
   }
 }

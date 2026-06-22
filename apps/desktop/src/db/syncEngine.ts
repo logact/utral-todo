@@ -1,6 +1,11 @@
 import { db } from './database';
 import { getSyncConfig } from './sync';
-import type { SyncEvent } from '../types';
+import type { SyncEvent, HLCTimestamp } from '../types';
+import { compareHLC } from '../types';
+
+function dateToHLCFallback(date: Date, nodeId: string) {
+  return { wall: date.getTime(), counter: 0, node: nodeId };
+}
 
 let tauriFetch: typeof fetch | null = null;
 
@@ -44,7 +49,7 @@ function normalizeServerUrl(url: string): string {
   return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
 }
 
-async function getOrCreateDeviceId(): Promise<string> {
+export async function getOrCreateDeviceId(): Promise<string> {
   if (deviceId) return deviceId;
   const state = await db.syncState.get('deviceId');
   if (state?.value) {
@@ -115,7 +120,6 @@ async function syncFetch(path: string, options?: RequestInit): Promise<Response>
 export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
   const payload = event.payload as Record<string, unknown> | undefined;
 
-  // Parse dates in payload
   const parsed = payload ? { ...payload } : undefined;
   if (parsed) {
     for (const key of Object.keys(parsed)) {
@@ -145,6 +149,12 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
 
   const parsedEvent = parsed;
 
+  function shouldAdopt(localUpdatedAt: HLCTimestamp | undefined, remoteUpdatedAt: HLCTimestamp | undefined): boolean {
+    if (!remoteUpdatedAt) return true;
+    if (!localUpdatedAt) return true;
+    return compareHLC(remoteUpdatedAt, localUpdatedAt) > 0;
+  }
+
   async function applyToTable(
     table: { get(id: string): Promise<unknown>; add(item: unknown): Promise<unknown>; update(id: string, changes: unknown): Promise<number> }
   ): Promise<void> {
@@ -156,18 +166,10 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
       return;
     }
 
-    const localUpdatedAt = local.updatedAt as Date | undefined;
-    const remoteUpdatedAt = parsedEvent.updatedAt as Date | undefined;
+    const localUpdatedAt = local.updatedAt as HLCTimestamp | undefined;
+    const remoteUpdatedAt = parsedEvent.updatedAt as HLCTimestamp | undefined;
 
-    if (remoteUpdatedAt && localUpdatedAt) {
-      const remoteTime = new Date(remoteUpdatedAt).getTime();
-      const localTime = new Date(localUpdatedAt).getTime();
-      if (remoteTime > localTime) {
-        await table.update(event.recordId, parsedEvent).catch((err: unknown) => {
-          console.warn(`[sync] Failed to update remote ${event.table} (${event.recordId}):`, err);
-        });
-      }
-    } else {
+    if (shouldAdopt(localUpdatedAt, remoteUpdatedAt)) {
       await table.update(event.recordId, parsedEvent).catch((err: unknown) => {
         console.warn(`[sync] Failed to update remote ${event.table} (${event.recordId}):`, err);
       });
@@ -251,7 +253,7 @@ export async function processQueue(): Promise<void> {
             operation: item.operation,
             recordId: item.recordId,
             deviceId: myDeviceId,
-            createdAt: item.createdAt,
+            createdAt: dateToHLCFallback(item.createdAt, myDeviceId),
           });
         } else {
           const getRecord = async (): Promise<unknown | undefined> => {
@@ -287,7 +289,7 @@ export async function processQueue(): Promise<void> {
             recordId: item.recordId,
             payload,
             deviceId: myDeviceId,
-            createdAt: item.createdAt,
+            createdAt: dateToHLCFallback(item.createdAt, myDeviceId),
           });
         }
       }

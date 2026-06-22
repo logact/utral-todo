@@ -1,7 +1,8 @@
 import { db } from './database';
-import { onLocalChange } from './syncEngine';
+import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
+import { newHLC, mergeHLC } from '../types';
 import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern, Plan } from '../types';
 
 export const ROOT_GOAL_ID = 'system:root-goal';
@@ -28,7 +29,8 @@ export async function createTodo(
     goalStatus?: GoalStatus;
   }
 ): Promise<Todo> {
-  const now = new Date();
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const nodeType = options?.nodeType || 'task';
   const isTaskNode = nodeType === 'task';
 
@@ -42,8 +44,8 @@ export async function createTodo(
     priority: isTaskNode ? (options?.priority ?? 'medium') : undefined,
     estimatedMinutes: isTaskNode ? (options?.estimatedMinutes ?? 60) : undefined,
     tags: options?.tags ?? [],
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
     parentId: options?.parentId,
     dueDate: options?.dueDate,
     scheduledDate: options?.scheduledDate,
@@ -123,7 +125,8 @@ export async function ensureRootGoal(): Promise<Todo> {
     const existing = await db.todos.get(ROOT_GOAL_ID);
     if (existing) return existing as Todo;
 
-    const now = new Date();
+    const nodeId = await getOrCreateDeviceId();
+    const hlc = newHLC(nodeId);
     const rootGoal: Todo = {
       id: ROOT_GOAL_ID,
       nodeType: 'goal',
@@ -133,8 +136,8 @@ export async function ensureRootGoal(): Promise<Todo> {
       goalStatus: 'active',
       tags: [],
       order: 0,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: hlc,
+      updatedAt: hlc,
     };
     await db.todos.add(rootGoal);
     onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
@@ -146,13 +149,13 @@ export async function ensureRootGoal(): Promise<Todo> {
       nodeIds: [],
       edgeIds: [],
       isSystemPlan: true,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: hlc,
+      updatedAt: hlc,
     };
     await db.plans.add(plan);
     onLocalChange('plans', 'create', plan.id).catch(() => {});
 
-    await db.todos.update(rootGoal.id, { activePlanId: plan.id, updatedAt: new Date() });
+    await db.todos.update(rootGoal.id, { activePlanId: plan.id, updatedAt: hlc });
     onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
 
     return { ...rootGoal, activePlanId: plan.id };
@@ -163,7 +166,7 @@ export async function getSubTodos(parentId: string): Promise<Todo[]> {
   const todos = await db.todos.where('parentId').equals(parentId).toArray();
   return todos.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return (b.createdAt?.wall ?? 0) - (a.createdAt?.wall ?? 0);
   });
 }
 
@@ -175,7 +178,7 @@ export async function getSubGoals(parentId: string): Promise<Todo[]> {
     .toArray();
   return todos.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return (b.createdAt?.wall ?? 0) - (a.createdAt?.wall ?? 0);
   });
 }
 
@@ -231,15 +234,25 @@ export async function getTodoDescendants(todoId: string): Promise<Todo[]> {
 }
 
 export async function reorderSubTodos(_parentId: string, orderedIds: string[]): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
   for (let i = 0; i < orderedIds.length; i++) {
-    await db.todos.update(orderedIds[i], { order: i, updatedAt: new Date() });
+    const existing = await db.todos.get(orderedIds[i]);
+    const mergedUpdatedAt = existing?.updatedAt
+      ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+      : newHLC(nodeId);
+    await db.todos.update(orderedIds[i], { order: i, updatedAt: mergedUpdatedAt });
     onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
 export async function reorderTodos(orderedIds: string[]): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
   for (let i = 0; i < orderedIds.length; i++) {
-    await db.todos.update(orderedIds[i], { order: i, updatedAt: new Date() });
+    const existing = await db.todos.get(orderedIds[i]);
+    const mergedUpdatedAt = existing?.updatedAt
+      ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+      : newHLC(nodeId);
+    await db.todos.update(orderedIds[i], { order: i, updatedAt: mergedUpdatedAt });
     onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
@@ -256,7 +269,11 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
   if (existing?.isSystemTask) {
     throw new Error('Cannot modify system tasks');
   }
-  await db.todos.update(id, { ...updates, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.todos.update(id, { ...updates, updatedAt: mergedUpdatedAt });
   onLocalChange('todos', 'update', id).catch(() => {});
 }
 
@@ -269,10 +286,19 @@ export async function deleteTodo(id: string): Promise<void> {
     throw new Error('Cannot delete system tasks');
   }
 
+  const nodeId = await getOrCreateDeviceId();
+  const tombstoneHLC = newHLC(nodeId);
+
   if (todo?.nodeType === 'goal') {
     const goalPlans = await db.plans.where('goalTodoId').equals(id).toArray();
     for (const plan of goalPlans) {
-      await db.plans.delete(plan.id);
+      const mergedPlanUpdatedAt = plan.updatedAt
+        ? mergeHLC(plan.updatedAt, tombstoneHLC)
+        : tombstoneHLC;
+      await db.plans.update(plan.id, {
+        deletedAt: tombstoneHLC,
+        updatedAt: mergedPlanUpdatedAt,
+      });
       onLocalChange('plans', 'delete', plan.id).catch(() => {});
     }
   } else {
@@ -288,22 +314,33 @@ export async function deleteTodo(id: string): Promise<void> {
           })
         );
         const newEdgeIds = plan.edgeIds.filter((eid) => !edgeIdsToRemove.has(eid));
+        const mergedPlanUpdatedAt = plan.updatedAt
+          ? mergeHLC(plan.updatedAt, tombstoneHLC)
+          : tombstoneHLC;
         await db.plans.update(plan.id, {
           nodeIds: newNodeIds,
           edgeIds: newEdgeIds,
-          updatedAt: new Date(),
+          updatedAt: mergedPlanUpdatedAt,
         });
         onLocalChange('plans', 'update', plan.id).catch(() => {});
       }
     }
   }
 
-  await db.todos.delete(id);
+  const mergedUpdatedAt = todo?.updatedAt
+    ? mergeHLC(todo.updatedAt, tombstoneHLC)
+    : tombstoneHLC;
+  await db.todos.update(id, { deletedAt: tombstoneHLC, updatedAt: mergedUpdatedAt });
   onLocalChange('todos', 'delete', id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
-  const updates: Partial<Todo> = { status, updatedAt: new Date() };
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.todos.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  const updates: Partial<Todo> = { status, updatedAt: mergedUpdatedAt };
   if (status === 'in_progress') updates.startedAt = new Date();
   if (status === 'pending') updates.startedAt = undefined;
   if (status === 'done') updates.completedAt = new Date();
@@ -315,7 +352,12 @@ export async function updateTodoSchedule(
   id: string,
   scheduledDate: Date | undefined
 ): Promise<void> {
-  await db.todos.update(id, { scheduledDate, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.todos.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.todos.update(id, { scheduledDate, updatedAt: mergedUpdatedAt });
   onLocalChange('todos', 'update', id).catch(() => {});
 }
 
@@ -519,6 +561,11 @@ export async function updateRepeatRule(
   id: string,
   rule: RepeatRule | undefined
 ): Promise<void> {
-  await db.todos.update(id, { repeatRule: rule, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.todos.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.todos.update(id, { repeatRule: rule, updatedAt: mergedUpdatedAt });
   onLocalChange('todos', 'update', id).catch(() => {});
 }

@@ -10,13 +10,23 @@ public final class TodoRelation {
     public var createdAt: Date
     public var updatedAt: Date
 
+    public var versionWall: Int = 0
+    public var versionCounter: Int = 0
+    public var versionNode: String = ""
+    public var deletedAtWall: Int? = nil
+    public var deletedAtCounter: Int? = nil
+    public var deletedAtNode: String? = nil
+
     public init(
         id: String = UUID().uuidString,
         fromTodoId: String,
         toTodoId: String,
         type: String,
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        versionWall: Int = 0,
+        versionCounter: Int = 0,
+        versionNode: String = ""
     ) {
         self.id = id
         self.fromTodoId = fromTodoId
@@ -24,5 +34,7 @@ public final class TodoRelation {
         self.type = type
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.versionWall = versionWall
+        self.versionCounter = versionCounter
+        self.versionNode = versionNode
     }
-}

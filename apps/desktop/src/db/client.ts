@@ -1,10 +1,31 @@
-import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, TimerSession, Plan } from '../types';
+import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, TimerSession, Plan, HLCTimestamp } from '../types';
+import { newHLC, stringToHLC, dateToHLC } from '../types';
 
 export function parseDate(value: unknown): Date | undefined {
   if (value === null || value === undefined) return undefined;
   if (value instanceof Date) return value;
   if (typeof value === 'string') return new Date(value);
   return undefined;
+}
+
+export function parseHLC(value: unknown, nodeId: string = 'server'): HLCTimestamp {
+  if (value === null || value === undefined) return newHLC(nodeId);
+  if (typeof value === 'object' && value !== null && 'wall' in value && 'counter' in value && 'node' in value) {
+    return value as HLCTimestamp;
+  }
+  if (typeof value === 'string') {
+    if (value.includes(':')) {
+      const parts = value.split(':');
+      if (parts.length === 3 && !isNaN(Number(parts[0]))) {
+        return stringToHLC(value);
+      }
+    }
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      return dateToHLC(date, nodeId);
+    }
+  }
+  return newHLC(nodeId);
 }
 
 export function parseRepeatRule(data: unknown): RepeatRule | undefined {
@@ -21,6 +42,7 @@ export function parseRepeatRule(data: unknown): RepeatRule | undefined {
 export function parseTodo(data: unknown): Todo {
   const t = data as Record<string, unknown>;
   const nodeType = (t.nodeType as string) || (t.isGoal ? 'goal' : 'task');
+  const createdAt = parseHLC(t.createdAt);
   return {
     id: t.id as string,
     nodeType: nodeType as Todo['nodeType'],
@@ -32,8 +54,8 @@ export function parseTodo(data: unknown): Todo {
     priority: (t.priority as Todo['priority']) ?? 'medium',
     estimatedMinutes: (t.estimatedMinutes as number) ?? 60,
     tags: (t.tags as string[]) ?? [],
-    createdAt: parseDate(t.createdAt)!,
-    updatedAt: parseDate(t.updatedAt) ?? parseDate(t.createdAt)!,
+    createdAt,
+    updatedAt: t.updatedAt ? parseHLC(t.updatedAt) : createdAt,
     dueDate: parseDate(t.dueDate),
     scheduledDate: parseDate(t.scheduledDate),
     scheduledEndDate: parseDate(t.scheduledEndDate),
@@ -51,18 +73,20 @@ export function parseTodo(data: unknown): Todo {
 
 export function parseRelation(data: unknown): TodoRelation {
   const r = data as Record<string, unknown>;
+  const createdAt = parseHLC(r.createdAt);
   return {
     id: r.id as string,
     fromTodoId: r.fromTodoId as string,
     toTodoId: r.toTodoId as string,
     type: r.type as TodoRelation['type'],
-    createdAt: parseDate(r.createdAt)!,
-    updatedAt: parseDate(r.updatedAt) ?? parseDate(r.createdAt)!,
+    createdAt,
+    updatedAt: r.updatedAt ? parseHLC(r.updatedAt) : createdAt,
   };
 }
 
 export function parseLog(data: unknown): TodoLog {
   const l = data as Record<string, unknown>;
+  const createdAt = parseHLC(l.createdAt);
   return {
     id: l.id as string,
     todoId: l.todoId as string,
@@ -70,20 +94,21 @@ export function parseLog(data: unknown): TodoLog {
     content: l.content as string,
     minutesSpent: (l.minutesSpent as number | undefined) ?? undefined,
     metadata: (l.metadata as Record<string, unknown> | undefined) ?? undefined,
-    createdAt: parseDate(l.createdAt)!,
-    updatedAt: parseDate(l.updatedAt) ?? parseDate(l.createdAt)!,
+    createdAt,
+    updatedAt: l.updatedAt ? parseHLC(l.updatedAt) : createdAt,
   };
 }
 
 export function parseActionEdge(data: unknown): ActionEdge {
   const e = data as Record<string, unknown>;
+  const createdAt = parseHLC(e.createdAt);
   return {
     id: e.id as string,
     fromTodoId: e.fromTodoId as string,
     toTodoId: e.toTodoId as string,
     type: e.type as ActionEdge['type'],
-    createdAt: parseDate(e.createdAt)!,
-    updatedAt: parseDate(e.updatedAt) ?? parseDate(e.createdAt)!,
+    createdAt,
+    updatedAt: e.updatedAt ? parseHLC(e.updatedAt) : createdAt,
   };
 }
 
@@ -100,6 +125,7 @@ export function parsePluse(data: unknown): Pluse {
       }
     }
   }
+  const createdAt = parseHLC(p.createdAt);
   return {
     id: p.id as string,
     name: p.name as string,
@@ -108,8 +134,8 @@ export function parsePluse(data: unknown): Pluse {
     repeatCount: (p.repeatCount as number) ?? 1,
     intervalTodos,
     autoAdvance: (p.autoAdvance as boolean | undefined) ?? true,
-    createdAt: parseDate(p.createdAt)!,
-    updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
+    createdAt,
+    updatedAt: p.updatedAt ? parseHLC(p.updatedAt) : createdAt,
   };
 }
 
@@ -129,22 +155,23 @@ export function parseTimerSession(data: unknown): TimerSession {
     currentIndex: (s.currentIndex as number) ?? 0,
     elapsedSeconds: (s.elapsedSeconds as number) ?? 0,
     status: s.status as TimerSession['status'],
-    createdAt: parseDate(s.createdAt)!,
-    updatedAt: parseDate(s.updatedAt)!,
+    createdAt: parseHLC(s.createdAt),
+    updatedAt: parseHLC(s.updatedAt),
   };
 }
 
 export function parsePlan(data: unknown): Plan {
   const p = data as Record<string, unknown>;
   const nodeIds = (p.nodeIds as string[]) ?? (p.todoIds as string[]) ?? [];
+  const createdAt = parseHLC(p.createdAt);
   return {
     id: p.id as string,
     goalTodoId: p.goalTodoId as string,
     title: (p.title as string) || 'Untitled Plan',
     nodeIds,
     edgeIds: (p.edgeIds as string[]) ?? [],
-    createdAt: parseDate(p.createdAt)!,
-    updatedAt: parseDate(p.updatedAt) ?? parseDate(p.createdAt)!,
+    createdAt,
+    updatedAt: p.updatedAt ? parseHLC(p.updatedAt) : createdAt,
   };
 }
 

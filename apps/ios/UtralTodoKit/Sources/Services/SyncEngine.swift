@@ -116,12 +116,59 @@ public final class SyncEngine: ObservableObject {
         status = .syncing
 
         let remoteEvents: [RemoteSyncEvent] = events.map { event in
-            RemoteSyncEvent(
+            var enrichedPayload = event.payloadData.flatMap {
+                (try? JSONSerialization.jsonObject(with: $0) as? [String: Any]) ?? [:]
+            } ?? [:]
+
+            switch event.table {
+            case "todo":
+                if let todo = try? modelContext.fetch(FetchDescriptor<Todo>(predicate: #Predicate { $0.id == event.recordId })).first {
+                    enrichedPayload["versionWall"] = todo.versionWall
+                    enrichedPayload["versionCounter"] = todo.versionCounter
+                    enrichedPayload["versionNode"] = todo.versionNode
+                }
+            case "pluse":
+                if let pluse = try? modelContext.fetch(FetchDescriptor<Pluse>(predicate: #Predicate { $0.id == event.recordId })).first {
+                    enrichedPayload["versionWall"] = pluse.versionWall
+                    enrichedPayload["versionCounter"] = pluse.versionCounter
+                    enrichedPayload["versionNode"] = pluse.versionNode
+                }
+            case "timerSession":
+                if let session = try? modelContext.fetch(FetchDescriptor<TimerSession>(predicate: #Predicate { $0.id == event.recordId })).first {
+                    enrichedPayload["versionWall"] = session.versionWall
+                    enrichedPayload["versionCounter"] = session.versionCounter
+                    enrichedPayload["versionNode"] = session.versionNode
+                }
+            case "todoRelation":
+                if let relation = try? modelContext.fetch(FetchDescriptor<TodoRelation>(predicate: #Predicate { $0.id == event.recordId })).first {
+                    enrichedPayload["versionWall"] = relation.versionWall
+                    enrichedPayload["versionCounter"] = relation.versionCounter
+                    enrichedPayload["versionNode"] = relation.versionNode
+                }
+            case "todoLog":
+                if let log = try? modelContext.fetch(FetchDescriptor<TodoLog>(predicate: #Predicate { $0.id == event.recordId })).first {
+                    enrichedPayload["versionWall"] = log.versionWall
+                    enrichedPayload["versionCounter"] = log.versionCounter
+                    enrichedPayload["versionNode"] = log.versionNode
+                }
+            case "actionEdge":
+                if let edge = try? modelContext.fetch(FetchDescriptor<ActionEdge>(predicate: #Predicate { $0.id == event.recordId })).first {
+                    enrichedPayload["versionWall"] = edge.versionWall
+                    enrichedPayload["versionCounter"] = edge.versionCounter
+                    enrichedPayload["versionNode"] = edge.versionNode
+                }
+            default:
+                break
+            }
+
+            let enrichedData = try? JSONSerialization.data(withJSONObject: enrichedPayload)
+
+            return RemoteSyncEvent(
                 id: event.id,
                 table: event.table,
                 operation: event.operation,
                 recordId: event.recordId,
-                payload: event.payloadData,
+                payload: enrichedData,
                 deviceId: event.deviceId,
                 createdAt: ISO8601DateFormatter().string(from: event.createdAt)
             )
@@ -264,6 +311,17 @@ public final class SyncEngine: ObservableObject {
         }
     }
 
+    // MARK: - HLC Comparison
+
+    private func shouldAdoptRemote(localWall: Int, localCounter: Int, localNode: String,
+                                    remoteWall: Int, remoteCounter: Int, remoteNode: String) -> Bool {
+        if remoteWall > localWall { return true }
+        if remoteWall < localWall { return false }
+        if remoteCounter > localCounter { return true }
+        if remoteCounter < localCounter { return false }
+        return remoteNode > localNode
+    }
+
     // MARK: - Entity-specific apply helpers
 
     private func applyTodoEvent(recordId: String, operation: String, payload: Data?) async {
@@ -279,24 +337,44 @@ public final class SyncEngine: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
 
         let remoteUpdatedAt = parseDate(json["updatedAt"])
+        let remoteVersionWall = json["versionWall"] as? Int ?? 0
+        let remoteVersionCounter = json["versionCounter"] as? Int ?? 0
+        let remoteVersionNode = json["versionNode"] as? String ?? ""
+        let deletedAtWall = json["deletedAtWall"] as? Int
+        let deletedAtCounter = json["deletedAtCounter"] as? Int
+        let deletedAtNode = json["deletedAtNode"] as? String
 
         if let todo = try? modelContext.fetch(FetchDescriptor<Todo>(predicate: #Predicate { $0.id == recordId })).first {
-            // Last-write-wins
-            if let remoteUpdatedAt, remoteUpdatedAt <= todo.updatedAt { return }
+            if !shouldAdoptRemote(
+                localWall: todo.versionWall, localCounter: todo.versionCounter, localNode: todo.versionNode,
+                remoteWall: remoteVersionWall, remoteCounter: remoteVersionCounter, remoteNode: remoteVersionNode
+            ) { return }
             if let title = json["title"] as? String { todo.title = title }
             if let desc = json["description"] as? String { todo.desc = desc }
             if let status = json["status"] as? String { todo.status = status }
             if let priority = json["priority"] as? String { todo.priority = priority }
             todo.updatedAt = remoteUpdatedAt ?? Date()
+            todo.versionWall = remoteVersionWall
+            todo.versionCounter = remoteVersionCounter
+            todo.versionNode = remoteVersionNode
+            todo.deletedAtWall = deletedAtWall
+            todo.deletedAtCounter = deletedAtCounter
+            todo.deletedAtNode = deletedAtNode
         } else if operation == "create" || operation == "update" {
             let todo = Todo(
                 id: recordId,
                 title: (json["title"] as? String) ?? "",
                 desc: (json["description"] as? String) ?? "",
                 status: (json["status"] as? String) ?? "pending",
-                priority: (json["priority"] as? String) ?? "medium"
+                priority: (json["priority"] as? String) ?? "medium",
+                versionWall: remoteVersionWall,
+                versionCounter: remoteVersionCounter,
+                versionNode: remoteVersionNode
             )
             if let updatedAt = remoteUpdatedAt { todo.updatedAt = updatedAt }
+            todo.deletedAtWall = deletedAtWall
+            todo.deletedAtCounter = deletedAtCounter
+            todo.deletedAtNode = deletedAtNode
             modelContext.insert(todo)
         }
         try? modelContext.save()
@@ -315,9 +393,18 @@ public final class SyncEngine: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
 
         let remoteUpdatedAt = parseDate(json["updatedAt"])
+        let remoteVersionWall = json["versionWall"] as? Int ?? 0
+        let remoteVersionCounter = json["versionCounter"] as? Int ?? 0
+        let remoteVersionNode = json["versionNode"] as? String ?? ""
+        let deletedAtWall = json["deletedAtWall"] as? Int
+        let deletedAtCounter = json["deletedAtCounter"] as? Int
+        let deletedAtNode = json["deletedAtNode"] as? String
 
         if let pluse = try? modelContext.fetch(FetchDescriptor<Pluse>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= pluse.updatedAt { return }
+            if !shouldAdoptRemote(
+                localWall: pluse.versionWall, localCounter: pluse.versionCounter, localNode: pluse.versionNode,
+                remoteWall: remoteVersionWall, remoteCounter: remoteVersionCounter, remoteNode: remoteVersionNode
+            ) { return }
             if let name = json["name"] as? String { pluse.name = name }
             if let desc = json["description"] as? String { pluse.desc = desc }
             if let repeatCount = json["repeatCount"] as? Int { pluse.repeatCount = repeatCount }
@@ -331,6 +418,12 @@ public final class SyncEngine: ObservableObject {
                 pluse.intervalTodosData = try? JSONEncoder().encode(dict)
             }
             pluse.updatedAt = remoteUpdatedAt ?? Date()
+            pluse.versionWall = remoteVersionWall
+            pluse.versionCounter = remoteVersionCounter
+            pluse.versionNode = remoteVersionNode
+            pluse.deletedAtWall = deletedAtWall
+            pluse.deletedAtCounter = deletedAtCounter
+            pluse.deletedAtNode = deletedAtNode
         } else if operation == "create" || operation == "update" {
             let intervals = (json["intervals"] as? [Int]) ?? [25]
             var intervalTodos: [Int: String]?
@@ -345,9 +438,15 @@ public final class SyncEngine: ObservableObject {
                 intervals: intervals,
                 repeatCount: (json["repeatCount"] as? Int) ?? 1,
                 intervalTodos: intervalTodos,
-                autoAdvance: (json["autoAdvance"] as? Bool) ?? true
+                autoAdvance: (json["autoAdvance"] as? Bool) ?? true,
+                versionWall: remoteVersionWall,
+                versionCounter: remoteVersionCounter,
+                versionNode: remoteVersionNode
             )
             if let updatedAt = remoteUpdatedAt { pluse.updatedAt = updatedAt }
+            pluse.deletedAtWall = deletedAtWall
+            pluse.deletedAtCounter = deletedAtCounter
+            pluse.deletedAtNode = deletedAtNode
             modelContext.insert(pluse)
         }
         try? modelContext.save()
@@ -366,9 +465,18 @@ public final class SyncEngine: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
 
         let remoteUpdatedAt = parseDate(json["updatedAt"])
+        let remoteVersionWall = json["versionWall"] as? Int ?? 0
+        let remoteVersionCounter = json["versionCounter"] as? Int ?? 0
+        let remoteVersionNode = json["versionNode"] as? String ?? ""
+        let deletedAtWall = json["deletedAtWall"] as? Int
+        let deletedAtCounter = json["deletedAtCounter"] as? Int
+        let deletedAtNode = json["deletedAtNode"] as? String
 
         if let session = try? modelContext.fetch(FetchDescriptor<TimerSession>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= session.updatedAt { return }
+            if !shouldAdoptRemote(
+                localWall: session.versionWall, localCounter: session.versionCounter, localNode: session.versionNode,
+                remoteWall: remoteVersionWall, remoteCounter: remoteVersionCounter, remoteNode: remoteVersionNode
+            ) { return }
             if let name = json["name"] as? String { session.name = name }
             if let type = json["type"] as? String { session.type = type }
             if let status = json["status"] as? String { session.status = status }
@@ -384,6 +492,12 @@ public final class SyncEngine: ObservableObject {
             if let pausedAt = parseDate(json["pausedAt"]) { session.pausedAt = pausedAt }
             if let completedAt = parseDate(json["completedAt"]) { session.completedAt = completedAt }
             session.updatedAt = remoteUpdatedAt ?? Date()
+            session.versionWall = remoteVersionWall
+            session.versionCounter = remoteVersionCounter
+            session.versionNode = remoteVersionNode
+            session.deletedAtWall = deletedAtWall
+            session.deletedAtCounter = deletedAtCounter
+            session.deletedAtNode = deletedAtNode
         } else if operation == "create" || operation == "update" {
             let intervals = (json["intervals"] as? [Int])
             let session = TimerSession(
@@ -399,9 +513,15 @@ public final class SyncEngine: ObservableObject {
                 completedAt: parseDate(json["completedAt"]),
                 currentIndex: (json["currentIndex"] as? Int) ?? 0,
                 elapsedSeconds: (json["elapsedSeconds"] as? Int) ?? 0,
-                status: (json["status"] as? String) ?? "running"
+                status: (json["status"] as? String) ?? "running",
+                versionWall: remoteVersionWall,
+                versionCounter: remoteVersionCounter,
+                versionNode: remoteVersionNode
             )
             if let updatedAt = remoteUpdatedAt { session.updatedAt = updatedAt }
+            session.deletedAtWall = deletedAtWall
+            session.deletedAtCounter = deletedAtCounter
+            session.deletedAtNode = deletedAtNode
             modelContext.insert(session)
         }
         try? modelContext.save()
@@ -420,21 +540,42 @@ public final class SyncEngine: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
 
         let remoteUpdatedAt = parseDate(json["updatedAt"])
+        let remoteVersionWall = json["versionWall"] as? Int ?? 0
+        let remoteVersionCounter = json["versionCounter"] as? Int ?? 0
+        let remoteVersionNode = json["versionNode"] as? String ?? ""
+        let deletedAtWall = json["deletedAtWall"] as? Int
+        let deletedAtCounter = json["deletedAtCounter"] as? Int
+        let deletedAtNode = json["deletedAtNode"] as? String
 
         if let relation = try? modelContext.fetch(FetchDescriptor<TodoRelation>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= relation.updatedAt { return }
+            if !shouldAdoptRemote(
+                localWall: relation.versionWall, localCounter: relation.versionCounter, localNode: relation.versionNode,
+                remoteWall: remoteVersionWall, remoteCounter: remoteVersionCounter, remoteNode: remoteVersionNode
+            ) { return }
             if let fromTodoId = json["fromTodoId"] as? String { relation.fromTodoId = fromTodoId }
             if let toTodoId = json["toTodoId"] as? String { relation.toTodoId = toTodoId }
             if let type = json["type"] as? String { relation.type = type }
             relation.updatedAt = remoteUpdatedAt ?? Date()
+            relation.versionWall = remoteVersionWall
+            relation.versionCounter = remoteVersionCounter
+            relation.versionNode = remoteVersionNode
+            relation.deletedAtWall = deletedAtWall
+            relation.deletedAtCounter = deletedAtCounter
+            relation.deletedAtNode = deletedAtNode
         } else if operation == "create" || operation == "update" {
             let relation = TodoRelation(
                 id: recordId,
                 fromTodoId: (json["fromTodoId"] as? String) ?? "",
                 toTodoId: (json["toTodoId"] as? String) ?? "",
-                type: (json["type"] as? String) ?? "depends_on"
+                type: (json["type"] as? String) ?? "depends_on",
+                versionWall: remoteVersionWall,
+                versionCounter: remoteVersionCounter,
+                versionNode: remoteVersionNode
             )
             if let updatedAt = remoteUpdatedAt { relation.updatedAt = updatedAt }
+            relation.deletedAtWall = deletedAtWall
+            relation.deletedAtCounter = deletedAtCounter
+            relation.deletedAtNode = deletedAtNode
             modelContext.insert(relation)
         }
         try? modelContext.save()
@@ -453,23 +594,44 @@ public final class SyncEngine: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
 
         let remoteUpdatedAt = parseDate(json["updatedAt"])
+        let remoteVersionWall = json["versionWall"] as? Int ?? 0
+        let remoteVersionCounter = json["versionCounter"] as? Int ?? 0
+        let remoteVersionNode = json["versionNode"] as? String ?? ""
+        let deletedAtWall = json["deletedAtWall"] as? Int
+        let deletedAtCounter = json["deletedAtCounter"] as? Int
+        let deletedAtNode = json["deletedAtNode"] as? String
 
         if let log = try? modelContext.fetch(FetchDescriptor<TodoLog>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= log.updatedAt { return }
+            if !shouldAdoptRemote(
+                localWall: log.versionWall, localCounter: log.versionCounter, localNode: log.versionNode,
+                remoteWall: remoteVersionWall, remoteCounter: remoteVersionCounter, remoteNode: remoteVersionNode
+            ) { return }
             if let todoId = json["todoId"] as? String { log.todoId = todoId }
             if let type = json["type"] as? String { log.type = type }
             if let content = json["content"] as? String { log.content = content }
             if let minutesSpent = json["minutesSpent"] as? Int { log.minutesSpent = minutesSpent }
             log.updatedAt = remoteUpdatedAt ?? Date()
+            log.versionWall = remoteVersionWall
+            log.versionCounter = remoteVersionCounter
+            log.versionNode = remoteVersionNode
+            log.deletedAtWall = deletedAtWall
+            log.deletedAtCounter = deletedAtCounter
+            log.deletedAtNode = deletedAtNode
         } else if operation == "create" || operation == "update" {
             let log = TodoLog(
                 id: recordId,
                 todoId: (json["todoId"] as? String) ?? "",
                 type: (json["type"] as? String) ?? "progress",
                 content: (json["content"] as? String) ?? "",
-                minutesSpent: json["minutesSpent"] as? Int
+                minutesSpent: json["minutesSpent"] as? Int,
+                versionWall: remoteVersionWall,
+                versionCounter: remoteVersionCounter,
+                versionNode: remoteVersionNode
             )
             if let updatedAt = remoteUpdatedAt { log.updatedAt = updatedAt }
+            log.deletedAtWall = deletedAtWall
+            log.deletedAtCounter = deletedAtCounter
+            log.deletedAtNode = deletedAtNode
             modelContext.insert(log)
         }
         try? modelContext.save()
@@ -488,21 +650,42 @@ public final class SyncEngine: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return }
 
         let remoteUpdatedAt = parseDate(json["updatedAt"])
+        let remoteVersionWall = json["versionWall"] as? Int ?? 0
+        let remoteVersionCounter = json["versionCounter"] as? Int ?? 0
+        let remoteVersionNode = json["versionNode"] as? String ?? ""
+        let deletedAtWall = json["deletedAtWall"] as? Int
+        let deletedAtCounter = json["deletedAtCounter"] as? Int
+        let deletedAtNode = json["deletedAtNode"] as? String
 
         if let edge = try? modelContext.fetch(FetchDescriptor<ActionEdge>(predicate: #Predicate { $0.id == recordId })).first {
-            if let remoteUpdatedAt, remoteUpdatedAt <= edge.updatedAt { return }
+            if !shouldAdoptRemote(
+                localWall: edge.versionWall, localCounter: edge.versionCounter, localNode: edge.versionNode,
+                remoteWall: remoteVersionWall, remoteCounter: remoteVersionCounter, remoteNode: remoteVersionNode
+            ) { return }
             if let fromTodoId = json["fromTodoId"] as? String { edge.fromTodoId = fromTodoId }
             if let toTodoId = json["toTodoId"] as? String { edge.toTodoId = toTodoId }
             if let type = json["type"] as? String { edge.type = type }
             edge.updatedAt = remoteUpdatedAt ?? Date()
+            edge.versionWall = remoteVersionWall
+            edge.versionCounter = remoteVersionCounter
+            edge.versionNode = remoteVersionNode
+            edge.deletedAtWall = deletedAtWall
+            edge.deletedAtCounter = deletedAtCounter
+            edge.deletedAtNode = deletedAtNode
         } else if operation == "create" || operation == "update" {
             let edge = ActionEdge(
                 id: recordId,
                 fromTodoId: (json["fromTodoId"] as? String) ?? "",
                 toTodoId: (json["toTodoId"] as? String) ?? "",
-                type: (json["type"] as? String) ?? "pre_do"
+                type: (json["type"] as? String) ?? "pre_do",
+                versionWall: remoteVersionWall,
+                versionCounter: remoteVersionCounter,
+                versionNode: remoteVersionNode
             )
             if let updatedAt = remoteUpdatedAt { edge.updatedAt = updatedAt }
+            edge.deletedAtWall = deletedAtWall
+            edge.deletedAtCounter = deletedAtCounter
+            edge.deletedAtNode = deletedAtNode
             modelContext.insert(edge)
         }
         try? modelContext.save()

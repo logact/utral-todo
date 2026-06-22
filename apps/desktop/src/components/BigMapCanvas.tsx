@@ -28,6 +28,7 @@ import {
 import type { ViewportState } from '../hooks/useBigMapViewport';
 import type { LayoutNode, LayoutLogNode } from './BigMapLayout';
 import type { ActionEdge, ActionEdgeType, NodeType, Todo, TodoRelation, TodoRelationType } from '../types';
+import { hlcToDate } from '../types';
 import { NewNodeDialog } from './NewNodeDialog';
 import { formatDuration, formatTime } from '../utils/date';
 import { allowedLinkTypes } from '../utils/relations';
@@ -1328,7 +1329,7 @@ export function BigMapCanvas({
                       Exec
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
-                      {formatTime(execNode.log.createdAt)}
+                      {formatTime(hlcToDate(execNode.log.createdAt))}
                     </span>
                   </div>
                   <p className="text-xs text-slate-700 dark:text-slate-200 leading-snug break-words max-h-24 overflow-hidden">

@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../index.js';
 import { broadcastToDevices } from '../apns/broadcast.js';
+import type { HLCTimestamp } from '@utral/types';
 
 interface SyncEvent {
   id: string;
@@ -10,7 +11,7 @@ interface SyncEvent {
   recordId: string;
   payload?: unknown;
   deviceId: string;
-  createdAt: Date;
+  createdAt: HLCTimestamp;
 }
 
 interface Connection {
@@ -69,6 +70,7 @@ export async function getEventsSince(since: Date): Promise<SyncEvent[]> {
     ...e,
     operation: e.operation as SyncEvent['operation'],
     payload: typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload,
+    createdAt: { wall: e.createdAt.getTime(), counter: e.versionCounter, node: e.versionNode || 'server' },
   }));
 }
 
@@ -92,24 +94,69 @@ export async function createSyncEvent(
     ...event,
     operation: event.operation as SyncEvent['operation'],
     payload: typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload,
+    createdAt: { wall: event.createdAt.getTime(), counter: 0, node: deviceId },
   };
 }
 
+export type ApplyResult = 'applied' | 'skipped' | 'deleted' | 'error';
+
+import { shouldAdoptRemote, hlcFromParts } from './crdt.js';
+
 export async function applyChange(
   event: SyncEvent
-): Promise<void> {
+): Promise<ApplyResult> {
   const { table, operation, recordId, payload } = event;
+
+  const data = payload as Record<string, unknown> | undefined;
 
   switch (table) {
     case 'todo': {
       if (operation === 'delete') {
-        await prisma.todo.delete({ where: { id: recordId } }).catch((err) => {
-          console.error(`[sync] Failed to delete todo ${recordId}:`, err);
-        });
-      } else {
-        const data = payload as Record<string, unknown>;
         const existing = await prisma.todo.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data?.deletedAtWall as number) ?? 0,
+            (data?.deletedAtCounter as number) ?? 0,
+            (data?.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const remote: { updatedAt: ReturnType<typeof hlcFromParts>; deletedAt?: ReturnType<typeof hlcFromParts> } = {
+            updatedAt: localHLC,
+            deletedAt: remoteHLC,
+          };
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.todo.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
+        return 'skipped';
+      } else {
+        if (!data) return 'skipped';
+        const existing = await prisma.todo.findUnique({ where: { id: recordId } });
+        if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.todo.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.todo.create({ data: data as never });
@@ -119,31 +166,65 @@ export async function applyChange(
     }
     case 'todoRelation': {
       if (operation === 'delete') {
-        await prisma.todoRelation.delete({ where: { id: recordId } }).catch((err) => {
-          console.error(`[sync] Failed to delete todoRelation ${recordId}:`, err);
-        });
+        const existing = await prisma.todoRelation.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.todoRelation.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
+        if (existing) {
+          await prisma.todoRelation.delete({ where: { id: recordId } }).catch((err) => {
+            console.error(`[sync] Failed to delete todoRelation ${recordId}:`, err);
+          });
+        }
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.todoRelation.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.todoRelation.update({ where: { id: recordId }, data: data as never });
         } else {
-          // Check if referenced todos exist before creating relation
           const fromTodoId = data.fromTodoId as string;
           const toTodoId = data.toTodoId as string;
-          
           if (fromTodoId && toTodoId) {
             const [fromTodo, toTodo] = await Promise.all([
               prisma.todo.findUnique({ where: { id: fromTodoId } }),
               prisma.todo.findUnique({ where: { id: toTodoId } }),
             ]);
-            
             if (!fromTodo || !toTodo) {
-              console.warn(`[sync] Skipping todoRelation ${recordId}: referenced todo missing (from=${fromTodoId} exists=${!!fromTodo}, to=${toTodoId} exists=${!!toTodo})`);
-              return;
+              console.warn(`[sync] Skipping todoRelation ${recordId}: referenced todo missing`);
+              return 'skipped';
             }
           }
-          
           await prisma.todoRelation.create({ data: data as never }).catch((err) => {
             console.error(`[sync] Failed to create todoRelation ${recordId}:`, err);
           });
@@ -153,13 +234,49 @@ export async function applyChange(
     }
     case 'todoLog': {
       if (operation === 'delete') {
+        const existing = await prisma.todoLog.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.todoLog.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
         await prisma.todoLog.delete({ where: { id: recordId } }).catch((err) => {
           console.error(`[sync] Failed to delete todoLog ${recordId}:`, err);
         });
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.todoLog.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.todoLog.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.todoLog.create({ data: data as never });
@@ -169,31 +286,63 @@ export async function applyChange(
     }
     case 'actionEdge': {
       if (operation === 'delete') {
+        const existing = await prisma.actionEdge.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.actionEdge.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
         await prisma.actionEdge.delete({ where: { id: recordId } }).catch((err) => {
           console.error(`[sync] Failed to delete actionEdge ${recordId}:`, err);
         });
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.actionEdge.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.actionEdge.update({ where: { id: recordId }, data: data as never });
         } else {
-          // Check if referenced todos exist before creating actionEdge
           const fromTodoId = data.fromTodoId as string;
           const toTodoId = data.toTodoId as string;
-          
           if (fromTodoId && toTodoId) {
             const [fromTodo, toTodo] = await Promise.all([
               prisma.todo.findUnique({ where: { id: fromTodoId } }),
               prisma.todo.findUnique({ where: { id: toTodoId } }),
             ]);
-            
             if (!fromTodo || !toTodo) {
-              console.warn(`[sync] Skipping actionEdge ${recordId}: referenced todo missing (from=${fromTodoId} exists=${!!fromTodo}, to=${toTodoId} exists=${!!toTodo})`);
-              return;
+              console.warn(`[sync] Skipping actionEdge ${recordId}: referenced todo missing`);
+              return 'skipped';
             }
           }
-          
           await prisma.actionEdge.create({ data: data as never }).catch((err) => {
             console.error(`[sync] Failed to create actionEdge ${recordId}:`, err);
           });
@@ -203,13 +352,49 @@ export async function applyChange(
     }
     case 'pluse': {
       if (operation === 'delete') {
+        const existing = await prisma.pluse.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.pluse.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
         await prisma.pluse.delete({ where: { id: recordId } }).catch((err) => {
           console.error(`[sync] Failed to delete pluse ${recordId}:`, err);
         });
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.pluse.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.pluse.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.pluse.create({ data: data as never });
@@ -219,13 +404,49 @@ export async function applyChange(
     }
     case 'timerSession': {
       if (operation === 'delete') {
+        const existing = await prisma.timerSession.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.timerSession.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
         await prisma.timerSession.delete({ where: { id: recordId } }).catch((err) => {
           console.error(`[sync] Failed to delete timerSession ${recordId}:`, err);
         });
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.timerSession.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.timerSession.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.timerSession.create({ data: data as never });
@@ -235,13 +456,49 @@ export async function applyChange(
     }
     case 'repeatOccurrence': {
       if (operation === 'delete') {
+        const existing = await prisma.repeatOccurrence.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.repeatOccurrence.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
         await prisma.repeatOccurrence.delete({ where: { id: recordId } }).catch((err) => {
           console.error(`[sync] Failed to delete repeatOccurrence ${recordId}:`, err);
         });
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.repeatOccurrence.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.repeatOccurrence.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.repeatOccurrence.create({ data: data as never });
@@ -251,13 +508,49 @@ export async function applyChange(
     }
     case 'plan': {
       if (operation === 'delete') {
+        const existing = await prisma.plan.findUnique({ where: { id: recordId } });
+        if (existing && data) {
+          const remoteHLC = hlcFromParts(
+            (data.deletedAtWall as number) ?? 0,
+            (data.deletedAtCounter as number) ?? 0,
+            (data.deletedAtNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
+          );
+          if (decision === 'delete') {
+            await prisma.plan.update({
+              where: { id: recordId },
+              data: {
+                deletedAtWall: remoteHLC.wall,
+                deletedAtCounter: remoteHLC.counter,
+                deletedAtNode: remoteHLC.node,
+              },
+            });
+            return 'deleted';
+          }
+          return 'skipped';
+        }
         await prisma.plan.delete({ where: { id: recordId } }).catch((err) => {
           console.error(`[sync] Failed to delete plan ${recordId}:`, err);
         });
       } else {
-        const data = payload as Record<string, unknown>;
+        if (!data) return 'skipped';
         const existing = await prisma.plan.findUnique({ where: { id: recordId } });
         if (existing) {
+          const remoteHLC = hlcFromParts(
+            (data.versionWall as number) ?? 0,
+            (data.versionCounter as number) ?? 0,
+            (data.versionNode as string) ?? event.deviceId,
+          );
+          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const decision = shouldAdoptRemote(
+            { id: recordId, updatedAt: localHLC },
+            { id: recordId, updatedAt: remoteHLC },
+          );
+          if (decision !== 'adopt') return 'skipped';
           await prisma.plan.update({ where: { id: recordId }, data: data as never });
         } else {
           await prisma.plan.create({ data: data as never });
@@ -266,4 +559,33 @@ export async function applyChange(
       break;
     }
   }
+  return 'applied';
+}
+
+const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function garbageCollectTombstones(): Promise<number> {
+  const cutoff = new Date(Date.now() - TOMBSTONE_TTL_MS);
+  const tables = ['todo', 'todoRelation', 'todoLog', 'actionEdge', 'pluse', 'timerSession', 'repeatOccurrence', 'plan'] as const;
+  let totalDeleted = 0;
+
+  for (const table of tables) {
+    const model = (prisma as unknown as Record<string, unknown>)[table] as {
+      deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }>;
+    };
+    if (!model) continue;
+    const result = await model.deleteMany({
+      where: {
+        deletedAtWall: { not: null },
+        deletedAtCounter: { not: null },
+        updatedAt: { lt: cutoff },
+      },
+    });
+    totalDeleted += result.count;
+  }
+
+  if (totalDeleted > 0) {
+    console.log(`[sync] GC: removed ${totalDeleted} tombstones older than 30 days`);
+  }
+  return totalDeleted;
 }

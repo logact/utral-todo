@@ -1,4 +1,5 @@
 import type { Todo, ActionEdge, TodoRelation, TodoRelationType, TodoLog } from '../types';
+import { hlcToDate } from '../types';
 import {
   NODE_W,
   NODE_H,
@@ -134,7 +135,7 @@ function placeExecSatellites(nodes: LayoutNode[], execLogs: TodoLog[]): LayoutLo
     const parent = nodeMap.get(todoId);
     if (!parent) continue;
     const parentW = parent.todo.nodeType === 'goal' ? GOAL_W : NODE_W;
-    const sorted = [...logs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const sorted = [...logs].sort((a, b) => hlcToDate(a.createdAt).getTime() - hlcToDate(b.createdAt).getTime());
     const count = sorted.length;
     const startY = parent.y - ((count - 1) * SATELLITE_GAP) / 2;
     const x = parent.x + parentW / 2 + SATELLITE_OFFSET + SATELLITE_SIZE / 2;

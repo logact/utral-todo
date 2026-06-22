@@ -21,6 +21,13 @@ public final class Todo {
     public var order: Int
     public var isGoal: Bool
 
+    public var versionWall: Int = 0
+    public var versionCounter: Int = 0
+    public var versionNode: String = ""
+    public var deletedAtWall: Int? = nil
+    public var deletedAtCounter: Int? = nil
+    public var deletedAtNode: String? = nil
+
     public var tags: [String] {
         get {
             guard let data = tagsData else { return [] }
@@ -47,7 +54,10 @@ public final class Todo {
         startedAt: Date? = nil,
         completedAt: Date? = nil,
         order: Int = 0,
-        isGoal: Bool = false
+        isGoal: Bool = false,
+        versionWall: Int = 0,
+        versionCounter: Int = 0,
+        versionNode: String = ""
     ) {
         self.id = id
         self.parentId = parentId
@@ -65,6 +75,9 @@ public final class Todo {
         self.order = order
         self.isGoal = isGoal
         self.tagsData = try? JSONEncoder().encode(tags)
+        self.versionWall = versionWall
+        self.versionCounter = versionCounter
+        self.versionNode = versionNode
     }
 }
 

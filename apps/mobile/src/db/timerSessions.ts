@@ -1,4 +1,6 @@
 import { db } from './database';
+import { getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '@utral/types';
 import type { TimerSession } from '@utral/types';
 
 let onLocalChangeImpl: ((table: string, operation: 'create' | 'update' | 'delete', recordId: string) => Promise<void>) | null = null;
@@ -38,6 +40,8 @@ export async function createTimerSession(data: {
   currentIndex?: number;
   elapsedSeconds?: number;
 }): Promise<TimerSession> {
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const now = new Date();
   const session: TimerSession = {
     id: crypto.randomUUID(),
@@ -51,8 +55,8 @@ export async function createTimerSession(data: {
     currentIndex: data.currentIndex ?? 0,
     elapsedSeconds: data.elapsedSeconds ?? 0,
     status: data.status ?? 'running',
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.timerSessions.add(session);
   await triggerSync('timerSessions', 'create', session.id);
@@ -75,7 +79,12 @@ export async function updateTimerSession(
     status: TimerSession['status'];
   }>
 ): Promise<TimerSession> {
-  const body: Partial<TimerSession> & { updatedAt: Date } = { updatedAt: new Date() };
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.timerSessions.get(id);
+  const hlc = existing
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  const body: Partial<TimerSession> & { updatedAt: typeof hlc } = { updatedAt: hlc };
   if (data.name !== undefined) body.name = data.name;
   if (data.pluseId !== undefined) body.pluseId = data.pluseId ?? undefined;
   if (data.todoId !== undefined) body.todoId = data.todoId ?? undefined;

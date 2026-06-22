@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
-import type { SyncPayload, SyncEvent } from '@utral/types';
+import type { SyncPayload, SyncEvent, HLCTimestamp } from '@utral/types';
 import { prisma } from '../index.js';
 import { broadcast, createSyncEvent, applyChange, getEventsSince } from '../sync/broadcaster.js';
 
@@ -11,6 +11,20 @@ function toDate(value: unknown): Date | undefined {
   if (value instanceof Date) return value;
   if (typeof value === 'string') return new Date(value);
   return undefined;
+}
+
+function parseHLC(value: unknown): HLCTimestamp {
+  if (!value) return { wall: 0, counter: 0, node: '' };
+  if (typeof value === 'object' && value !== null && 'wall' in value) {
+    return value as HLCTimestamp;
+  }
+  if (typeof value === 'string') {
+    const parts = value.split(':');
+    if (parts.length === 3) {
+      return { wall: Number(parts[0]), counter: Number(parts[1]), node: parts[2] };
+    }
+  }
+  return { wall: 0, counter: 0, node: '' };
 }
 
 // POST /api/sync/push — unified push endpoint for sync engine
@@ -24,9 +38,17 @@ router.post('/push', async (req, res) => {
   }
 
   try {
-    for (const event of changes) {
+    for (const rawEvent of changes) {
+      const event: SyncEvent = {
+        ...rawEvent,
+        createdAt: parseHLC(rawEvent.createdAt),
+      };
       try {
-        await applyChange(event);
+        const result = await applyChange(event);
+        if (result === 'skipped') {
+          rejected.push({ recordId: event.recordId, reason: 'stale_timestamp' });
+          continue;
+        }
         const logged = await createSyncEvent(
           event.table,
           event.operation,
@@ -413,6 +435,17 @@ router.get('/', async (_req, res) => {
   } catch (err) {
     console.error('Sync pull error:', err);
     res.status(500).json({ error: 'Failed to fetch data', details: String(err) });
+  }
+});
+
+router.post('/gc', async (_req, res) => {
+  try {
+    const { garbageCollectTombstones } = await import('../sync/broadcaster.js');
+    const deleted = await garbageCollectTombstones();
+    res.json({ deleted });
+  } catch (err) {
+    console.error('Tombstone GC error:', err);
+    res.status(500).json({ error: 'GC failed', details: String(err) });
   }
 });
 

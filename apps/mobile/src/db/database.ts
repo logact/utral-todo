@@ -16,6 +16,11 @@ export interface SyncState {
   value: string;
 }
 
+export interface HLCState {
+  key: string;
+  value: string;
+}
+
 const db = new Dexie('UtralMobileDB') as Dexie & {
   todos: EntityTable<Todo, 'id'>;
   relations: EntityTable<TodoRelation, 'id'>;
@@ -26,6 +31,7 @@ const db = new Dexie('UtralMobileDB') as Dexie & {
   repeatOccurrences: EntityTable<RepeatOccurrence, 'id'>;
   syncQueue: EntityTable<SyncQueueItem, 'id'>;
   syncState: EntityTable<SyncState, 'key'>;
+  hlcState: EntityTable<HLCState, 'key'>;
 };
 
 db.version(1).stores({
@@ -108,6 +114,30 @@ db.version(6).stores({
 }).upgrade(() => {
   // v6 removes roadmaps from the app schema; the legacy object store will remain
   // in IndexedDB until the database is deleted, but is no longer accessible.
+});
+
+db.version(7).stores({
+  hlcState: 'key',
+});
+
+db.version(8).stores({}).upgrade(async (tx) => {
+  const hlcMigrationNode = 'migration';
+  const tables = ['todos', 'relations', 'todoLogs', 'actionEdges', 'pluses', 'timerSessions', 'repeatOccurrences'];
+  for (const tableName of tables) {
+    const records = await tx.table(tableName).toArray();
+    for (const record of records) {
+      const updates: Record<string, unknown> = {};
+      if (record.createdAt && record.createdAt instanceof Date) {
+        updates.createdAt = { wall: record.createdAt.getTime(), counter: 0, node: hlcMigrationNode };
+      }
+      if (record.updatedAt && record.updatedAt instanceof Date) {
+        updates.updatedAt = { wall: record.updatedAt.getTime(), counter: 0, node: hlcMigrationNode };
+      }
+      if (Object.keys(updates).length > 0) {
+        await tx.table(tableName).update(record.id, updates);
+      }
+    }
+  }
 });
 
 export { db };

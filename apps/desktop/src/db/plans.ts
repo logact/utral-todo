@@ -1,5 +1,6 @@
 import { db } from './database';
-import { onLocalChange } from './syncEngine';
+import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '../types';
 import type { Plan } from '../types';
 
 export async function getPlan(id: string): Promise<Plan | undefined> {
@@ -15,15 +16,16 @@ export async function createPlan(
   title: string,
   nodeIds: string[] = []
 ): Promise<Plan> {
-  const now = new Date();
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const plan: Plan = {
     id: crypto.randomUUID(),
     goalTodoId,
     title: title.trim() || 'Untitled Plan',
     nodeIds,
     edgeIds: [],
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.plans.add(plan);
   onLocalChange('plans', 'create', plan.id).catch(() => {});
@@ -38,7 +40,11 @@ export async function updatePlan(
   if (plan?.isSystemPlan) {
     throw new Error('Cannot modify a system plan');
   }
-  await db.plans.update(id, { ...updates, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = plan?.updatedAt
+    ? mergeHLC(plan.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.plans.update(id, { ...updates, updatedAt: mergedUpdatedAt });
   onLocalChange('plans', 'update', id).catch(() => {});
 }
 
@@ -52,7 +58,12 @@ export async function deletePlan(id: string): Promise<void> {
   const goal = await db.todos.get(plan.goalTodoId);
   const isActive = goal?.activePlanId === id;
 
-  await db.plans.delete(id);
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+  const mergedUpdatedAt = plan.updatedAt
+    ? mergeHLC(plan.updatedAt, hlc)
+    : hlc;
+  await db.plans.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
   onLocalChange('plans', 'delete', id).catch(() => {});
 
   if (isActive) {
@@ -63,7 +74,10 @@ export async function deletePlan(id: string): Promise<void> {
     } else {
       newActive = await createPlan(plan.goalTodoId, 'Default Plan');
     }
-    await db.todos.update(plan.goalTodoId, { activePlanId: newActive.id });
+    const goalMergedUpdatedAt = goal?.updatedAt
+      ? mergeHLC(goal.updatedAt, newHLC(nodeId))
+      : newHLC(nodeId);
+    await db.todos.update(plan.goalTodoId, { activePlanId: newActive.id, updatedAt: goalMergedUpdatedAt });
     onLocalChange('todos', 'update', plan.goalTodoId).catch(() => {});
   }
 }
@@ -72,9 +86,13 @@ export async function addNodeToPlan(planId: string, todoId: string): Promise<voi
   const plan = await db.plans.get(planId);
   if (!plan) return;
   if (plan.nodeIds.includes(todoId)) return;
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = plan.updatedAt
+    ? mergeHLC(plan.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
   await db.plans.update(planId, {
     nodeIds: [...plan.nodeIds, todoId],
-    updatedAt: new Date(),
+    updatedAt: mergedUpdatedAt,
   });
   onLocalChange('plans', 'update', planId).catch(() => {});
 }
@@ -83,6 +101,10 @@ export async function removeNodeFromPlan(planId: string, todoId: string): Promis
   const plan = await db.plans.get(planId);
   if (!plan) return;
   if (todoId === plan.goalTodoId) return;
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = plan.updatedAt
+    ? mergeHLC(plan.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
   const newNodeIds = plan.nodeIds.filter((tid) => tid !== todoId);
   const edges = await db.actionEdges.bulkGet(plan.edgeIds);
   const newEdgeIds = plan.edgeIds.filter((_, i) => {
@@ -92,7 +114,7 @@ export async function removeNodeFromPlan(planId: string, todoId: string): Promis
   await db.plans.update(planId, {
     nodeIds: newNodeIds,
     edgeIds: newEdgeIds,
-    updatedAt: new Date(),
+    updatedAt: mergedUpdatedAt,
   });
   onLocalChange('plans', 'update', planId).catch(() => {});
 }
@@ -101,9 +123,13 @@ export async function addEdgeToPlan(planId: string, edgeId: string): Promise<voi
   const plan = await db.plans.get(planId);
   if (!plan) return;
   if (plan.edgeIds.includes(edgeId)) return;
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = plan.updatedAt
+    ? mergeHLC(plan.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
   await db.plans.update(planId, {
     edgeIds: [...plan.edgeIds, edgeId],
-    updatedAt: new Date(),
+    updatedAt: mergedUpdatedAt,
   });
   onLocalChange('plans', 'update', planId).catch(() => {});
 }
@@ -111,18 +137,27 @@ export async function addEdgeToPlan(planId: string, edgeId: string): Promise<voi
 export async function removeEdgeFromPlan(planId: string, edgeId: string): Promise<void> {
   const plan = await db.plans.get(planId);
   if (!plan) return;
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = plan.updatedAt
+    ? mergeHLC(plan.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
   const newEdgeIds = plan.edgeIds.filter((eid) => eid !== edgeId);
   await db.plans.update(planId, {
     edgeIds: newEdgeIds,
-    updatedAt: new Date(),
+    updatedAt: mergedUpdatedAt,
   });
   onLocalChange('plans', 'update', planId).catch(() => {});
 }
 
 export async function setPlanEdges(planId: string, edgeIds: string[]): Promise<void> {
+  const plan = await db.plans.get(planId);
+  const nodeId = await getOrCreateDeviceId();
+  const mergedUpdatedAt = plan?.updatedAt
+    ? mergeHLC(plan.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
   await db.plans.update(planId, {
     edgeIds: [...edgeIds],
-    updatedAt: new Date(),
+    updatedAt: mergedUpdatedAt,
   });
   onLocalChange('plans', 'update', planId).catch(() => {});
 }

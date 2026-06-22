@@ -1,5 +1,6 @@
 import { db } from './database';
-import { onLocalChange } from './syncEngine';
+import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '../types';
 import type { TimerSession } from '../types';
 
 export async function getTimerSessions(filters?: { status?: string; type?: string }): Promise<TimerSession[]> {
@@ -30,6 +31,8 @@ export async function createTimerSession(data: {
   currentIndex?: number;
   elapsedSeconds?: number;
 }): Promise<TimerSession> {
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const now = new Date();
   const session: TimerSession = {
     id: crypto.randomUUID(),
@@ -43,8 +46,8 @@ export async function createTimerSession(data: {
     currentIndex: data.currentIndex ?? 0,
     elapsedSeconds: data.elapsedSeconds ?? 0,
     status: data.status ?? 'running',
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.timerSessions.add(session);
   onLocalChange('timerSessions', 'create', session.id).catch(() => {});
@@ -67,7 +70,12 @@ export async function updateTimerSession(
     status: TimerSession['status'];
   }>
 ): Promise<TimerSession> {
-  const body: Partial<TimerSession> & { updatedAt: Date } = { updatedAt: new Date() };
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.timerSessions.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  const body: Partial<TimerSession> & { updatedAt: typeof mergedUpdatedAt } = { updatedAt: mergedUpdatedAt };
   if (data.name !== undefined) body.name = data.name;
   if (data.pluseId !== undefined) body.pluseId = data.pluseId ?? undefined;
   if (data.todoId !== undefined) body.todoId = data.todoId ?? undefined;
@@ -88,6 +96,12 @@ export async function updateTimerSession(
 }
 
 export async function deleteTimerSession(id: string): Promise<void> {
-  await db.timerSessions.delete(id);
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+  const existing = await db.timerSessions.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, hlc)
+    : hlc;
+  await db.timerSessions.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
   onLocalChange('timerSessions', 'delete', id).catch(() => {});
 }

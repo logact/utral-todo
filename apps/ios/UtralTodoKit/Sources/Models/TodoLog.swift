@@ -12,6 +12,13 @@ public final class TodoLog {
     public var createdAt: Date
     public var updatedAt: Date
 
+    public var versionWall: Int = 0
+    public var versionCounter: Int = 0
+    public var versionNode: String = ""
+    public var deletedAtWall: Int? = nil
+    public var deletedAtCounter: Int? = nil
+    public var deletedAtNode: String? = nil
+
     public init(
         id: String = UUID().uuidString,
         todoId: String,
@@ -19,7 +26,10 @@ public final class TodoLog {
         content: String,
         minutesSpent: Int? = nil,
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        versionWall: Int = 0,
+        versionCounter: Int = 0,
+        versionNode: String = ""
     ) {
         self.id = id
         self.todoId = todoId
@@ -28,5 +38,8 @@ public final class TodoLog {
         self.minutesSpent = minutesSpent
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.versionWall = versionWall
+        self.versionCounter = versionCounter
+        self.versionNode = versionNode
     }
 }

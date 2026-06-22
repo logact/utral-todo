@@ -16,6 +16,11 @@ export interface SyncState {
   value: string;
 }
 
+export interface HLCState {
+  key: string;
+  value: string;
+}
+
 const db = new Dexie('TodoScheduleDB') as Dexie & {
   todos: EntityTable<Todo, 'id'>;
   relations: EntityTable<TodoRelation, 'id'>;
@@ -27,6 +32,7 @@ const db = new Dexie('TodoScheduleDB') as Dexie & {
   repeatOccurrences: EntityTable<RepeatOccurrence, 'id'>;
   syncQueue: EntityTable<SyncQueueItem, 'id'>;
   syncState: EntityTable<SyncState, 'key'>;
+  hlcState: EntityTable<HLCState, 'key'>;
 };
 
 db.version(1).stores({
@@ -701,6 +707,30 @@ db.version(41).stores({
   }
 });
 
+db.version(42).stores({
+  hlcState: 'key',
+});
+
+db.version(43).stores({}).upgrade(async (tx) => {
+  const hlcMigrationNode = 'migration';
+  const tables = ['todos', 'relations', 'todoLogs', 'actionEdges', 'pluses', 'timerSessions', 'repeatOccurrences', 'plans'];
+  for (const tableName of tables) {
+    const records = await tx.table(tableName).toArray();
+    for (const record of records) {
+      const updates: Record<string, unknown> = {};
+      if (record.createdAt && record.createdAt instanceof Date) {
+        updates.createdAt = { wall: record.createdAt.getTime(), counter: 0, node: hlcMigrationNode };
+      }
+      if (record.updatedAt && record.updatedAt instanceof Date) {
+        updates.updatedAt = { wall: record.updatedAt.getTime(), counter: 0, node: hlcMigrationNode };
+      }
+      if (Object.keys(updates).length > 0) {
+        await tx.table(tableName).update(record.id, updates);
+      }
+    }
+  }
+});
+
 export async function clearAllData(): Promise<void> {
   await db.todos.clear();
   await db.relations.clear();
@@ -712,6 +742,22 @@ export async function clearAllData(): Promise<void> {
   await db.repeatOccurrences.clear();
   await db.syncQueue.clear();
   await db.syncState.clear();
+}
+
+const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function garbageCollectTombstones(): Promise<void> {
+  const cutoff = Date.now() - TOMBSTONE_TTL_MS;
+  const tables = [db.todos, db.relations, db.todoLogs, db.actionEdges, db.plans, db.pluses, db.timerSessions, db.repeatOccurrences] as const;
+
+  for (const table of tables) {
+    const tombstones = await table.filter((r: { deletedAt?: { wall?: number } }) => {
+      return r.deletedAt != null && r.deletedAt.wall != null && r.deletedAt.wall < cutoff;
+    }).toArray();
+    for (const t of tombstones) {
+      await table.delete((t as { id: string }).id);
+    }
+  }
 }
 
 export { db };

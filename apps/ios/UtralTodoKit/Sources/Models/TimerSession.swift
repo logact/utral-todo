@@ -19,6 +19,13 @@ public final class TimerSession {
     public var createdAt: Date
     public var updatedAt: Date
 
+    public var versionWall: Int = 0
+    public var versionCounter: Int = 0
+    public var versionNode: String = ""
+    public var deletedAtWall: Int? = nil
+    public var deletedAtCounter: Int? = nil
+    public var deletedAtNode: String? = nil
+
     public var intervals: [Int]? {
         get {
             guard let data = intervalsData else { return nil }
@@ -48,7 +55,10 @@ public final class TimerSession {
         elapsedSeconds: Int = 0,
         status: String = "running",
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        versionWall: Int = 0,
+        versionCounter: Int = 0,
+        versionNode: String = ""
     ) {
         self.id = id
         self.type = type
@@ -65,5 +75,7 @@ public final class TimerSession {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.intervalsData = intervals.flatMap { try? JSONEncoder().encode($0) }
+        self.versionWall = versionWall
+        self.versionCounter = versionCounter
+        self.versionNode = versionNode
     }
-}

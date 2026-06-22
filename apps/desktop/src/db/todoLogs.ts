@@ -1,5 +1,6 @@
 import { db } from './database';
-import { onLocalChange } from './syncEngine';
+import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '../types';
 import type { TodoLog, TodoLogType } from '../types';
 
 export async function createTodoLog(
@@ -8,7 +9,8 @@ export async function createTodoLog(
   content: string,
   options?: { minutesSpent?: number; metadata?: Record<string, unknown> }
 ): Promise<TodoLog> {
-  const now = new Date();
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const log: TodoLog = {
     id: crypto.randomUUID(),
     todoId,
@@ -16,8 +18,8 @@ export async function createTodoLog(
     content,
     minutesSpent: options?.minutesSpent,
     metadata: options?.metadata,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.todoLogs.add(log);
   onLocalChange('todoLogs', 'create', log.id).catch(() => {});
@@ -29,13 +31,24 @@ export async function getTodoLogs(todoId: string): Promise<TodoLog[]> {
 }
 
 export async function deleteTodoLog(id: string): Promise<void> {
-  await db.todoLogs.delete(id);
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+  const existing = await db.todoLogs.get(id);
+  const mergedUpdatedAt = existing?.updatedAt
+    ? mergeHLC(existing.updatedAt, hlc)
+    : hlc;
+  await db.todoLogs.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
   onLocalChange('todoLogs', 'delete', id).catch(() => {});
 }
 
 export async function deleteTodoLogsForTodo(todoId: string): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const logs = await db.todoLogs.where('todoId').equals(todoId).toArray();
   for (const log of logs) {
-    await db.todoLogs.delete(log.id).catch(() => {});
+    const mergedUpdatedAt = log.updatedAt
+      ? mergeHLC(log.updatedAt, hlc)
+      : hlc;
+    await db.todoLogs.update(log.id, { deletedAt: hlc, updatedAt: mergedUpdatedAt }).catch(() => {});
   }
 }

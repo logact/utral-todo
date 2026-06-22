@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Circle, Clock, Zap, Target, Play, Pause, SkipForward, RotateCcw, X, ChevronDown, Timer, ArrowRight, Search, Sparkles } from 'lucide-react';
-import { getTodaysTodos, getInProgressTodos, getOverdueTodos, getAllTodos, updateTodoStatus } from '../db/todos';
+import { getTodaysTodos, getInProgressTodos, getOverdueTodos, getAllTodos, updateTodoStatus, getUnscheduledHighPriorityTodos, getTodaysGoals } from '../db/todos';
 import { getAllPluses } from '../db/pluse';
 import { getActiveTimerSession, updateTimerSession } from '../db/timerSessions';
 import type { Todo, Pluse, TimerSession } from '@utral/types';
@@ -606,6 +606,8 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [inProgress, setInProgress] = useState<Todo[]>([]);
   const [overdue, setOverdue] = useState<Todo[]>([]);
+  const [suggested, setSuggested] = useState<Todo[]>([]);
+  const [todayGoals, setTodayGoals] = useState<Todo[]>([]);
   const [pluses, setPluses] = useState<Pluse[]>([]);
   const [loading, setLoading] = useState(true);
   const [activePluse, setActivePluse] = useState<Pluse | null>(null);
@@ -618,16 +620,20 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [today, progress, overdueList, allPluses, session] = await Promise.all([
+    const [today, progress, overdueList, suggestedList, goalsList, allPluses, session] = await Promise.all([
       getTodaysTodos(),
       getInProgressTodos(),
       getOverdueTodos(),
+      getUnscheduledHighPriorityTodos(),
+      getTodaysGoals(),
       getAllPluses(),
       getActiveTimerSession(),
     ]);
     setTodos(today);
     setInProgress(progress);
     setOverdue(overdueList);
+    setSuggested(suggestedList);
+    setTodayGoals(goalsList);
     setPluses(allPluses);
     setActiveSession(session || null);
     if (allPluses.length > 0 && !activePluse) {
@@ -717,7 +723,7 @@ export function Today({ onQuickCreate }: { onQuickCreate?: () => void }) {
     refresh();
   }
 
-  const allTodos = [...overdue, ...inProgress, ...todos.filter((t) => t.status !== 'in_progress')];
+  const allTodos = [...overdue, ...inProgress, ...todayGoals, ...suggested, ...todos.filter((t) => t.status !== 'in_progress')];
   const doneCount = allTodos.filter((t) => t.status === 'done').length;
   const totalCount = allTodos.length;
   const currentTodo = inProgress[0];

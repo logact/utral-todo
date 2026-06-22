@@ -1,4 +1,6 @@
 import { db } from './database';
+import { getOrCreateDeviceId } from './syncEngine';
+import { newHLC, mergeHLC } from '@utral/types';
 import type { Pluse } from '@utral/types';
 import { triggerSync } from './timerSessions';
 
@@ -17,7 +19,8 @@ export async function createPluse(
   description?: string,
   autoAdvance?: boolean
 ): Promise<Pluse> {
-  const now = new Date();
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
   const pluse: Pluse = {
     id: crypto.randomUUID(),
     name,
@@ -25,8 +28,8 @@ export async function createPluse(
     intervals,
     repeatCount,
     autoAdvance: autoAdvance ?? true,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: hlc,
+    updatedAt: hlc,
   };
   await db.pluses.add(pluse);
   await triggerSync('pluses', 'create', pluse.id);
@@ -37,7 +40,12 @@ export async function updatePluse(
   id: string,
   updates: Partial<Pick<Pluse, 'name' | 'description' | 'intervals' | 'repeatCount' | 'autoAdvance'>>
 ): Promise<void> {
-  await db.pluses.update(id, { ...updates, updatedAt: new Date() });
+  const nodeId = await getOrCreateDeviceId();
+  const existing = await db.pluses.get(id);
+  const hlc = existing
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.pluses.update(id, { ...updates, updatedAt: hlc });
   await triggerSync('pluses', 'update', id);
 }
 

@@ -23,7 +23,9 @@ import {
   parseVirtualTodoId,
   dateMatchesRule,
   computeVirtualTodo,
+  newHLC,
 } from '../types';
+import { getOrCreateDeviceId } from '../db/syncEngine';
 import type { Todo, TodoStatus, Priority, RepeatOccurrence } from '../types';
 
 export function useTodos() {
@@ -387,16 +389,18 @@ export function useScheduleTodos() {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;
       await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      const nodeId = await getOrCreateDeviceId();
+      const hlc = newHLC(nodeId);
       setOccurrences((prev) => {
         const existing = prev.find((o) => o.id === id);
         if (existing) {
           return prev.map((o) =>
             o.id === id
-              ? { ...o, status, completedAt: status === 'done' ? new Date() : undefined, updatedAt: new Date() }
+              ? { ...o, status, completedAt: status === 'done' ? new Date() : undefined, updatedAt: hlc }
               : o
           );
         }
-        return [...prev, { id, templateId: parsed.templateId, date: new Date(parsed.dateKey), status, completedAt: status === 'done' ? new Date() : undefined, createdAt: new Date(), updatedAt: new Date() }];
+        return [...prev, { id, templateId: parsed.templateId, date: new Date(parsed.dateKey), status, completedAt: status === 'done' ? new Date() : undefined, createdAt: hlc, updatedAt: hlc }];
       });
       return;
     }

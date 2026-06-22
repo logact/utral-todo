@@ -1,6 +1,7 @@
 import { db } from './database';
 import { syncFetch } from './sync';
-import type { SyncEvent } from '@utral/types';
+import type { SyncEvent, HLCTimestamp } from '@utral/types';
+import { compareHLC } from '@utral/types';
 
 let sseSource: EventSource | null = null;
 let processing = false;
@@ -18,7 +19,7 @@ function normalizeServerUrl(url: string): string {
   return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
 }
 
-async function getOrCreateDeviceId(): Promise<string> {
+export async function getOrCreateDeviceId(): Promise<string> {
   if (deviceId) return deviceId;
   const state = await db.syncState.get('deviceId');
   if (state?.value) {
@@ -54,6 +55,16 @@ async function getLastSyncAt(): Promise<Date | undefined> {
 
 async function setLastSyncAt(date: Date): Promise<void> {
   await db.syncState.put({ key: 'lastSyncAt', value: date.toISOString() });
+}
+
+function dateToHLCFallback(date: Date, nodeId: string) {
+  return { wall: date.getTime(), counter: 0, node: nodeId };
+}
+
+function shouldAdopt(localUpdatedAt: HLCTimestamp | undefined, remoteUpdatedAt: HLCTimestamp | undefined): boolean {
+  if (!remoteUpdatedAt) return false;
+  if (!localUpdatedAt) return true;
+  return compareHLC(remoteUpdatedAt, localUpdatedAt) > 0;
 }
 
 export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
@@ -100,18 +111,10 @@ export async function applyRemoteEvent(event: SyncEvent): Promise<void> {
       return;
     }
 
-    const localUpdatedAt = local.updatedAt as Date | undefined;
-    const remoteUpdatedAt = parsedEvent.updatedAt as Date | undefined;
+    const localUpdatedAt = local.updatedAt as HLCTimestamp | undefined;
+    const remoteUpdatedAt = parsedEvent.updatedAt as HLCTimestamp | undefined;
 
-    if (remoteUpdatedAt && localUpdatedAt) {
-      const remoteTime = new Date(remoteUpdatedAt).getTime();
-      const localTime = new Date(localUpdatedAt).getTime();
-      if (remoteTime > localTime) {
-        await table.update(event.recordId, parsedEvent).catch((err: unknown) => {
-          console.warn('[sync] Failed to update remote record:', err);
-        });
-      }
-    } else {
+    if (shouldAdopt(localUpdatedAt, remoteUpdatedAt)) {
       await table.update(event.recordId, parsedEvent).catch((err: unknown) => {
         console.warn('[sync] Failed to update remote record:', err);
       });
@@ -158,7 +161,7 @@ export async function processQueue(): Promise<void> {
             operation: item.operation,
             recordId: item.recordId,
             deviceId: myDeviceId,
-            createdAt: item.createdAt,
+            createdAt: dateToHLCFallback(item.createdAt, myDeviceId),
           });
         } else {
           const getRecord = async (): Promise<unknown | undefined> => {
@@ -191,7 +194,7 @@ export async function processQueue(): Promise<void> {
             recordId: item.recordId,
             payload,
             deviceId: myDeviceId,
-            createdAt: item.createdAt,
+            createdAt: dateToHLCFallback(item.createdAt, myDeviceId),
           });
         }
       }

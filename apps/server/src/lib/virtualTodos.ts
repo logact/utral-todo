@@ -99,7 +99,7 @@ export async function getVirtualTodosForDate(date: Date): Promise<VirtualTodo[]>
 
     const todoLike = toTodoLike(template);
     const computed = computeVirtualTodo(todoLike as never, d, occurrence as never);
-    virtualTodos.push(computed as VirtualTodo);
+    virtualTodos.push(computed as unknown as VirtualTodo);
   }
 
   return virtualTodos;
@@ -155,7 +155,7 @@ export async function getVirtualTodosForDateRange(
         if (!occurrence?.materializedTodoId) {
           const todoLike = toTodoLike(template);
           const computed = computeVirtualTodo(todoLike as never, new Date(current), occurrence as never);
-          virtualTodos.push(computed as VirtualTodo);
+          virtualTodos.push(computed as unknown as VirtualTodo);
         }
       }
 

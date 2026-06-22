@@ -1,3 +1,7 @@
+import type { HLCTimestamp } from './hlc.js';
+export type { HLCTimestamp } from './hlc.js';
+export { newHLC, mergeHLC, compareHLC, maxHLC, hlcToDate, dateToHLC, hlcToString, stringToHLC } from './hlc.js';
+
 export type TodoStatus = 'pending' | 'in_progress' | 'done';
 export type Priority = 'low' | 'medium' | 'high';
 export type TodoLogType = 'progress' | 'thought' | 'blocker' | 'decision' | 'system' | 'step_complete' | 'exec';
@@ -19,19 +23,21 @@ export interface ActionEdge {
   fromTodoId: string;
   toTodoId: string;
   type: ActionEdgeTypeAll;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface Plan {
   id: string;
   goalTodoId: string;
   title: string;
-  nodeIds: string[]; // curated todo IDs in the subgraph
-  edgeIds: string[]; // curated ActionEdge IDs in the subgraph
+  nodeIds: string[];
+  edgeIds: string[];
   isSystemPlan?: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 // Road-to-goal relation types:
@@ -57,8 +63,9 @@ export interface TodoRelation {
   fromTodoId: string;
   toTodoId: string;
   type: TodoRelationType;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface RepeatRule {
@@ -75,8 +82,9 @@ export interface RepeatOccurrence {
   status: TodoStatus;
   completedAt?: Date;
   materializedTodoId?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface TodoBase {
@@ -91,8 +99,9 @@ export interface TodoBase {
   isSystemTask?: boolean;
   tags: string[];
   order: number;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface Goal extends TodoBase {
@@ -149,8 +158,9 @@ export interface TodoLog {
   content: string;
   minutesSpent?: number;
   metadata?: Record<string, unknown>;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface Pluse {
@@ -161,8 +171,9 @@ export interface Pluse {
   repeatCount: number;
   intervalTodos?: Record<number, string>;
   autoAdvance?: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface TimerSession {
@@ -179,8 +190,9 @@ export interface TimerSession {
   currentIndex: number;
   elapsedSeconds: number;
   status: 'running' | 'paused' | 'completed';
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: HLCTimestamp;
+  updatedAt: HLCTimestamp;
+  deletedAt?: HLCTimestamp;
 }
 
 export interface SyncPayload {
@@ -202,7 +214,7 @@ export interface SyncEvent {
   recordId: string;
   payload?: unknown;
   deviceId: string;
-  createdAt: Date;
+  createdAt: HLCTimestamp;
 }
 
 export interface SyncConfig {

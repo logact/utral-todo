@@ -1,5 +1,6 @@
 import { Zap, Brain, X, CheckCircle2, Activity, CheckSquare, Trash2, Play } from 'lucide-react';
 import { formatTime } from '../utils/date';
+import { hlcToDate } from '../types';
 import type { TodoLog, TodoLogType } from '../types';
 
 /* ------------------------------------------------------------------ */
@@ -35,7 +36,7 @@ export function groupLogsByDayAndSession(logs: TodoLog[]): LogDayGroup[] {
   const SESSION_GAP_MS = 30 * 60 * 1000; // 30 minutes
 
   for (const log of logs) {
-    const logDate = new Date(log.createdAt);
+    const logDate = hlcToDate(log.createdAt);
 
     // New day?
     if (!currentDay || !isSameDay(logDate, new Date(currentDay.sessions[0]?.startTime ?? logDate))) {
@@ -110,7 +111,7 @@ function LogEntry({ log, onDelete }: { log: TodoLog; onDelete?: (id: string) => 
         )}
       </div>
       <span className="text-[11px] text-slate-400 dark:text-slate-500 shrink-0 mt-0.5 font-mono">
-        {formatTime(log.createdAt)}
+        {formatTime(hlcToDate(log.createdAt))}
       </span>
       {onDelete && log.type !== 'system' && (
         <button
