@@ -73,13 +73,13 @@ export default function TodoDetailScreen() {
 
   const saveSchedule = useCallback(async () => {
     if (!todo) return;
-    const scheduledDate = scheduleInput ? new Date(scheduleInput) : undefined;
+    const scheduledDate = scheduleInput ? new Date(scheduleInput).toISOString() : undefined;
     await updateTodo(todo.id, { scheduledDate });
 
-    if (scheduledDate && scheduledDate > new Date() && reminderEnabled) {
+    if (scheduledDate && new Date(scheduledDate) > new Date() && reminderEnabled) {
       const permitted = await requestNotificationPermission();
       if (permitted) {
-        const secondsUntil = Math.floor((scheduledDate.getTime() - Date.now()) / 1000);
+        const secondsUntil = Math.floor((new Date(scheduledDate).getTime() - Date.now()) / 1000);
         if (secondsUntil > 0) {
           await scheduleNotification(todo.title, 'Your scheduled task is ready', secondsUntil);
         }
@@ -103,7 +103,7 @@ export default function TodoDetailScreen() {
 
   const saveDueDate = useCallback(async () => {
     if (!todo) return;
-    const dueDate = dueInput ? new Date(dueInput) : undefined;
+    const dueDate = dueInput ? new Date(dueInput).toISOString() : undefined;
     await updateTodo(todo.id, { dueDate });
     hapticImpact();
     queryClient.invalidateQueries({ queryKey: ['todo', id] });

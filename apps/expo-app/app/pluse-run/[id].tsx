@@ -196,7 +196,6 @@ export default function PluseRunScreen() {
     } else {
       if (!sessionRef.current && pluse) {
         const session = await createTimerSession({
-          type: 'pluse',
           name: pluse.name,
           pluseId: pluse.id,
           intervals: pluse.intervals,
