@@ -19,7 +19,10 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Allow Utral Todo to access your camera for scanning.",
         "NSPhotoLibraryUsageDescription": "Allow Utral Todo to access your photos.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
@@ -27,7 +30,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.logat.utralTodo"
+      "package": "com.logat.utralTodo",
+      "permissions": ["android.permission.INTERNET"],
+      "usesCleartextTraffic": true
     },
     "web": {
       "bundler": "metro",

@@ -16,6 +16,9 @@ export const todos = sqliteTable('todos', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
+  versionWall: integer('version_wall'),
+  versionCounter: integer('version_counter').notNull().default(0),
+  versionNode: text('version_node'),
 });
 
 export const pluses = sqliteTable('pluses', {
@@ -28,10 +31,14 @@ export const pluses = sqliteTable('pluses', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
+  versionWall: integer('version_wall'),
+  versionCounter: integer('version_counter').notNull().default(0),
+  versionNode: text('version_node'),
 });
 
 export const timerSessions = sqliteTable('timer_sessions', {
   id: text('id').primaryKey(),
+  type: text('type', { enum: ['stopwatch', 'pluse'] }).notNull().default('pluse'),
   pluseId: text('pluse_id'),
   todoId: text('todo_id'),
   name: text('name').notNull().default(''),
@@ -46,6 +53,9 @@ export const timerSessions = sqliteTable('timer_sessions', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
+  versionWall: integer('version_wall'),
+  versionCounter: integer('version_counter').notNull().default(0),
+  versionNode: text('version_node'),
 });
 
 export const syncConfig = sqliteTable('sync_config', {

@@ -7,12 +7,15 @@ import * as Device from 'expo-device';
 import { syncAll, getSyncConfig, setSyncConfig } from '@/lib/sync';
 import { clearAllData } from '@/lib/database';
 
+const SYNC_VERSION = 'v5-safe-dates';
+
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [serverUrl, setServerUrl] = useState('');
   const [apiToken, setApiToken] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syncError, setSyncError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   useEffect(() => {
@@ -41,14 +44,17 @@ export default function SettingsScreen() {
   const handleSync = async () => {
     setSyncing(true);
     setSyncStatus('idle');
+    setSyncError('');
     try {
       await syncAll();
       setSyncStatus('success');
     } catch (e: any) {
+      console.error('[sync] Sync Now failed:', e?.message || e);
       setSyncStatus('error');
+      setSyncError(e?.message || String(e));
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncStatus('idle'), 3000);
+      setTimeout(() => { setSyncStatus('idle'); setSyncError(''); }, 8000);
     }
   };
 
@@ -124,6 +130,7 @@ export default function SettingsScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Ionicons name="sync-outline" size={20} color="#6366f1" />
               <Text style={{ fontSize: 15, color: '#0f172a' }}>Sync</Text>
+              <Text style={{ fontSize: 10, color: '#94a3b8', marginLeft: 'auto' }}>{SYNC_VERSION}</Text>
             </View>
 
             <View style={{ gap: 12 }}>
@@ -202,9 +209,16 @@ export default function SettingsScreen() {
                 </View>
               ) : null}
               {syncStatus === 'error' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons name="alert-circle" size={14} color="#f43f5e" />
-                  <Text style={{ fontSize: 12, color: '#f43f5e' }}>Sync failed</Text>
+                <View style={{ gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="alert-circle" size={14} color="#f43f5e" />
+                    <Text style={{ fontSize: 12, color: '#f43f5e' }}>Sync failed</Text>
+                  </View>
+                  {syncError ? (
+                    <Text style={{ fontSize: 11, color: '#94a3b8', marginLeft: 20 }} numberOfLines={3}>
+                      {syncError}
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
             </View>

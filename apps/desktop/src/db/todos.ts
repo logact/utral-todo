@@ -109,11 +109,11 @@ export async function createTask(
 }
 
 export async function getAllTodos(): Promise<Todo[]> {
-  return db.todos.toArray();
+  return db.todos.filter((t) => !t.deletedAt).toArray();
 }
 
 export async function getRootTodos(): Promise<Todo[]> {
-  return db.todos.filter((t) => !t.parentId).toArray();
+  return db.todos.filter((t) => !t.parentId && !t.deletedAt).toArray();
 }
 
 export async function getRootGoal(): Promise<Todo | undefined> {
@@ -163,7 +163,7 @@ export async function ensureRootGoal(): Promise<Todo> {
 }
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
-  const todos = await db.todos.where('parentId').equals(parentId).toArray();
+  const todos = await db.todos.where('parentId').equals(parentId).filter((t) => !t.deletedAt).toArray();
   return todos.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
     return (b.createdAt?.wall ?? 0) - (a.createdAt?.wall ?? 0);
@@ -174,7 +174,7 @@ export async function getSubGoals(parentId: string): Promise<Todo[]> {
   const todos = await db.todos
     .where('parentId')
     .equals(parentId)
-    .and((t) => t.nodeType === 'goal')
+    .and((t) => t.nodeType === 'goal' && !t.deletedAt)
     .toArray();
   return todos.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
@@ -467,7 +467,7 @@ export async function getTodaysTodos(): Promise<Todo[]> {
   const realTodos = await db.todos
     .where('scheduledDate')
     .between(today, tomorrow)
-    .and((t) => t.nodeType === 'task')
+    .and((t) => t.nodeType === 'task' && !t.deletedAt)
     .toArray();
 
   const virtualTodos = await getVirtualTodosForDate(today);
@@ -494,7 +494,7 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const realTodos = await db.todos.where('scheduledDate').between(start, end).toArray();
+  const realTodos = await db.todos.where('scheduledDate').between(start, end).filter((t) => !t.deletedAt).toArray();
   const virtualTodos = await getVirtualTodosForDate(date);
 
   // Filter out materialized todos from real results (they're already there)
@@ -503,7 +503,7 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
 
 export async function getUnscheduledTodos(): Promise<Todo[]> {
   return db.todos
-    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.nodeType === 'task')
+    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.nodeType === 'task' && !t.deletedAt)
     .toArray();
 }
 
@@ -513,7 +513,7 @@ export async function getOverdueTodos(): Promise<Todo[]> {
   return db.todos
     .where('dueDate')
     .below(now)
-    .and((t) => t.status !== 'done' && t.nodeType === 'task')
+    .and((t) => t.status !== 'done' && t.nodeType === 'task' && !t.deletedAt)
     .toArray();
 }
 
@@ -521,13 +521,13 @@ export async function getInProgressTodos(): Promise<Todo[]> {
   return db.todos
     .where('status')
     .equals('in_progress')
-    .and((t) => t.nodeType === 'task')
+    .and((t) => t.nodeType === 'task' && !t.deletedAt)
     .toArray();
 }
 
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
   return db.todos
-    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high' && t.nodeType === 'task')
+    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high' && t.nodeType === 'task' && !t.deletedAt)
     .toArray();
 }
 
@@ -540,6 +540,7 @@ export async function getTodaysGoals(): Promise<Todo[]> {
   return db.todos
     .filter((t) =>
       t.nodeType === 'goal' &&
+      !t.deletedAt &&
       t.targetDate != null &&
       new Date(t.targetDate) >= today &&
       new Date(t.targetDate) < tomorrow
@@ -548,12 +549,12 @@ export async function getTodaysGoals(): Promise<Todo[]> {
 }
 
 export async function getTodosByTag(tag: string): Promise<Todo[]> {
-  return db.todos.filter((t) => t.tags.includes(tag)).toArray();
+  return db.todos.filter((t) => t.tags.includes(tag) && !t.deletedAt).toArray();
 }
 
 export async function getRepeatTemplates(): Promise<Todo[]> {
   return db.todos
-    .filter((t) => t.repeatRule !== undefined && t.nodeType === 'task')
+    .filter((t) => t.repeatRule !== undefined && t.nodeType === 'task' && !t.deletedAt)
     .toArray();
 }
 

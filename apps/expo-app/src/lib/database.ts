@@ -1,6 +1,10 @@
 import { eq, and, isNull } from 'drizzle-orm';
-import { db, schema } from '../db';
+import { db, expoDb, schema } from '../db';
 import type { todos, pluses, timerSessions } from '../db/schema';
+
+function scheduleSyncPush() {
+  import('./auto-sync').then((m) => m.scheduleSyncPush()).catch(() => {});
+}
 
 export type TodoStatus = 'pending' | 'in_progress' | 'done';
 
@@ -59,7 +63,12 @@ export async function getHLCState(): Promise<HLCState> {
     return { counter: rows[0].counter, node: rows[0].node, lastSeen: rows[0].lastSeen };
   }
   const defaultState = { counter: 0, node: Math.random().toString(36).slice(2, 10), lastSeen: Date.now() };
-  await db.insert(schema.hlcState).values({ id: 'default', ...defaultState });
+  await db.insert(schema.hlcState).values({ id: 'default', ...defaultState }).onConflictDoNothing();
+  // Re-read in case another call inserted first
+  const rows2 = await db.select().from(schema.hlcState).limit(1);
+  if (rows2.length > 0) {
+    return { counter: rows2[0].counter, node: rows2[0].node, lastSeen: rows2[0].lastSeen };
+  }
   return defaultState;
 }
 
@@ -73,11 +82,28 @@ export async function setHLCState(state: HLCState): Promise<void> {
     });
 }
 
+export async function getDeviceId(): Promise<string> {
+  const state = await getHLCState();
+  return state.node;
+}
+
+export async function getLastSyncAt(): Promise<Date | undefined> {
+  const state = await getHLCState();
+  if (state.lastSeen === 0) return undefined;
+  return new Date(state.lastSeen);
+}
+
+export async function setLastSyncAt(date: Date): Promise<void> {
+  const state = await getHLCState();
+  await setHLCState({ ...state, lastSeen: date.getTime() });
+}
+
 export async function createTimerSession(data: Partial<TimerSession>): Promise<TimerSession> {
   const now = new Date().toISOString();
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const session = {
     id,
+    type: data.type || 'pluse',
     pluseId: data.pluseId || null,
     todoId: data.todoId || null,
     name: data.name || '',
@@ -91,6 +117,7 @@ export async function createTimerSession(data: Partial<TimerSession>): Promise<T
     updatedAt: now,
   };
   await db.insert(schema.timerSessions).values(session);
+  scheduleSyncPush();
   return session as TimerSession;
 }
 
@@ -105,6 +132,7 @@ export async function updateTimerSession(
     .update(schema.timerSessions)
     .set({ ...updateFields, updatedAt: new Date().toISOString() })
     .where(eq(schema.timerSessions.id, id));
+  scheduleSyncPush();
   const updated = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
   return updated[0] as TimerSession;
 }
@@ -137,12 +165,13 @@ export async function getActiveTimerSession(): Promise<TimerSession | null> {
 
 export async function deleteTimerSession(id: string): Promise<void> {
   await db.delete(schema.timerSessions).where(eq(schema.timerSessions.id, id));
+  scheduleSyncPush();
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.delete(schema.todos);
-  await db.delete(schema.pluses);
-  await db.delete(schema.timerSessions);
-  await db.delete(schema.syncConfig);
-  await db.delete(schema.hlcState);
+  expoDb.execSync('DELETE FROM todos');
+  expoDb.execSync('DELETE FROM pluses');
+  expoDb.execSync('DELETE FROM timer_sessions');
+  expoDb.execSync('DELETE FROM sync_config');
+  expoDb.execSync('DELETE FROM hlc_state');
 }

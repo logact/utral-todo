@@ -102,6 +102,21 @@ export type ApplyResult = 'applied' | 'skipped' | 'deleted' | 'error';
 
 import { shouldAdoptRemote, hlcFromParts } from './crdt.js';
 
+function isHLCTimestamp(val: unknown): val is { wall: number; counter: number; node: string } {
+  return typeof val === 'object' && val !== null && 'wall' in val && 'counter' in val && 'node' in val;
+}
+
+function sanitizeForPrisma(data: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...data };
+  for (const key of Object.keys(result)) {
+    const val = result[key];
+    if (isHLCTimestamp(val)) {
+      result[key] = new Date(val.wall);
+    }
+  }
+  return result;
+}
+
 export async function applyChange(
   event: SyncEvent
 ): Promise<ApplyResult> {
@@ -157,9 +172,9 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.todo.update({ where: { id: recordId }, data: data as never });
+          await prisma.todo.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
-          await prisma.todo.create({ data: data as never });
+          await prisma.todo.create({ data: sanitizeForPrisma(data) as never });
         }
       }
       break;
@@ -211,7 +226,7 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.todoRelation.update({ where: { id: recordId }, data: data as never });
+          await prisma.todoRelation.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
           const fromTodoId = data.fromTodoId as string;
           const toTodoId = data.toTodoId as string;
@@ -225,7 +240,7 @@ export async function applyChange(
               return 'skipped';
             }
           }
-          await prisma.todoRelation.create({ data: data as never }).catch((err) => {
+          await prisma.todoRelation.create({ data: sanitizeForPrisma(data) as never }).catch((err) => {
             console.error(`[sync] Failed to create todoRelation ${recordId}:`, err);
           });
         }
@@ -277,9 +292,9 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.todoLog.update({ where: { id: recordId }, data: data as never });
+          await prisma.todoLog.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
-          await prisma.todoLog.create({ data: data as never });
+          await prisma.todoLog.create({ data: sanitizeForPrisma(data) as never });
         }
       }
       break;
@@ -329,7 +344,7 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.actionEdge.update({ where: { id: recordId }, data: data as never });
+          await prisma.actionEdge.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
           const fromTodoId = data.fromTodoId as string;
           const toTodoId = data.toTodoId as string;
@@ -343,7 +358,7 @@ export async function applyChange(
               return 'skipped';
             }
           }
-          await prisma.actionEdge.create({ data: data as never }).catch((err) => {
+          await prisma.actionEdge.create({ data: sanitizeForPrisma(data) as never }).catch((err) => {
             console.error(`[sync] Failed to create actionEdge ${recordId}:`, err);
           });
         }
@@ -395,9 +410,9 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.pluse.update({ where: { id: recordId }, data: data as never });
+          await prisma.pluse.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
-          await prisma.pluse.create({ data: data as never });
+          await prisma.pluse.create({ data: sanitizeForPrisma(data) as never });
         }
       }
       break;
@@ -447,9 +462,9 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.timerSession.update({ where: { id: recordId }, data: data as never });
+          await prisma.timerSession.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
-          await prisma.timerSession.create({ data: data as never });
+          await prisma.timerSession.create({ data: sanitizeForPrisma(data) as never });
         }
       }
       break;
@@ -499,9 +514,9 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.repeatOccurrence.update({ where: { id: recordId }, data: data as never });
+          await prisma.repeatOccurrence.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
-          await prisma.repeatOccurrence.create({ data: data as never });
+          await prisma.repeatOccurrence.create({ data: sanitizeForPrisma(data) as never });
         }
       }
       break;
@@ -551,9 +566,9 @@ export async function applyChange(
             { id: recordId, updatedAt: remoteHLC },
           );
           if (decision !== 'adopt') return 'skipped';
-          await prisma.plan.update({ where: { id: recordId }, data: data as never });
+          await prisma.plan.update({ where: { id: recordId }, data: sanitizeForPrisma(data) as never });
         } else {
-          await prisma.plan.create({ data: data as never });
+          await prisma.plan.create({ data: sanitizeForPrisma(data) as never });
         }
       }
       break;

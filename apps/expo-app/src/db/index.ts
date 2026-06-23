@@ -6,6 +6,7 @@ const DATABASE_NAME = 'utral-todo.db';
 
 const expoDb = openDatabaseSync(DATABASE_NAME);
 export const db = drizzle(expoDb, { schema });
+export { expoDb };
 
 export function initDatabase() {
   expoDb.execSync(`
@@ -41,6 +42,7 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS timer_sessions (
       id TEXT PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'pluse',
       pluse_id TEXT,
       todo_id TEXT,
       name TEXT NOT NULL DEFAULT '',
@@ -70,6 +72,14 @@ export function initDatabase() {
       last_seen INTEGER NOT NULL
     );
   `);
+
+  // Add version columns for HLC-based sync (safe to run repeatedly)
+  const tables = ['todos', 'pluses', 'timer_sessions'];
+  for (const table of tables) {
+    try { expoDb.execSync(`ALTER TABLE ${table} ADD COLUMN version_wall INTEGER`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER ${table} version_wall:`, e?.message); }
+    try { expoDb.execSync(`ALTER TABLE ${table} ADD COLUMN version_counter INTEGER NOT NULL DEFAULT 0`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER ${table} version_counter:`, e?.message); }
+    try { expoDb.execSync(`ALTER TABLE ${table} ADD COLUMN version_node TEXT`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER ${table} version_node:`, e?.message); }
+  }
 }
 
 export { schema };

@@ -1,6 +1,7 @@
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db, schema } from '../db';
 import type { Todo } from './database';
+import { scheduleSyncPush } from './auto-sync';
 
 function now(): string {
   return new Date().toISOString();
@@ -64,6 +65,7 @@ export async function updateTodoStatus(id: string, status: Todo['status']): Prom
       updatedAt: timestamp,
     })
     .where(eq(schema.todos.id, id));
+  scheduleSyncPush();
   return getTodo(id);
 }
 
@@ -86,6 +88,7 @@ export async function createTodo(data: Partial<Todo>): Promise<Todo> {
     updatedAt: timestamp,
   };
   await db.insert(schema.todos).values(todo);
+  scheduleSyncPush();
   return todo as Todo;
 }
 
@@ -97,6 +100,7 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<To
     .update(schema.todos)
     .set({ ...updateFields, updatedAt: now() })
     .where(eq(schema.todos.id, id));
+  scheduleSyncPush();
   return getTodo(id);
 }
 
@@ -108,5 +112,6 @@ export async function deleteTodo(id: string): Promise<void> {
       .update(schema.todos)
       .set({ deletedAt: timestamp, updatedAt: timestamp })
       .where(eq(schema.todos.id, id));
+    scheduleSyncPush();
   }
 }
