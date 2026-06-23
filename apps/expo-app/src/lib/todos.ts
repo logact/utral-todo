@@ -1,7 +1,7 @@
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db, schema } from '../db';
 import type { Todo } from './database';
-import { scheduleSyncPush } from './auto-sync';
+import { scheduleSyncPush, addPendingChange } from './auto-sync';
 
 function now(): string {
   return new Date().toISOString();
@@ -98,6 +98,7 @@ export async function updateTodoStatus(id: string, status: Todo['status']): Prom
   if (status === 'done') updates.completedAt = timestamp;
 
   await db.update(schema.todos).set(updates).where(eq(schema.todos.id, id));
+  addPendingChange('todo', 'update', id);
   scheduleSyncPush();
   return getTodo(id);
 }
@@ -109,6 +110,7 @@ export async function updateTodoSchedule(id: string, scheduledDate: string | nul
     .update(schema.todos)
     .set({ scheduledDate, updatedAt: now() })
     .where(eq(schema.todos.id, id));
+  addPendingChange('todo', 'update', id);
   scheduleSyncPush();
   return getTodo(id);
 }
@@ -144,6 +146,7 @@ export async function createTodo(data: Partial<Todo>): Promise<Todo> {
     updatedAt: timestamp,
   };
   await db.insert(schema.todos).values(todo);
+  addPendingChange('todo', 'create', id);
   scheduleSyncPush();
   return todo as Todo;
 }
@@ -156,6 +159,7 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<To
     .update(schema.todos)
     .set({ ...updateFields, updatedAt: now() })
     .where(eq(schema.todos.id, id));
+  addPendingChange('todo', 'update', id);
   scheduleSyncPush();
   return getTodo(id);
 }
@@ -168,6 +172,7 @@ export async function deleteTodo(id: string): Promise<void> {
       .update(schema.todos)
       .set({ deletedAt: timestamp, updatedAt: timestamp })
       .where(eq(schema.todos.id, id));
+    addPendingChange('todo', 'update', id);
     scheduleSyncPush();
   }
 }

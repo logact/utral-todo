@@ -379,6 +379,10 @@ async function handleAllData(action: string) {
     await db.actionEdges.clear();
     await db.pluses.clear();
     await db.timerSessions.clear();
+    await db.plans.clear();
+    await db.repeatOccurrences.clear();
+    await db.syncQueue.clear();
+    await db.syncState.clear();
     return { success: true };
   }
   return { error: `Unknown action: ${action}` };

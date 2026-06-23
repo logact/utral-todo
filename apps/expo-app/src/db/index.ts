@@ -81,6 +81,17 @@ export function initDatabase() {
     try { expoDb.execSync(`ALTER TABLE ${table} ADD COLUMN version_node TEXT`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER ${table} version_node:`, e?.message); }
   }
 
+  // Add new timer_sessions columns (safe to run repeatedly)
+  const timerColumns: [string, string][] = [
+    ['type', "TEXT NOT NULL DEFAULT 'pluse'"],
+    ['todo_id', 'TEXT'],
+    ['paused_at', 'TEXT'],
+    ['completed_at', 'TEXT'],
+  ];
+  for (const [col, type] of timerColumns) {
+    try { expoDb.execSync(`ALTER TABLE timer_sessions ADD COLUMN ${col} ${type}`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER timer_sessions ${col}:`, e?.message); }
+  }
+
   // Add new todo columns for desktop parity (safe to run repeatedly)
   const todoColumns: [string, string][] = [
     ['pattern', 'TEXT'],

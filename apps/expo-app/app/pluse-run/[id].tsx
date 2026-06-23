@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
@@ -164,6 +164,26 @@ export default function PluseRunScreen() {
     elapsedSecondsRef.current = elapsedSeconds;
     isRunningRef.current = isRunning;
   });
+
+  // React to sync-pushed timer sessions
+  const { data: syncedSession } = useQuery({
+    queryKey: ['timerSessions'],
+    queryFn: getActiveTimerSession,
+    refetchInterval: false,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (!syncedSession) return;
+    if (syncedSession.pluseId !== id) return;
+    if (isRunningRef.current) return;
+    sessionRef.current = syncedSession;
+    setCurrentIndex(syncedSession.currentIndex);
+    setElapsedSeconds(syncedSession.elapsedSeconds);
+    if (syncedSession.status === 'running') {
+      setIsRunning(true);
+    }
+  }, [syncedSession, id]);
 
   useEffect(() => {
     requestNotificationPermission();

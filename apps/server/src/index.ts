@@ -43,6 +43,15 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// BigInt → Number for JSON serialization
+const jsonReplacer = (_key: string, value: unknown) =>
+  typeof value === 'bigint' ? Number(value) : value;
+app.use((_req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = (body: unknown) => origJson(JSON.parse(JSON.stringify(body, jsonReplacer)));
+  next();
+});
+
 app.use('/api', requireAuth);
 
 app.use('/api/todos', todosRouter);

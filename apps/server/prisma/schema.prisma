@@ -36,10 +36,10 @@ model Todo {
   isRootGoal       Boolean?       @default(false)
   isSystemTask     Boolean?       @default(false)
 
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 
@@ -57,10 +57,10 @@ model TodoRelation {
   type       String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 
@@ -77,10 +77,10 @@ model TodoLog {
   metadata     Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 
@@ -103,10 +103,10 @@ model TimerSession {
   status         String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 }
@@ -120,10 +120,10 @@ model Plan {
   isSystemPlan Boolean? @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 
@@ -137,10 +137,10 @@ model ActionEdge {
   type       String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 }
@@ -155,10 +155,10 @@ model Pluse {
   autoAdvance   Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 }
@@ -172,10 +172,10 @@ model RepeatOccurrence {
   materializedTodoId String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
-  deletedAtWall    Int?
+  deletedAtWall    BigInt?
   deletedAtCounter Int?
   deletedAtNode    String?
 
@@ -191,7 +191,7 @@ model SyncEvent {
   payload   Json?
   deviceId  String
   createdAt DateTime @default(now())
-  versionWall      Int            @default(0)
+  versionWall      BigInt         @default(0)
   versionCounter   Int            @default(0)
   versionNode      String         @default("")
 

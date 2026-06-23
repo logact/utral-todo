@@ -1,5 +1,6 @@
 import { getSyncConfigData, getDeviceId } from './database';
 import { db, schema } from '../db';
+import { eq } from 'drizzle-orm';
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -13,122 +14,171 @@ function toHLC(isoString: string | null | undefined, deviceId: string) {
   return { wall, counter: 0, node: deviceId };
 }
 
+// Pending changes queue — only dirty records are pushed
+const pendingChanges: Map<string, any> = new Map();
+
+export function addPendingChange(
+  table: string,
+  operation: 'create' | 'update' | 'delete',
+  recordId: string,
+  payload?: Record<string, unknown> | null
+): void {
+  const key = `${table}:${recordId}`;
+  // If already pending as delete, keep it as delete
+  const existing = pendingChanges.get(key);
+  if (existing?.operation === 'delete') return;
+  pendingChanges.set(key, { table, operation, recordId, payload });
+}
+
 async function pushToServer(): Promise<void> {
+  if (pendingChanges.size === 0) return;
+
   const config = await getSyncConfigData();
   if (!config?.serverUrl) return;
 
   const deviceId = await getDeviceId();
 
-  // Read all local data including soft-deleted
-  const [todos, pluses, timerSessions] = await Promise.all([
-    db.select().from(schema.todos),
-    db.select().from(schema.pluses),
-    db.select().from(schema.timerSessions),
-  ]);
+  // Take a snapshot and clear the queue
+  const entries = Array.from(pendingChanges.values());
+  pendingChanges.clear();
 
-  const now = Date.now();
   const changes: any[] = [];
 
-  for (const todo of todos) {
-    const isDeleted = !!todo.deletedAt;
-    changes.push({
-      table: 'todo',
-      operation: isDeleted ? 'delete' : 'create',
-      recordId: todo.id,
-      payload: isDeleted
-        ? { deletedAtWall: toHLC(todo.deletedAt, deviceId).wall, deletedAtCounter: 0, deletedAtNode: deviceId }
-        : {
-            id: todo.id,
-            title: todo.title,
-            description: todo.description,
-            nodeType: todo.nodeType,
-            pattern: todo.pattern,
-            status: todo.status,
-            priority: todo.priority,
-            goalStatus: todo.goalStatus,
-            estimatedMinutes: todo.estimatedMinutes,
-            scheduledDate: todo.scheduledDate,
-            scheduledEndDate: todo.scheduledEndDate,
-            dueDate: todo.dueDate,
-            startedAt: todo.startedAt,
-            completedAt: todo.completedAt,
-            parentId: todo.parentId,
-            activePlanId: todo.activePlanId,
-            isRootGoal: todo.isRootGoal,
-            isSystemTask: todo.isSystemTask,
-            motivation: todo.motivation,
-            successCriteria: todo.successCriteria,
-            targetDate: todo.targetDate,
-            repeatRule: todo.repeatRule,
-            tags: todo.tags,
-            order: todo.order,
-            createdAt: todo.createdAt,
-            updatedAt: todo.updatedAt,
-            versionWall: todo.versionWall ?? 0,
-            versionCounter: todo.versionCounter ?? 0,
-            versionNode: todo.versionNode ?? '',
-          },
-      deviceId,
-      createdAt: toHLC(todo.updatedAt, deviceId),
-    });
-  }
+  for (const entry of entries) {
+    const { table, operation, recordId } = entry;
 
-  for (const pluse of pluses) {
-    const isDeleted = !!pluse.deletedAt;
-    changes.push({
-      table: 'pluse',
-      operation: isDeleted ? 'delete' : 'create',
-      recordId: pluse.id,
-      payload: isDeleted
-        ? { deletedAtWall: toHLC(pluse.deletedAt, deviceId).wall, deletedAtCounter: 0, deletedAtNode: deviceId }
-        : {
-            id: pluse.id,
-            name: pluse.name,
-            description: pluse.description,
-            intervals: pluse.intervals,
-            repeatCount: pluse.repeatCount,
-            autoAdvance: pluse.autoAdvance,
-            createdAt: pluse.createdAt,
-            updatedAt: pluse.updatedAt,
-            versionWall: pluse.versionWall ?? 0,
-            versionCounter: pluse.versionCounter ?? 0,
-            versionNode: pluse.versionNode ?? '',
-          },
-      deviceId,
-      createdAt: toHLC(pluse.updatedAt, deviceId),
-    });
-  }
+    if (operation === 'delete') {
+      changes.push({
+        table,
+        operation: 'delete',
+        recordId,
+        payload: entry.payload ?? {},
+        deviceId,
+        createdAt: toHLC(new Date().toISOString(), deviceId),
+      });
+      continue;
+    }
 
-  for (const session of timerSessions) {
-    const isDeleted = !!session.deletedAt;
+    // For create/update, read the current record from DB
+    let record: Record<string, unknown> | undefined;
+    try {
+      switch (table) {
+        case 'todo': {
+          const rows = await db.select().from(schema.todos).where(eq(schema.todos.id, recordId)).limit(1);
+          record = rows[0] as Record<string, unknown> | undefined;
+          break;
+        }
+        case 'pluse': {
+          const rows = await db.select().from(schema.pluses).where(eq(schema.pluses.id, recordId)).limit(1);
+          record = rows[0] as Record<string, unknown> | undefined;
+          break;
+        }
+        case 'timerSession': {
+          const rows = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, recordId)).limit(1);
+          record = rows[0] as Record<string, unknown> | undefined;
+          break;
+        }
+      }
+    } catch {
+      // Record may have been hard-deleted, skip
+      continue;
+    }
+
+    if (!record) continue;
+
+    const isDeleted = !!record.deletedAt;
+
+    let payload: Record<string, unknown>;
+    if (isDeleted) {
+      payload = {
+        deletedAtWall: toHLC(record.deletedAt as string, deviceId).wall,
+        deletedAtCounter: 0,
+        deletedAtNode: deviceId,
+      };
+    } else {
+      switch (table) {
+        case 'todo':
+          payload = {
+            id: record.id,
+            title: record.title,
+            description: record.description,
+            nodeType: record.nodeType,
+            pattern: record.pattern,
+            status: record.status,
+            priority: record.priority,
+            goalStatus: record.goalStatus,
+            estimatedMinutes: record.estimatedMinutes,
+            scheduledDate: record.scheduledDate,
+            scheduledEndDate: record.scheduledEndDate,
+            dueDate: record.dueDate,
+            startedAt: record.startedAt,
+            completedAt: record.completedAt,
+            parentId: record.parentId,
+            activePlanId: record.activePlanId,
+            isRootGoal: record.isRootGoal,
+            isSystemTask: record.isSystemTask,
+            motivation: record.motivation,
+            successCriteria: record.successCriteria,
+            targetDate: record.targetDate,
+            repeatRule: record.repeatRule,
+            tags: record.tags,
+            order: record.order,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+            versionWall: record.versionWall ?? toHLC(record.updatedAt as string, deviceId).wall,
+            versionCounter: record.versionCounter ?? 0,
+            versionNode: record.versionNode ?? deviceId,
+          };
+          break;
+        case 'pluse':
+          payload = {
+            id: record.id,
+            name: record.name,
+            description: record.description,
+            intervals: record.intervals,
+            repeatCount: record.repeatCount,
+            autoAdvance: record.autoAdvance,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+            versionWall: record.versionWall ?? toHLC(record.updatedAt as string, deviceId).wall,
+            versionCounter: record.versionCounter ?? 0,
+            versionNode: record.versionNode ?? deviceId,
+          };
+          break;
+        case 'timerSession':
+          payload = {
+            id: record.id,
+            type: record.type || 'pluse',
+            pluseId: record.pluseId,
+            todoId: record.todoId,
+            name: record.name,
+            intervals: record.intervals,
+            repeatCount: record.repeatCount,
+            currentIndex: record.currentIndex,
+            elapsedSeconds: record.elapsedSeconds,
+            status: record.status,
+            startedAt: record.startedAt,
+            pausedAt: record.pausedAt,
+            completedAt: record.completedAt,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+            versionWall: record.versionWall ?? toHLC(record.updatedAt as string, deviceId).wall,
+            versionCounter: record.versionCounter ?? 0,
+            versionNode: record.versionNode ?? deviceId,
+          };
+          break;
+        default:
+          continue;
+      }
+    }
+
     changes.push({
-      table: 'timerSession',
-      operation: isDeleted ? 'delete' : 'create',
-      recordId: session.id,
-      payload: isDeleted
-        ? { deletedAtWall: toHLC(session.deletedAt, deviceId).wall, deletedAtCounter: 0, deletedAtNode: deviceId }
-        : {
-            id: session.id,
-            type: session.type || 'pluse',
-            pluseId: session.pluseId,
-            todoId: session.todoId,
-            name: session.name,
-            intervals: session.intervals,
-            repeatCount: session.repeatCount,
-            currentIndex: session.currentIndex,
-            elapsedSeconds: session.elapsedSeconds,
-            status: session.status,
-            startedAt: session.startedAt,
-            pausedAt: session.pausedAt,
-            completedAt: session.completedAt,
-            createdAt: session.createdAt,
-            updatedAt: session.updatedAt,
-            versionWall: session.versionWall ?? 0,
-            versionCounter: session.versionCounter ?? 0,
-            versionNode: session.versionNode ?? '',
-          },
+      table,
+      operation: isDeleted ? 'delete' : operation,
+      recordId,
+      payload,
       deviceId,
-      createdAt: toHLC(session.updatedAt, deviceId),
+      createdAt: toHLC((record.updatedAt as string) ?? new Date().toISOString(), deviceId),
     });
   }
 
@@ -150,10 +200,6 @@ async function pushToServer(): Promise<void> {
 
   const result = await response.json();
   console.log(`[auto-sync] Pushed ${changes.length} changes, accepted: ${result.accepted}, rejected: ${result.rejected?.length ?? 0}`);
-
-  // Pull remote changes after push
-  const { syncAll } = await import('./sync');
-  await syncAll();
 }
 
 function attemptPush(): void {

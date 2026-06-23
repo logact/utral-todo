@@ -1,7 +1,7 @@
 import { eq, isNull } from 'drizzle-orm';
 import { db, schema } from '../db';
 import type { Pluse } from './database';
-import { scheduleSyncPush } from './auto-sync';
+import { scheduleSyncPush, addPendingChange } from './auto-sync';
 
 function now(): string {
   return new Date().toISOString();
@@ -38,6 +38,7 @@ export async function createPluse(data: Partial<Pluse>): Promise<Pluse> {
     updatedAt: timestamp,
   };
   await db.insert(schema.pluses).values(pluse);
+  addPendingChange('pluse', 'create', id);
   scheduleSyncPush();
   return pluse as Pluse;
 }
@@ -50,6 +51,7 @@ export async function updatePluse(id: string, updates: Partial<Pluse>): Promise<
     .update(schema.pluses)
     .set({ ...updateFields, updatedAt: now() })
     .where(eq(schema.pluses.id, id));
+  addPendingChange('pluse', 'update', id);
   scheduleSyncPush();
   return getPluse(id);
 }
@@ -62,6 +64,7 @@ export async function deletePluse(id: string): Promise<void> {
       .update(schema.pluses)
       .set({ deletedAt: timestamp, updatedAt: timestamp })
       .where(eq(schema.pluses.id, id));
+    addPendingChange('pluse', 'update', id);
     scheduleSyncPush();
   }
 }

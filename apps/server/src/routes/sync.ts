@@ -100,7 +100,7 @@ router.get('/stream', async (req, res) => {
       const sinceDate = new Date(since);
       const events = await getEventsSince(sinceDate);
       if (events.length > 0) {
-        res.write(`data: ${JSON.stringify({ type: 'delta', events })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'delta', events }, (_k, v) => typeof v === 'bigint' ? Number(v) : v)}\n\n`);
       }
     }
   } catch (err) {

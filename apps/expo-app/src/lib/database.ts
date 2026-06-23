@@ -1,9 +1,14 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db, expoDb, schema } from '../db';
 import type { todos, pluses, timerSessions } from '../db/schema';
+import { queryClient } from './query-client';
 
 function scheduleSyncPush() {
   import('./auto-sync').then((m) => m.scheduleSyncPush()).catch(() => {});
+}
+
+function addPendingChange(table: string, operation: 'create' | 'update' | 'delete', recordId: string, payload?: Record<string, unknown> | null) {
+  import('./auto-sync').then((m) => m.addPendingChange(table, operation, recordId, payload)).catch(() => {});
 }
 
 export type TodoStatus = 'pending' | 'in_progress' | 'done';
@@ -117,22 +122,36 @@ export async function createTimerSession(data: Partial<TimerSession>): Promise<T
     updatedAt: now,
   };
   await db.insert(schema.timerSessions).values(session);
+  queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
+  addPendingChange('timerSession', 'create', session.id);
   scheduleSyncPush();
   return session as TimerSession;
 }
 
 export async function updateTimerSession(
   id: string,
-  updates: Partial<TimerSession>
+  updates: Partial<TimerSession>,
+  skipSync = false
 ): Promise<TimerSession | null> {
   const existing = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
   if (existing.length === 0) return null;
   const { id: _, createdAt: _c, ...updateFields } = updates as any;
+  const now = new Date().toISOString();
+  const deviceId = await getDeviceId();
   await db
     .update(schema.timerSessions)
-    .set({ ...updateFields, updatedAt: new Date().toISOString() })
+    .set({
+      ...updateFields,
+      updatedAt: now,
+      versionWall: Date.now(),
+      versionNode: deviceId,
+    })
     .where(eq(schema.timerSessions.id, id));
-  scheduleSyncPush();
+  if (!skipSync) {
+    queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
+    addPendingChange('timerSession', 'update', id);
+    scheduleSyncPush();
+  }
   const updated = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
   return updated[0] as TimerSession;
 }
@@ -164,7 +183,13 @@ export async function getActiveTimerSession(): Promise<TimerSession | null> {
 }
 
 export async function deleteTimerSession(id: string): Promise<void> {
+  addPendingChange('timerSession', 'delete', id, {
+    deletedAtWall: Date.now(),
+    deletedAtCounter: 0,
+    deletedAtNode: await getDeviceId(),
+  });
   await db.delete(schema.timerSessions).where(eq(schema.timerSessions.id, id));
+  queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
   scheduleSyncPush();
 }
 

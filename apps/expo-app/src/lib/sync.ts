@@ -499,7 +499,6 @@ function connectSSE(): void {
       console.log('[sync] SSE connected');
       reconnectDelay = 1000;
       stopPolling();
-      setLastSyncAt(new Date()).catch(() => {});
     });
 
     sseSource.addEventListener('error', () => {

@@ -292,6 +292,26 @@ function PluseMiniTimer({
     });
   }, [pluse.id]);
 
+  // React to sync-pushed timer sessions
+  const { data: syncedSession } = useQuery({
+    queryKey: ['timerSessions'],
+    queryFn: getActiveTimerSession,
+    refetchInterval: false,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (!syncedSession) return;
+    if (syncedSession.pluseId !== pluse.id) return;
+    if (isRunningRef.current) return;
+    sessionRef.current = syncedSession;
+    setCurrentIndex(syncedSession.currentIndex);
+    setElapsedSeconds(syncedSession.elapsedSeconds);
+    if (syncedSession.status === 'running') {
+      setIsRunning(true);
+    }
+  }, [syncedSession, pluse.id]);
+
   useFocusEffect(
     useCallback(() => {
       getActiveTimerState().then((timerState) => {
@@ -375,7 +395,7 @@ function PluseMiniTimer({
             elapsedSeconds: next,
             currentIndex: currentIndexRef.current,
             status: 'running',
-          }).catch(() => {});
+          }, true).catch(() => {});
         }
 
         return next;

@@ -4,6 +4,10 @@ import { prisma } from '../index.js';
 import { broadcastToDevices } from '../apns/broadcast.js';
 import type { HLCTimestamp } from '@utral/types';
 
+function toNum(v: unknown): number {
+  return typeof v === 'bigint' ? Number(v) : (v as number) ?? 0;
+}
+
 interface SyncEvent {
   id: string;
   table: string;
@@ -37,7 +41,7 @@ export function subscribe(deviceId: string, res: Response): void {
 }
 
 export function broadcast(event: SyncEvent, excludeDeviceId?: string): void {
-  const data = `data: ${JSON.stringify({ type: 'event', event }) }\n\n`;
+  const data = `data: ${JSON.stringify({ type: 'event', event }, (_k, v) => typeof v === 'bigint' ? Number(v) : v) }\n\n`;
   let sent = 0;
   let skipped = 0;
   for (const conn of connections) {
@@ -70,7 +74,7 @@ export async function getEventsSince(since: Date): Promise<SyncEvent[]> {
     ...e,
     operation: e.operation as SyncEvent['operation'],
     payload: typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload,
-    createdAt: { wall: e.createdAt.getTime(), counter: e.versionCounter, node: e.versionNode || 'server' },
+    createdAt: { wall: e.createdAt.getTime(), counter: toNum(e.versionCounter), node: e.versionNode || 'server' },
   }));
 }
 
@@ -107,11 +111,13 @@ function isHLCTimestamp(val: unknown): val is { wall: number; counter: number; n
 }
 
 function sanitizeForPrisma(data: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...data };
-  for (const key of Object.keys(result)) {
-    const val = result[key];
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (val === null || val === undefined) continue;
     if (isHLCTimestamp(val)) {
       result[key] = new Date(val.wall);
+    } else {
+      result[key] = val;
     }
   }
   return result;
@@ -134,7 +140,7 @@ export async function applyChange(
             (data?.deletedAtCounter as number) ?? 0,
             (data?.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const remote: { updatedAt: ReturnType<typeof hlcFromParts>; deletedAt?: ReturnType<typeof hlcFromParts> } = {
             updatedAt: localHLC,
             deletedAt: remoteHLC,
@@ -166,7 +172,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -188,7 +194,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -220,7 +226,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -256,7 +262,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -286,7 +292,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -308,7 +314,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -338,7 +344,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -374,7 +380,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -404,7 +410,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -426,7 +432,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -456,7 +462,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -478,7 +484,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -508,7 +514,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },
@@ -530,7 +536,7 @@ export async function applyChange(
             (data.deletedAtCounter as number) ?? 0,
             (data.deletedAtNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: localHLC, deletedAt: remoteHLC },
@@ -560,7 +566,7 @@ export async function applyChange(
             (data.versionCounter as number) ?? 0,
             (data.versionNode as string) ?? event.deviceId,
           );
-          const localHLC = hlcFromParts(existing.versionWall, existing.versionCounter, existing.versionNode);
+          const localHLC = hlcFromParts(toNum(existing.versionWall), toNum(existing.versionCounter), existing.versionNode);
           const decision = shouldAdoptRemote(
             { id: recordId, updatedAt: localHLC },
             { id: recordId, updatedAt: remoteHLC },

@@ -994,6 +994,9 @@ async function wipeAll() {
   await prisma.todoRelation.deleteMany();
   await prisma.actionEdge.deleteMany();
   await prisma.pluse.deleteMany();
+  await prisma.repeatOccurrence.deleteMany();
+  await prisma.plan.deleteMany();
+  await prisma.syncEvent.deleteMany();
   await prisma.todo.deleteMany();
   await prisma.device.deleteMany();
   if (!quietMode) console.log('All data wiped.');
