@@ -5,12 +5,29 @@ export const todos = sqliteTable('todos', {
   title: text('title').notNull().default('Untitled'),
   description: text('description').notNull().default(''),
   nodeType: text('node_type', { enum: ['goal', 'task'] }).notNull().default('task'),
+  pattern: text('pattern', { enum: ['task', 'cognitive'] }),
   status: text('status', { enum: ['pending', 'in_progress', 'done'] }).notNull().default('pending'),
   priority: text('priority', { enum: ['low', 'medium', 'high'] }).notNull().default('medium'),
   goalStatus: text('goal_status', { enum: ['active', 'paused', 'achieved', 'abandoned'] }),
   estimatedMinutes: integer('estimated_minutes').notNull().default(0),
   scheduledDate: text('scheduled_date'),
+  scheduledEndDate: text('scheduled_end_date'),
   dueDate: text('due_date'),
+  startedAt: text('started_at'),
+  completedAt: text('completed_at'),
+  parentId: text('parent_id'),
+  activePlanId: text('active_plan_id'),
+  isRootGoal: integer('is_root_goal', { mode: 'boolean' }),
+  isSystemTask: integer('is_system_task', { mode: 'boolean' }),
+  motivation: text('motivation'),
+  successCriteria: text('success_criteria'),
+  targetDate: text('target_date'),
+  repeatRule: text('repeat_rule', { mode: 'json' }).$type<{
+    type: 'daily' | 'weekly' | 'every_n_days';
+    weekDays?: number[];
+    interval?: number;
+    endDate?: Date;
+  }>(),
   tags: text('tags', { mode: 'json' }).$type<string[]>().notNull().default([]),
   order: integer('order').notNull().default(0),
   createdAt: text('created_at').notNull(),

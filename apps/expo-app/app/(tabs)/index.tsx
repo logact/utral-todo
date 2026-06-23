@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, TextInput } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TIME_SLOTS, getTimeSlotForTodo, type TimeSlotConfig } from '@utral/types';
 import {
   getTodayTodos,
   getInProgressTodos,
@@ -12,6 +13,7 @@ import {
   getUnscheduledHighPriorityTodos,
   updateTodoStatus,
   createTodo,
+  updateTodoSchedule,
 } from '@/lib/todos';
 import { getAllPluses } from '@/lib/pluse';
 import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
@@ -40,7 +42,33 @@ function formatSeconds(totalSeconds: number): string {
   return `${s}s`;
 }
 
-function TodoItem({
+function formatTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+const slotIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
+  'slot-morning': 'flag',
+  'slot-midday': 'checkmark-circle',
+  'slot-afternoon': 'flag',
+  'slot-late-afternoon': 'checkmark-circle',
+  'slot-evening': 'flag',
+  'slot-night': 'checkmark-circle',
+};
+
+const slotColors: Record<string, { bg: string; text: string }> = {
+  'slot-morning': { bg: '#eef2ff', text: '#4f46e5' },
+  'slot-midday': { bg: '#ecfdf5', text: '#059669' },
+  'slot-afternoon': { bg: '#eef2ff', text: '#4f46e5' },
+  'slot-late-afternoon': { bg: '#ecfdf5', text: '#059669' },
+  'slot-evening': { bg: '#eef2ff', text: '#4f46e5' },
+  'slot-night': { bg: '#ecfdf5', text: '#059669' },
+};
+
+function CompactTodoRow({
   todo,
   onToggle,
   onFocus,
@@ -55,46 +83,36 @@ function TodoItem({
   const isInProgress = todo.status === 'in_progress';
   const canFocus = !isDone && !isInProgress;
 
-  const priorityColor =
-    todo.priority === 'high'
-      ? 'text-rose-500'
-      : todo.priority === 'medium'
-        ? 'text-amber-500'
-        : 'text-slate-400';
-
   return (
-    <View
+    <Pressable
+      onPress={() => {
+        if (canFocus && onFocus) {
+          onFocus();
+        } else {
+          onPress();
+        }
+      }}
       style={{
         flexDirection: 'row',
-        alignItems: 'flex-start',
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        marginHorizontal: -12,
-        borderRadius: 12,
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        backgroundColor: isInProgress ? '#fffbeb' : 'transparent',
       }}
     >
-      <Pressable onPress={onToggle} style={{ marginTop: 2, marginRight: 12 }}>
+      <Pressable onPress={onToggle} style={{ marginRight: 10 }}>
         {isDone ? (
-          <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+          <Ionicons name="checkmark-circle" size={18} color="#22c55e" />
         ) : (
-          <Ionicons name="ellipse-outline" size={22} color="#cbd5e1" />
+          <Ionicons name="ellipse-outline" size={18} color="#cbd5e1" />
         )}
       </Pressable>
-
-      <Pressable
-        onPress={() => {
-          if (canFocus && onFocus) {
-            onFocus();
-          } else {
-            onPress();
-          }
-        }}
-        style={{ flex: 1 }}
-      >
+      <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: 15,
-            fontWeight: '500',
+            fontSize: 14,
+            fontWeight: isInProgress ? '600' : '400',
             color: isDone ? '#94a3b8' : '#0f172a',
             textDecorationLine: isDone ? 'line-through' : 'none',
           }}
@@ -102,30 +120,111 @@ function TodoItem({
         >
           {todo.title}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
-          {todo.scheduledDate ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="time-outline" size={12} color="#94a3b8" />
-              <Text style={{ fontSize: 12, color: '#94a3b8' }}>
-                {new Date(todo.scheduledDate).toLocaleTimeString('en-US', {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                  hour12: true,
-                })}
-              </Text>
-            </View>
-          ) : null}
-          <Text style={{ fontSize: 12, fontWeight: '500', color: priorityColor === 'text-rose-500' ? '#f43f5e' : priorityColor === 'text-amber-500' ? '#f59e0b' : '#94a3b8' }}>
-            {todo.priority}
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {todo.scheduledDate ? (
+          <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+            {formatTime(todo.scheduledDate)}
           </Text>
-          {isInProgress ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="flash" size={12} color="#f59e0b" />
-              <Text style={{ fontSize: 12, color: '#f59e0b' }}>In Progress</Text>
+        ) : null}
+        {todo.priority === 'high' ? (
+          <View style={{ paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, backgroundColor: '#fef2f2' }}>
+            <Text style={{ fontSize: 10, color: '#ef4444' }}>H</Text>
+          </View>
+        ) : null}
+        {isInProgress ? (
+          <Ionicons name="flash" size={12} color="#f59e0b" />
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function TimeSlotSection({
+  config,
+  todos,
+  isCollapsed,
+  onToggleCollapse,
+  onToggle,
+  onFocus,
+  onPress,
+}: {
+  config: TimeSlotConfig;
+  todos: Todo[];
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  onToggle: (todo: Todo) => void;
+  onFocus: (todo: Todo) => void;
+  onPress: (todo: Todo) => void;
+}) {
+  const colors = slotColors[config.id] ?? { bg: '#f1f5f9', text: '#64748b' };
+  const icon = slotIcons[config.id] ?? 'ellipse-outline';
+
+  return (
+    <View style={{ marginBottom: 4 }}>
+      <Pressable
+        onPress={onToggleCollapse}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 8,
+          paddingHorizontal: 4,
+        }}
+      >
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: colors.bg,
+            marginRight: 10,
+          }}
+        >
+          <Ionicons name={icon} size={14} color={colors.text} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#1e293b' }}>
+              {config.title}
+            </Text>
+            <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: '#f1f5f9' }}>
+              <Text style={{ fontSize: 10, color: '#64748b' }}>{config.time}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {todos.length > 0 ? (
+            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, backgroundColor: '#f1f5f9' }}>
+              <Text style={{ fontSize: 10, color: '#64748b' }}>{todos.length}</Text>
             </View>
           ) : null}
+          <Ionicons
+            name={isCollapsed ? 'chevron-forward' : 'chevron-down'}
+            size={14}
+            color="#94a3b8"
+          />
         </View>
       </Pressable>
+      {!isCollapsed && todos.length > 0 ? (
+        <View style={{ marginLeft: 14, paddingLeft: 14, borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
+          {todos.map((todo) => (
+            <CompactTodoRow
+              key={todo.id}
+              todo={todo}
+              onToggle={() => onToggle(todo)}
+              onFocus={() => onFocus(todo)}
+              onPress={() => onPress(todo)}
+            />
+          ))}
+        </View>
+      ) : null}
+      {!isCollapsed && todos.length === 0 ? (
+        <View style={{ marginLeft: 14, paddingLeft: 14, borderLeftWidth: 1, borderLeftColor: '#e2e8f0', paddingVertical: 8 }}>
+          <Text style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>No tasks scheduled</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -475,6 +574,7 @@ export default function TodayScreen() {
   const [quickTitle, setQuickTitle] = useState('');
   const [activePluseIndex, setActivePluseIndex] = useState(0);
   const [showPlusePicker, setShowPlusePicker] = useState(false);
+  const [collapsedSlots, setCollapsedSlots] = useState<Set<string>>(new Set());
 
   const { data: todayTodos = [] } = useQuery({
     queryKey: ['todos', 'today'],
@@ -534,23 +634,90 @@ export default function TodayScreen() {
     [queryClient]
   );
 
-  const seen = new Set<string>();
-  const allTodos = [
-    ...overdue,
-    ...inProgress,
-    ...goals,
-    ...suggested,
-    ...todayTodos.filter((t) => t.status !== 'in_progress'),
-  ].filter((t) => {
-    if (seen.has(t.id)) return false;
-    seen.add(t.id);
-    return true;
-  });
-  const doneCount = allTodos.filter((t) => t.status === 'done').length;
-  const totalCount = allTodos.length;
+  const toggleSlotCollapse = useCallback((slotId: string) => {
+    setCollapsedSlots((prev) => {
+      const next = new Set(prev);
+      if (next.has(slotId)) {
+        next.delete(slotId);
+      } else {
+        next.add(slotId);
+      }
+      return next;
+    });
+  }, []);
+
+  const scheduleForToday = useCallback(
+    async (todo: Todo) => {
+      const now = new Date();
+      now.setHours(9, 0, 0, 0);
+      await updateTodoSchedule(todo.id, now.toISOString());
+      hapticImpact();
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
+    },
+    [queryClient]
+  );
+
+  // Build time slot groups — mirrors desktop Today.tsx logic
+  const { timeSlotGroups, activeTodos, doneTodos, totalActive } = useMemo(() => {
+    const groups = new Map<string, Todo[]>();
+    for (const slot of TIME_SLOTS) {
+      groups.set(slot.id, []);
+    }
+
+    const active: Todo[] = [];
+    const done: Todo[] = [];
+    const seenActive = new Set<string>();
+    const seenDone = new Set<string>();
+
+    function addDone(todo: Todo) {
+      if (seenDone.has(todo.id)) return;
+      seenDone.add(todo.id);
+      done.push(todo);
+    }
+
+    function addActive(todo: Todo) {
+      if (todo.status === 'done') {
+        addDone(todo);
+        return;
+      }
+      if (seenActive.has(todo.id)) return;
+      seenActive.add(todo.id);
+      if (todo.isSystemTask) return;
+
+      const slotId = getTimeSlotForTodo(todo as any);
+      if (slotId) {
+        groups.get(slotId)!.push(todo);
+      }
+    }
+
+    for (const todo of inProgress) addActive(todo);
+    for (const todo of overdue) addActive(todo);
+    for (const todo of todayTodos) addActive(todo);
+
+    // Sort within each slot
+    for (const [, list] of groups) {
+      list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }
+
+    // Build ordered active list for status display
+    for (const todo of inProgress) {
+      if (!active.find((t) => t.id === todo.id)) active.push(todo);
+    }
+    for (const todo of overdue) {
+      if (!active.find((t) => t.id === todo.id)) active.push(todo);
+    }
+    for (const slot of TIME_SLOTS) {
+      for (const todo of groups.get(slot.id)!) {
+        if (!active.find((t) => t.id === todo.id)) active.push(todo);
+      }
+    }
+
+    return { timeSlotGroups: groups, activeTodos: active, doneTodos: done, totalActive: active.length };
+  }, [todayTodos, inProgress, overdue]);
+
   const currentTodo = inProgress[0];
-  const pendingCount = allTodos.filter((t) => t.status === 'pending').length;
   const activePluse = pluses[activePluseIndex] || null;
+  const doneCount = doneTodos.length;
 
   const handleQuickCreate = () => {
     if (!quickTitle.trim()) return;
@@ -563,8 +730,8 @@ export default function TodayScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: 100 }}
       >
-        {/* Stats */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+        {/* Status bar */}
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View
@@ -572,14 +739,14 @@ export default function TodayScreen() {
                   width: 8,
                   height: 8,
                   borderRadius: 4,
-                  backgroundColor: inProgress.length > 0 ? '#fbbf24' : totalCount > doneCount ? '#818cf8' : '#34d399',
+                  backgroundColor: inProgress.length > 0 ? '#fbbf24' : totalActive > 0 ? '#818cf8' : '#34d399',
                 }}
               />
               <Text style={{ fontSize: 14, color: '#64748b' }}>
                 {inProgress.length > 0
                   ? `${inProgress.length} in progress`
-                  : totalCount > doneCount
-                    ? `${totalCount - doneCount} left`
+                  : totalActive > 0
+                    ? `${totalActive} left`
                     : 'All done'}
               </Text>
             </View>
@@ -591,8 +758,8 @@ export default function TodayScreen() {
           </View>
         </View>
 
-        {/* Focus Session Card */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+        {/* Pluse Timer Card */}
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
           {pluses.length > 0 ? (
             <View style={{ backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' }}>
               <PluseMiniTimer
@@ -600,9 +767,7 @@ export default function TodayScreen() {
                 pluse={activePluse!}
                 onClose={() => setActivePluseIndex(0)}
                 onRequireTask={() => {
-                  if (pendingCount > 0) {
-                    setQuickOpen(true);
-                  }
+                  if (suggested.length > 0) setQuickOpen(true);
                 }}
                 onPress={() => router.push(`/pluse-run/${activePluse!.id}`)}
               />
@@ -682,9 +847,9 @@ export default function TodayScreen() {
           )}
         </View>
 
-        {/* Current Task Card */}
+        {/* Current Focus Card */}
         {currentTodo ? (
-          <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
             <View style={{ backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#fed7aa', padding: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fbbf24' }} />
@@ -710,37 +875,96 @@ export default function TodayScreen() {
           </View>
         ) : null}
 
-        {/* Todo list */}
+        {/* Goals */}
+        {goals.length > 0 ? (
+          <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Today's Goals
+            </Text>
+            {goals.map((goal) => (
+              <View key={goal.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+                <Ionicons name="flag" size={14} color="#f59e0b" />
+                <Text style={{ fontSize: 14, color: '#1e293b' }}>{goal.title}</Text>
+                {goal.goalStatus ? (
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#fef3c7' }}>
+                    <Text style={{ fontSize: 10, color: '#d97706' }}>{goal.goalStatus}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Time Slot Sections */}
         <View style={{ paddingHorizontal: 16 }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-            {allTodos.length > 0 ? 'Tasks' : ''}
-          </Text>
-          {allTodos.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 48 }}>
-              <Ionicons name="flag-outline" size={32} color="#cbd5e1" />
-              <Text style={{ marginTop: 12, fontSize: 14, color: '#94a3b8' }}>
-                No tasks for today
-              </Text>
-              <Pressable onPress={() => setQuickOpen(true)} style={{ marginTop: 16 }}>
-                <Text style={{ fontSize: 14, color: '#6366f1', fontWeight: '500' }}>
-                  Add your first task
-                </Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View>
-              {allTodos.map((todo) => (
-                <TodoItem
-                  key={todo.id}
-                  todo={todo}
-                  onToggle={() => toggleStatus(todo)}
-                  onFocus={() => setFocus(todo)}
-                  onPress={() => router.push(`/todo/${todo.id}`)}
-                />
-              ))}
-            </View>
-          )}
+          {TIME_SLOTS.map((slot) => (
+            <TimeSlotSection
+              key={slot.id}
+              config={slot}
+              todos={timeSlotGroups.get(slot.id) ?? []}
+              isCollapsed={collapsedSlots.has(slot.id)}
+              onToggleCollapse={() => toggleSlotCollapse(slot.id)}
+              onToggle={toggleStatus}
+              onFocus={setFocus}
+              onPress={(todo) => router.push(`/todo/${todo.id}`)}
+            />
+          ))}
         </View>
+
+        {/* Suggested (unscheduled high priority) */}
+        {suggested.length > 0 ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Suggested
+            </Text>
+            {suggested.slice(0, 3).map((todo) => (
+              <View key={todo.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 }}>
+                <Ionicons name="bulb-outline" size={14} color="#8b5cf6" />
+                <Text style={{ fontSize: 14, color: '#1e293b', flex: 1 }} numberOfLines={1}>
+                  {todo.title}
+                </Text>
+                <Pressable
+                  onPress={() => scheduleForToday(todo)}
+                  style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: '#eef2ff' }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: '#4f46e5' }}>Add</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Done todos */}
+        {doneTodos.length > 0 ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: '500', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+              Done ({doneTodos.length})
+            </Text>
+            {doneTodos.map((todo) => (
+              <CompactTodoRow
+                key={todo.id}
+                todo={todo}
+                onToggle={() => toggleStatus(todo)}
+                onPress={() => router.push(`/todo/${todo.id}`)}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        {/* Empty state */}
+        {totalActive === 0 && doneCount === 0 && suggested.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+            <Ionicons name="flag-outline" size={32} color="#cbd5e1" />
+            <Text style={{ marginTop: 12, fontSize: 14, color: '#94a3b8' }}>
+              No tasks for today
+            </Text>
+            <Pressable onPress={() => setQuickOpen(true)} style={{ marginTop: 16 }}>
+              <Text style={{ fontSize: 14, color: '#6366f1', fontWeight: '500' }}>
+                Add your first task
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Quick Create FAB */}

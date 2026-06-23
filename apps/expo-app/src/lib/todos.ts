@@ -26,31 +26,62 @@ export async function getTodo(id: string): Promise<Todo | null> {
 }
 
 export async function getTodayTodos(): Promise<Todo[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const todayStr = today.toISOString();
+  const tomorrowStr = tomorrow.toISOString();
+
   const todos = await getAllTodos();
-  return todos.filter((t) => t.scheduledDate?.startsWith(today) && t.status !== 'done');
+  return todos.filter((t) => {
+    if (t.nodeType !== 'task' || !t.scheduledDate) return false;
+    return t.scheduledDate >= todayStr && t.scheduledDate < tomorrowStr;
+  });
 }
 
 export async function getInProgressTodos(): Promise<Todo[]> {
   const todos = await getAllTodos();
-  return todos.filter((t) => t.status === 'in_progress');
+  return todos.filter((t) => t.status === 'in_progress' && t.nodeType === 'task');
 }
 
 export async function getOverdueTodos(): Promise<Todo[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString();
+
   const todos = await getAllTodos();
-  return todos.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'done');
+  return todos.filter(
+    (t) => t.nodeType === 'task' && t.dueDate && t.dueDate < todayStr && t.status !== 'done'
+  );
 }
 
 export async function getTodayGoals(): Promise<Todo[]> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const todayStr = today.toISOString();
+  const tomorrowStr = tomorrow.toISOString();
+
   const todos = await getAllTodos();
-  return todos.filter((t) => t.nodeType === 'goal' && t.goalStatus === 'active');
+  return todos.filter(
+    (t) =>
+      t.nodeType === 'goal' &&
+      t.targetDate != null &&
+      t.targetDate >= todayStr &&
+      t.targetDate < tomorrowStr
+  );
 }
 
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
   const todos = await getAllTodos();
   return todos.filter(
-    (t) => !t.scheduledDate && (t.priority === 'high' || t.priority === 'medium') && t.status !== 'done'
+    (t) =>
+      t.nodeType === 'task' &&
+      !t.scheduledDate &&
+      t.status !== 'done' &&
+      t.priority === 'high'
   );
 }
 
@@ -58,12 +89,25 @@ export async function updateTodoStatus(id: string, status: Todo['status']): Prom
   const existing = await getTodo(id);
   if (!existing) return null;
   const timestamp = now();
+  const updates: Record<string, unknown> = {
+    status,
+    updatedAt: timestamp,
+  };
+  if (status === 'in_progress') updates.startedAt = timestamp;
+  if (status === 'pending') updates.startedAt = null;
+  if (status === 'done') updates.completedAt = timestamp;
+
+  await db.update(schema.todos).set(updates).where(eq(schema.todos.id, id));
+  scheduleSyncPush();
+  return getTodo(id);
+}
+
+export async function updateTodoSchedule(id: string, scheduledDate: string | null): Promise<Todo | null> {
+  const existing = await getTodo(id);
+  if (!existing) return null;
   await db
     .update(schema.todos)
-    .set({
-      status,
-      updatedAt: timestamp,
-    })
+    .set({ scheduledDate, updatedAt: now() })
     .where(eq(schema.todos.id, id));
   scheduleSyncPush();
   return getTodo(id);
@@ -80,10 +124,22 @@ export async function createTodo(data: Partial<Todo>): Promise<Todo> {
     priority: data.priority || 'medium' as const,
     estimatedMinutes: data.estimatedMinutes || 0,
     scheduledDate: data.scheduledDate || null,
+    scheduledEndDate: data.scheduledEndDate || null,
     dueDate: data.dueDate || null,
     tags: data.tags || [],
     order: data.order || 0,
     nodeType: data.nodeType || 'task' as const,
+    pattern: data.pattern || null,
+    parentId: data.parentId || null,
+    activePlanId: data.activePlanId || null,
+    isRootGoal: data.isRootGoal || null,
+    isSystemTask: data.isSystemTask || null,
+    motivation: data.motivation || null,
+    successCriteria: data.successCriteria || null,
+    targetDate: data.targetDate || null,
+    repeatRule: data.repeatRule || null,
+    startedAt: data.startedAt || null,
+    completedAt: data.completedAt || null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

@@ -64,6 +64,7 @@ const camelToSnakeMap: Record<string, string> = {
   goalStatus: 'goal_status',
   estimatedMinutes: 'estimated_minutes',
   scheduledDate: 'scheduled_date',
+  scheduledEndDate: 'scheduled_end_date',
   dueDate: 'due_date',
   createdAt: 'created_at',
   updatedAt: 'updated_at',
@@ -80,6 +81,13 @@ const camelToSnakeMap: Record<string, string> = {
   startedAt: 'started_at',
   pausedAt: 'paused_at',
   completedAt: 'completed_at',
+  parentId: 'parent_id',
+  activePlanId: 'active_plan_id',
+  isRootGoal: 'is_root_goal',
+  isSystemTask: 'is_system_task',
+  repeatRule: 'repeat_rule',
+  successCriteria: 'success_criteria',
+  targetDate: 'target_date',
 };
 
 function mapServerRecord(record: Record<string, unknown>): Record<string, unknown> {
@@ -93,8 +101,11 @@ function mapServerRecord(record: Record<string, unknown>): Record<string, unknow
 
 // Local SQLite column names per table (must match actual CREATE TABLE)
 const todoColumns = new Set([
-  'id', 'title', 'description', 'node_type', 'status', 'priority', 'goal_status',
-  'estimated_minutes', 'scheduled_date', 'due_date', 'tags', 'order',
+  'id', 'title', 'description', 'node_type', 'pattern', 'status', 'priority', 'goal_status',
+  'estimated_minutes', 'scheduled_date', 'scheduled_end_date', 'due_date',
+  'started_at', 'completed_at', 'parent_id', 'active_plan_id',
+  'is_root_goal', 'is_system_task', 'motivation', 'success_criteria', 'target_date',
+  'repeat_rule', 'tags', 'order',
   'created_at', 'updated_at', 'deleted_at', 'version_wall', 'version_counter', 'version_node',
 ]);
 const pluseColumns = new Set([
@@ -151,17 +162,29 @@ export async function syncAll(): Promise<void> {
       const createdAt = (typeof record.created_at === 'string' && record.created_at) ? record.created_at : now;
       const updatedAt = (typeof record.updated_at === 'string' && record.updated_at) ? record.updated_at : now;
       console.log(`[sync] Upserting todo ${record.id}, createdAt=${createdAt}`);
-      await db.insert(schema.todos).values({
+      const todoValues: Record<string, unknown> = {
         id: record.id as string,
         title: (record.title as string) ?? 'Untitled',
         description: (record.description as string) ?? '',
         nodeType: (record.node_type as string) ?? 'task',
+        pattern: (record.pattern as string) ?? null,
         status: (record.status as string) ?? 'pending',
         priority: (record.priority as string) ?? 'medium',
         goalStatus: (record.goal_status as string) ?? null,
         estimatedMinutes: (record.estimated_minutes as number) ?? 0,
         scheduledDate: (record.scheduled_date as string) ?? null,
+        scheduledEndDate: (record.scheduled_end_date as string) ?? null,
         dueDate: (record.due_date as string) ?? null,
+        startedAt: (record.started_at as string) ?? null,
+        completedAt: (record.completed_at as string) ?? null,
+        parentId: (record.parent_id as string) ?? null,
+        activePlanId: (record.active_plan_id as string) ?? null,
+        isRootGoal: (record.is_root_goal as boolean) ?? null,
+        isSystemTask: (record.is_system_task as boolean) ?? null,
+        motivation: (record.motivation as string) ?? null,
+        successCriteria: (record.success_criteria as string) ?? null,
+        targetDate: (record.target_date as string) ?? null,
+        repeatRule: record.repeat_rule ?? null,
         tags: Array.isArray(record.tags) ? record.tags : [],
         order: (record.order as number) ?? 0,
         createdAt,
@@ -170,27 +193,10 @@ export async function syncAll(): Promise<void> {
         versionWall: (record.version_wall as number) ?? null,
         versionCounter: (record.version_counter as number) ?? 0,
         versionNode: (record.version_node as string) ?? null,
-      }).onConflictDoUpdate({
+      };
+      await db.insert(schema.todos).values(todoValues as any).onConflictDoUpdate({
         target: schema.todos.id,
-        set: {
-          title: (record.title as string) ?? 'Untitled',
-          description: (record.description as string) ?? '',
-          nodeType: (record.node_type as string) ?? 'task',
-          status: (record.status as string) ?? 'pending',
-          priority: (record.priority as string) ?? 'medium',
-          goalStatus: (record.goal_status as string) ?? null,
-          estimatedMinutes: (record.estimated_minutes as number) ?? 0,
-          scheduledDate: (record.scheduled_date as string) ?? null,
-          dueDate: (record.due_date as string) ?? null,
-          tags: Array.isArray(record.tags) ? record.tags : [],
-          order: (record.order as number) ?? 0,
-          createdAt,
-          updatedAt,
-          deletedAt: (record.deleted_at as string) ?? null,
-          versionWall: (record.version_wall as number) ?? null,
-          versionCounter: (record.version_counter as number) ?? 0,
-          versionNode: (record.version_node as string) ?? null,
-        },
+        set: todoValues as any,
       });
     }
   }
@@ -202,7 +208,7 @@ export async function syncAll(): Promise<void> {
       const now = new Date().toISOString();
       const createdAt = (typeof record.created_at === 'string' && record.created_at) ? record.created_at : now;
       const updatedAt = (typeof record.updated_at === 'string' && record.updated_at) ? record.updated_at : now;
-      await db.insert(schema.pluses).values({
+      const pluseValues: Record<string, unknown> = {
         id: record.id as string,
         name: (record.name as string) ?? 'Untitled Pluse',
         description: (record.description as string) ?? '',
@@ -215,21 +221,10 @@ export async function syncAll(): Promise<void> {
         versionWall: (record.version_wall as number) ?? null,
         versionCounter: (record.version_counter as number) ?? 0,
         versionNode: (record.version_node as string) ?? null,
-      }).onConflictDoUpdate({
+      };
+      await db.insert(schema.pluses).values(pluseValues as any).onConflictDoUpdate({
         target: schema.pluses.id,
-        set: {
-          name: (record.name as string) ?? 'Untitled Pluse',
-          description: (record.description as string) ?? '',
-          intervals: Array.isArray(record.intervals) ? record.intervals : [1500],
-          repeatCount: (record.repeat_count as number) ?? 1,
-          autoAdvance: record.auto_advance ? true : false,
-          createdAt,
-          updatedAt,
-          deletedAt: (record.deleted_at as string) ?? null,
-          versionWall: (record.version_wall as number) ?? null,
-          versionCounter: (record.version_counter as number) ?? 0,
-          versionNode: (record.version_node as string) ?? null,
-        },
+        set: pluseValues as any,
       });
     }
   }
@@ -241,7 +236,7 @@ export async function syncAll(): Promise<void> {
       const now = new Date().toISOString();
       const createdAt = (typeof record.created_at === 'string' && record.created_at) ? record.created_at : now;
       const updatedAt = (typeof record.updated_at === 'string' && record.updated_at) ? record.updated_at : now;
-      await db.insert(schema.timerSessions).values({
+      const sessionValues: Record<string, unknown> = {
         id: record.id as string,
         type: (record.type as string) ?? 'pluse',
         pluseId: (record.pluse_id as string) ?? null,
@@ -261,28 +256,10 @@ export async function syncAll(): Promise<void> {
         versionWall: (record.version_wall as number) ?? null,
         versionCounter: (record.version_counter as number) ?? 0,
         versionNode: (record.version_node as string) ?? null,
-      }).onConflictDoUpdate({
+      };
+      await db.insert(schema.timerSessions).values(sessionValues as any).onConflictDoUpdate({
         target: schema.timerSessions.id,
-        set: {
-          type: (record.type as string) ?? 'pluse',
-          pluseId: (record.pluse_id as string) ?? null,
-          todoId: (record.todo_id as string) ?? null,
-          name: (record.name as string) ?? '',
-          intervals: Array.isArray(record.intervals) ? record.intervals : [],
-          repeatCount: (record.repeat_count as number) ?? 1,
-          currentIndex: (record.current_index as number) ?? 0,
-          elapsedSeconds: (record.elapsed_seconds as number) ?? 0,
-          status: (record.status as string) ?? 'running',
-          startedAt: (record.started_at as string) ?? new Date().toISOString(),
-          pausedAt: (record.paused_at as string) ?? null,
-          completedAt: (record.completed_at as string) ?? null,
-          createdAt,
-          updatedAt,
-          deletedAt: (record.deleted_at as string) ?? null,
-          versionWall: (record.version_wall as number) ?? null,
-          versionCounter: (record.version_counter as number) ?? 0,
-          versionNode: (record.version_node as string) ?? null,
-        },
+        set: sessionValues as any,
       });
     }
   }

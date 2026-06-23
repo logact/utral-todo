@@ -36,6 +36,8 @@ import {
 
 } from '../utils/date';
 import type { Todo, TodoStatus, Priority, Pluse } from '../types';
+import { TIME_SLOTS as SHARED_TIME_SLOTS, getTimeSlotForTodo } from '../types';
+import type { TimeSlotConfig as SharedTimeSlotConfig } from '../types';
 
 function isTauriApp(): boolean {
   return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
@@ -921,126 +923,28 @@ function CompactTodoRow({
   );
 }
 
-/* ─── Time Slot ─── */
+/* ─── Time Slot (UI extensions over shared config) ─── */
 
-interface TimeSlotConfig {
-  id: string;
-  milestoneId: string;
-  title: string;
-  time: string;
-  startHour: number;
-  startMinute: number;
-  endHour: number;
-  endMinute: number;
+interface TimeSlotConfig extends SharedTimeSlotConfig {
   icon: typeof Flag;
   color: string;
   bgColor: string;
   darkBgColor: string;
 }
 
-const TIME_SLOTS: TimeSlotConfig[] = [
-  {
-    id: 'slot-morning',
-    milestoneId: 'system:day-startup',
-    title: 'Day Startup Plan',
-    time: '06:00',
-    startHour: 6,
-    startMinute: 0,
-    endHour: 12,
-    endMinute: 0,
-    icon: Flag,
-    color: 'text-indigo-600 dark:text-indigo-400',
-    bgColor: 'bg-indigo-50',
-    darkBgColor: 'dark:bg-indigo-950/30',
-  },
-  {
-    id: 'slot-midday',
-    milestoneId: 'system:morning-summary',
-    title: 'Morning Summary',
-    time: '12:00',
-    startHour: 12,
-    startMinute: 0,
-    endHour: 13,
-    endMinute: 0,
-    icon: CheckCircle2,
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bgColor: 'bg-emerald-50',
-    darkBgColor: 'dark:bg-emerald-950/30',
-  },
-  {
-    id: 'slot-afternoon',
-    milestoneId: 'system:afternoon-startup',
-    title: 'Afternoon Startup Plan',
-    time: '13:00',
-    startHour: 13,
-    startMinute: 0,
-    endHour: 17,
-    endMinute: 0,
-    icon: Flag,
-    color: 'text-indigo-600 dark:text-indigo-400',
-    bgColor: 'bg-indigo-50',
-    darkBgColor: 'dark:bg-indigo-950/30',
-  },
-  {
-    id: 'slot-late-afternoon',
-    milestoneId: 'system:afternoon-summary',
-    title: 'Afternoon Summary',
-    time: '17:00',
-    startHour: 17,
-    startMinute: 0,
-    endHour: 19,
-    endMinute: 0,
-    icon: CheckCircle2,
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bgColor: 'bg-emerald-50',
-    darkBgColor: 'dark:bg-emerald-950/30',
-  },
-  {
-    id: 'slot-evening',
-    milestoneId: 'system:evening-startup',
-    title: 'Evening Startup',
-    time: '19:00',
-    startHour: 19,
-    startMinute: 0,
-    endHour: 21,
-    endMinute: 30,
-    icon: Flag,
-    color: 'text-indigo-600 dark:text-indigo-400',
-    bgColor: 'bg-indigo-50',
-    darkBgColor: 'dark:bg-indigo-950/30',
-  },
-  {
-    id: 'slot-night',
-    milestoneId: 'system:evening-summary',
-    title: 'Evening Summary',
-    time: '21:30',
-    startHour: 21,
-    startMinute: 30,
-    endHour: 24,
-    endMinute: 0,
-    icon: CheckCircle2,
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bgColor: 'bg-emerald-50',
-    darkBgColor: 'dark:bg-emerald-950/30',
-  },
-];
+const TIME_SLOT_UI: Record<string, { icon: typeof Flag; color: string; bgColor: string; darkBgColor: string }> = {
+  'slot-morning': { icon: Flag, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50', darkBgColor: 'dark:bg-indigo-950/30' },
+  'slot-midday': { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
+  'slot-afternoon': { icon: Flag, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50', darkBgColor: 'dark:bg-indigo-950/30' },
+  'slot-late-afternoon': { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
+  'slot-evening': { icon: Flag, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50', darkBgColor: 'dark:bg-indigo-950/30' },
+  'slot-night': { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
+};
 
-function getTimeSlotForTodo(todo: Todo): string | null {
-  if (!todo.scheduledDate) return null;
-  const date = new Date(todo.scheduledDate);
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-  const timeInMinutes = hour * 60 + minute;
-
-  for (const slot of TIME_SLOTS) {
-    const startInMinutes = slot.startHour * 60 + slot.startMinute;
-    const endInMinutes = slot.endHour * 60 + slot.endMinute;
-    if (timeInMinutes >= startInMinutes && timeInMinutes < endInMinutes) {
-      return slot.id;
-    }
-  }
-  return null;
-}
+const TIME_SLOTS: TimeSlotConfig[] = SHARED_TIME_SLOTS.map((slot) => ({
+  ...slot,
+  ...TIME_SLOT_UI[slot.id],
+}));
 
 function TimeSlotHeader({
   config,

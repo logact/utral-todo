@@ -302,3 +302,20 @@ export {
   getDatesForRule,
   computeVirtualTodo,
 } from './repeat.js';
+
+export {
+  TIME_SLOTS,
+  getTimeSlotForTodo,
+  groupTodosByTimeSlot,
+  type TimeSlotConfig,
+} from './timeSlots.js';
+
+export {
+  filterTodayScheduled,
+  filterInProgress,
+  filterOverdue,
+  filterUnscheduledHighPriority,
+  filterTodayGoals,
+  mergeTodayData,
+  getTodayDateString,
+} from './today.js';

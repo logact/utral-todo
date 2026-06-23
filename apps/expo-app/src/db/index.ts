@@ -80,6 +80,25 @@ export function initDatabase() {
     try { expoDb.execSync(`ALTER TABLE ${table} ADD COLUMN version_counter INTEGER NOT NULL DEFAULT 0`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER ${table} version_counter:`, e?.message); }
     try { expoDb.execSync(`ALTER TABLE ${table} ADD COLUMN version_node TEXT`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER ${table} version_node:`, e?.message); }
   }
+
+  // Add new todo columns for desktop parity (safe to run repeatedly)
+  const todoColumns: [string, string][] = [
+    ['pattern', 'TEXT'],
+    ['scheduled_end_date', 'TEXT'],
+    ['started_at', 'TEXT'],
+    ['completed_at', 'TEXT'],
+    ['parent_id', 'TEXT'],
+    ['active_plan_id', 'TEXT'],
+    ['is_root_goal', 'INTEGER'],
+    ['is_system_task', 'INTEGER'],
+    ['motivation', 'TEXT'],
+    ['success_criteria', 'TEXT'],
+    ['target_date', 'TEXT'],
+    ['repeat_rule', 'TEXT'],
+  ];
+  for (const [col, type] of todoColumns) {
+    try { expoDb.execSync(`ALTER TABLE todos ADD COLUMN ${col} ${type}`); } catch (e: any) { if (!String(e).includes('duplicate column')) console.warn(`[db] ALTER todos ${col}:`, e?.message); }
+  }
 }
 
 export { schema };
