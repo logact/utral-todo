@@ -19,7 +19,6 @@ import plusesRouter from './routes/pluses.js';
 import timerSessionsRouter from './routes/timerSessions.js';
 import syncRouter from './routes/sync.js';
 import devicesRouter from './routes/devices.js';
-import mobileRouter from './routes/mobile.js';
 import watchRouter from './routes/watch.js';
 import labelsRouter from './routes/labels.js';
 
@@ -55,7 +54,6 @@ app.use('/api/pluses', plusesRouter);
 app.use('/api/timer-sessions', timerSessionsRouter);
 app.use('/api/sync', syncRouter);
 app.use('/api/devices', devicesRouter);
-app.use('/api/mobile', mobileRouter);
 app.use('/api/watch', watchRouter);
 app.use('/api/labels', labelsRouter);
 

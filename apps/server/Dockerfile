@@ -10,7 +10,6 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/desktop/package.json ./apps/desktop/
-COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/types/package.json ./packages/types/
 
 RUN pnpm install --frozen-lockfile
@@ -19,7 +18,6 @@ RUN pnpm install --frozen-lockfile
 COPY packages/types ./packages/types
 COPY apps/server ./apps/server
 COPY apps/desktop ./apps/desktop
-COPY apps/mobile ./apps/mobile
 
 # Re-link workspace dependencies now that source is present
 RUN pnpm install
@@ -31,7 +29,7 @@ RUN pnpm --filter @utral/types build
 RUN pnpm --filter server db:generate
 RUN pnpm --filter server build
 RUN pnpm --filter desktop build
-RUN pnpm --filter mobile build
+
 
 # Production stage
 FROM node:20-alpine AS production
@@ -56,7 +54,6 @@ COPY --from=builder /app/packages/types /app/packages/types
 
 # Copy built frontend apps
 COPY --from=builder /app/apps/desktop/dist /app/static/desktop
-COPY --from=builder /app/apps/mobile/dist /app/static/mobile
 
 # Remove default nginx config and copy ours
 RUN rm -f /etc/nginx/http.d/default.conf

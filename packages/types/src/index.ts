@@ -266,27 +266,12 @@ export interface Label {
   count: number;
 }
 
-export interface MobileTodo {
-  id: string;
-  title: string;
-  status: TodoStatus;
-  priority: Priority;
-  estimatedMinutes: number;
-  scheduledDate?: Date;
-  dueDate?: Date;
-  order: number;
-}
-
 export interface WatchTodo {
   id: string;
   title: string;
   status: TodoStatus;
   projectColor: string;
   estimatedMinutes: number;
-}
-
-export interface MobileTodayResponse {
-  todos: MobileTodo[];
 }
 
 export interface WatchTodayResponse {

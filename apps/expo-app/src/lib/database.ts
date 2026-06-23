@@ -1,60 +1,30 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const TODOS_KEY = '@utral_todos';
-const PLUSES_KEY = '@utral_pluses';
-const TIMER_SESSIONS_KEY = '@utral_timer_sessions';
-const SYNC_CONFIG_KEY = '@utral_sync_config';
-const HLC_STATE_KEY = '@utral_hlc_state';
+import { eq, and, isNull } from 'drizzle-orm';
+import { db, schema } from '../db';
+import type { todos, pluses, timerSessions } from '../db/schema';
 
 export type TodoStatus = 'pending' | 'in_progress' | 'done';
 
-export interface Todo {
-  id: string;
-  title: string;
-  description: string;
-  nodeType: 'goal' | 'task';
-  status: TodoStatus;
-  priority: 'low' | 'medium' | 'high';
-  goalStatus?: 'active' | 'paused' | 'achieved' | 'abandoned';
-  estimatedMinutes: number;
-  scheduledDate?: string;
-  dueDate?: string;
-  tags: string[];
-  order: number;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string;
-}
-
-export interface Pluse {
-  id: string;
-  name: string;
-  description: string;
-  intervals: number[];
-  repeatCount: number;
-  autoAdvance: boolean;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string;
-}
-
-export interface TimerSession {
-  id: string;
-  pluseId?: string;
-  todoId?: string;
-  name: string;
-  intervals: number[];
-  repeatCount: number;
+export interface ActiveTimerState {
+  pluseId: string;
   currentIndex: number;
   elapsedSeconds: number;
-  status: 'running' | 'paused' | 'completed';
-  startedAt: string;
-  pausedAt?: string;
-  completedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string;
+  isRunning: boolean;
 }
+
+let activeTimerState: ActiveTimerState | null = null;
+
+export async function setActiveTimerState(state: ActiveTimerState | null) {
+  activeTimerState = state;
+  // Store in memory only - no persistent storage needed for ephemeral state
+}
+
+export async function getActiveTimerState(): Promise<ActiveTimerState | null> {
+  return activeTimerState;
+}
+
+export type Todo = typeof todos.$inferSelect;
+export type Pluse = typeof pluses.$inferSelect;
+export type TimerSession = typeof timerSessions.$inferSelect;
 
 export interface SyncConfig {
   serverUrl: string;
@@ -67,108 +37,112 @@ export interface HLCState {
   lastSeen: number;
 }
 
-async function getStore<T>(key: string): Promise<T[]> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function setStore<T>(key: string, data: T[]): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(data));
-}
-
-export async function getAll<T>(key: string): Promise<T[]> {
-  return getStore<T>(key);
-}
-
-export async function getById<T extends { id: string }>(key: string, id: string): Promise<T | null> {
-  const items = await getStore<T>(key);
-  return items.find((item) => item.id === id) || null;
-}
-
-export async function upsert<T extends { id: string }>(key: string, item: T): Promise<T> {
-  const items = await getStore<T>(key);
-  const index = items.findIndex((i) => i.id === item.id);
-  if (index >= 0) {
-    items[index] = item;
-  } else {
-    items.push(item);
-  }
-  await setStore(key, items);
-  return item;
-}
-
-export async function remove<T extends { id: string }>(key: string, id: string): Promise<void> {
-  const items = await getStore<T>(key);
-  await setStore(
-    key,
-    items.filter((i) => i.id !== id)
-  );
-}
-
 export async function getSyncConfigData(): Promise<SyncConfig | null> {
-  try {
-    const raw = await AsyncStorage.getItem(SYNC_CONFIG_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  const rows = await db.select().from(schema.syncConfig).limit(1);
+  if (rows.length === 0) return null;
+  return { serverUrl: rows[0].serverUrl, apiToken: rows[0].apiToken || undefined };
 }
 
 export async function setSyncConfigData(config: SyncConfig): Promise<void> {
-  await AsyncStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+  await db
+    .insert(schema.syncConfig)
+    .values({ id: 'default', serverUrl: config.serverUrl, apiToken: config.apiToken || null })
+    .onConflictDoUpdate({
+      target: schema.syncConfig.id,
+      set: { serverUrl: config.serverUrl, apiToken: config.apiToken || null },
+    });
 }
 
 export async function getHLCState(): Promise<HLCState> {
-  try {
-    const raw = await AsyncStorage.getItem(HLC_STATE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { counter: 0, node: Math.random().toString(36).slice(2, 10), lastSeen: Date.now() };
+  const rows = await db.select().from(schema.hlcState).limit(1);
+  if (rows.length > 0) {
+    return { counter: rows[0].counter, node: rows[0].node, lastSeen: rows[0].lastSeen };
+  }
+  const defaultState = { counter: 0, node: Math.random().toString(36).slice(2, 10), lastSeen: Date.now() };
+  await db.insert(schema.hlcState).values({ id: 'default', ...defaultState });
+  return defaultState;
 }
 
 export async function setHLCState(state: HLCState): Promise<void> {
-  await AsyncStorage.setItem(HLC_STATE_KEY, JSON.stringify(state));
+  await db
+    .insert(schema.hlcState)
+    .values({ id: 'default', ...state })
+    .onConflictDoUpdate({
+      target: schema.hlcState.id,
+      set: { counter: state.counter, node: state.node, lastSeen: state.lastSeen },
+    });
 }
 
 export async function createTimerSession(data: Partial<TimerSession>): Promise<TimerSession> {
-  const session: TimerSession = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+  const now = new Date().toISOString();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const session = {
+    id,
+    pluseId: data.pluseId || null,
+    todoId: data.todoId || null,
     name: data.name || '',
     intervals: data.intervals || [],
     repeatCount: data.repeatCount || 1,
     currentIndex: data.currentIndex || 0,
     elapsedSeconds: data.elapsedSeconds || 0,
-    status: data.status || 'running',
-    startedAt: data.startedAt || new Date().toISOString(),
-    pluseId: data.pluseId,
-    todoId: data.todoId,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    status: data.status || 'running' as const,
+    startedAt: data.startedAt || now,
+    createdAt: now,
+    updatedAt: now,
   };
-  return upsert(TIMER_SESSIONS_KEY, session);
+  await db.insert(schema.timerSessions).values(session);
+  return session as TimerSession;
 }
 
 export async function updateTimerSession(
   id: string,
   updates: Partial<TimerSession>
 ): Promise<TimerSession | null> {
-  const existing = await getById<TimerSession>(TIMER_SESSIONS_KEY, id);
-  if (!existing) return null;
-  const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-  return upsert(TIMER_SESSIONS_KEY, updated);
+  const existing = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
+  if (existing.length === 0) return null;
+  const { id: _, createdAt: _c, ...updateFields } = updates as any;
+  await db
+    .update(schema.timerSessions)
+    .set({ ...updateFields, updatedAt: new Date().toISOString() })
+    .where(eq(schema.timerSessions.id, id));
+  const updated = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
+  return updated[0] as TimerSession;
 }
 
 export async function getActiveTimerSession(): Promise<TimerSession | null> {
-  const sessions = await getAll<TimerSession>(TIMER_SESSIONS_KEY);
-  return sessions.find((s) => s.status === 'running' || s.status === 'paused') || null;
+  const rows = await db
+    .select()
+    .from(schema.timerSessions)
+    .where(
+      and(
+        isNull(schema.timerSessions.deletedAt),
+        eq(schema.timerSessions.status, 'running')
+      )
+    )
+    .limit(1);
+  if (rows.length > 0) return rows[0] as TimerSession;
+
+  const paused = await db
+    .select()
+    .from(schema.timerSessions)
+    .where(
+      and(
+        isNull(schema.timerSessions.deletedAt),
+        eq(schema.timerSessions.status, 'paused')
+      )
+    )
+    .limit(1);
+  return paused.length > 0 ? (paused[0] as TimerSession) : null;
 }
 
 export async function deleteTimerSession(id: string): Promise<void> {
-  return remove(TIMER_SESSIONS_KEY, id);
+  await db.delete(schema.timerSessions).where(eq(schema.timerSessions.id, id));
 }
 
-export { TODOS_KEY, PLUSES_KEY, TIMER_SESSIONS_KEY };
+export async function clearAllData(): Promise<void> {
+  await db.delete(schema.todos);
+  await db.delete(schema.pluses);
+  await db.delete(schema.timerSessions);
+  await db.delete(schema.syncConfig);
+  await db.delete(schema.hlcState);
+}

@@ -10,14 +10,27 @@ import {
   createTimerSession,
   updateTimerSession,
   deleteTimerSession,
+  getActiveTimerSession,
+  getActiveTimerState,
+  setActiveTimerState,
 } from '@/lib/database';
 import {
   hapticImpact,
   hapticNotification,
   scheduleNotification,
   cancelAllNotifications,
+  requestNotificationPermission,
 } from '@/lib/native';
 import type { Pluse, TimerSession } from '@/lib/database';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 function formatTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -102,12 +115,40 @@ export default function PluseRunScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef<TimerSession | null>(null);
   const hasStartedRef = useRef(false);
+  const currentDurationRef = useRef(0);
+  const currentIndexRef = useRef(0);
+  const elapsedSecondsRef = useRef(0);
+  const isRunningRef = useRef(false);
+  const pluseRef = useRef(pluse);
+  const expandedIntervalsRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (!id) return;
     setIsLoading(true);
-    getPluse(id).then((p) => {
+    
+    Promise.all([
+      getPluse(id),
+      getActiveTimerSession(),
+      getActiveTimerState(),
+    ]).then(([p, session, timerState]) => {
       setPluse(p);
+      
+      if (timerState && timerState.pluseId === id) {
+        sessionRef.current = session;
+        setCurrentIndex(timerState.currentIndex);
+        setElapsedSeconds(timerState.elapsedSeconds);
+        if (timerState.isRunning) {
+          setIsRunning(true);
+        }
+        setActiveTimerState(null);
+      } else if (session && session.pluseId === id) {
+        sessionRef.current = session;
+        setCurrentIndex(session.currentIndex);
+        setElapsedSeconds(session.elapsedSeconds);
+        if (session.status === 'running') {
+          setIsRunning(true);
+        }
+      }
       setIsLoading(false);
     });
   }, [id]);
@@ -116,9 +157,73 @@ export default function PluseRunScreen() {
   const currentDuration = expandedIntervals[currentIndex] || 0;
 
   useEffect(() => {
+    currentDurationRef.current = currentDuration;
+    pluseRef.current = pluse;
+    expandedIntervalsRef.current = expandedIntervals;
+    currentIndexRef.current = currentIndex;
+    elapsedSecondsRef.current = elapsedSeconds;
+    isRunningRef.current = isRunning;
+  });
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cancelAllNotifications();
+    };
+  }, []);
+
+  useEffect(() => {
     if (isRunning) {
       timerRef.current = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
+        setElapsedSeconds((prev) => {
+          const next = prev + 1;
+          const duration = currentDurationRef.current;
+          const p = pluseRef.current;
+          const intervals = expandedIntervalsRef.current;
+          elapsedSecondsRef.current = next;
+
+          if (duration > 0 && next >= duration) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            timerRef.current = null;
+
+            hapticNotification('success');
+
+            setCurrentIndex((idx) => {
+              const nextIdx = idx < intervals.length - 1 ? idx + 1 : 0;
+              currentIndexRef.current = nextIdx;
+              
+              if (idx < intervals.length - 1) {
+                scheduleNotification(
+                  `${p?.name} — Interval ${idx + 1} complete`,
+                  `Interval ${idx + 2} of ${intervals.length} is next.`,
+                  1
+                );
+                if (p?.autoAdvance !== false) {
+                  setTimeout(() => setIsRunning(true), 2000);
+                }
+                return idx + 1;
+              } else {
+                setIsCompleted(true);
+                if (p?.autoAdvance !== false) {
+                  scheduleNotification(`${p?.name} — Complete!`, 'All intervals finished. Great work!', 1);
+                  sessionRef.current?.id &&
+                    updateTimerSession(sessionRef.current.id, {
+                      status: 'completed',
+                      completedAt: new Date().toISOString(),
+                    }).catch(() => {});
+                }
+                return 0;
+              }
+            });
+
+            setIsRunning(false);
+            return 0;
+          }
+          return next;
+        });
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -130,56 +235,6 @@ export default function PluseRunScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRunning]);
-
-  useEffect(() => {
-    return () => {
-      cancelAllNotifications();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!pluse || isCompleted) return;
-    if (elapsedSeconds >= currentDuration && currentDuration > 0) {
-      hapticNotification('success');
-
-      if (currentIndex < expandedIntervals.length - 1) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        setIsRunning(false);
-
-        const nextIndex = currentIndex + 1;
-        setCurrentIndex(nextIndex);
-        setElapsedSeconds(0);
-
-        scheduleNotification(
-          `${pluse.name} — Interval ${currentIndex + 1} complete`,
-          `Interval ${nextIndex + 1} of ${expandedIntervals.length} is next.`,
-          1
-        );
-
-        if (pluse.autoAdvance !== false) {
-          setTimeout(() => setIsRunning(true), 2000);
-        }
-      } else {
-        if (timerRef.current) clearInterval(timerRef.current);
-        setIsRunning(false);
-        setIsCompleted(true);
-
-        if (pluse.autoAdvance !== false) {
-          setCurrentIndex(0);
-          setElapsedSeconds(0);
-          setTimeout(() => setIsRunning(true), 2000);
-        } else {
-          scheduleNotification(`${pluse.name} — Complete!`, 'All intervals finished. Great work!', 1);
-          if (sessionRef.current) {
-            updateTimerSession(sessionRef.current.id, {
-              status: 'completed',
-              completedAt: new Date().toISOString(),
-            }).catch(() => {});
-          }
-        }
-      }
-    }
-  }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length]);
 
   const toggleRunning = useCallback(async () => {
     hapticImpact();
@@ -285,7 +340,9 @@ export default function PluseRunScreen() {
             <Text style={{ color: 'white', fontSize: 14, fontWeight: '500' }}>Run Again</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.replace('/')}
+            onPress={() => {
+              setActiveTimerState(null).then(() => router.replace('/'));
+            }}
             style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'white', borderWidth: 1, borderColor: '#e2e8f0', paddingVertical: 12, borderRadius: 12 }}
           >
             <Text style={{ color: '#475569', fontSize: 14, fontWeight: '500' }}>Back to Today</Text>
@@ -303,7 +360,16 @@ export default function PluseRunScreen() {
     <View style={{ flex: 1, backgroundColor: '#f8fafc', paddingHorizontal: 16, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <Pressable onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Pressable onPress={() => {
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = null;
+          setActiveTimerState({
+            pluseId: id || '',
+            currentIndex: currentIndexRef.current,
+            elapsedSeconds: elapsedSecondsRef.current,
+            isRunning: isRunningRef.current,
+          }).then(() => router.back());
+        }} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="chevron-back" size={18} color="#94a3b8" />
           <Text style={{ fontSize: 14, color: '#64748b' }}>Back</Text>
         </Pressable>

@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { syncAll, getSyncConfig, setSyncConfig } from '@/lib/sync';
+import { clearAllData } from '@/lib/database';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -68,7 +68,7 @@ export default function SettingsScreen() {
         text: 'Clear',
         style: 'destructive',
         onPress: async () => {
-          await AsyncStorage.clear();
+          await clearAllData();
           Alert.alert('Done', 'All data has been cleared');
         },
       },

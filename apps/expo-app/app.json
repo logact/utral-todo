@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.logat.utralTodo",
       "infoPlist": {
         "NSCameraUsageDescription": "Allow Utral Todo to access your camera for scanning.",
-        "NSPhotoLibraryUsageDescription": "Allow Utral Todo to access your photos."
+        "NSPhotoLibraryUsageDescription": "Allow Utral Todo to access your photos.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -40,10 +41,20 @@
         {
           "icon": "./assets/notification-icon.png"
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-font",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a4034365-ab0a-49f4-bf9a-a27228fd3fc5"
+      }
     }
   }
 }

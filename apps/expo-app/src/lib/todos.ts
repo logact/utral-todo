@@ -1,25 +1,32 @@
-import { getAll, getById, upsert, remove, TODOS_KEY, type Todo } from './database';
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
+import { eq, and, isNull, asc } from 'drizzle-orm';
+import { db, schema } from '../db';
+import type { Todo } from './database';
 
 function now(): string {
   return new Date().toISOString();
 }
 
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
 export async function getAllTodos(): Promise<Todo[]> {
-  const todos = await getAll<Todo>(TODOS_KEY);
-  return todos.filter((t) => !t.deletedAt).sort((a, b) => a.order - b.order);
+  const rows = await db
+    .select()
+    .from(schema.todos)
+    .where(isNull(schema.todos.deletedAt))
+    .orderBy(asc(schema.todos.order));
+  return rows as Todo[];
 }
 
 export async function getTodo(id: string): Promise<Todo | null> {
-  return getById<Todo>(TODOS_KEY, id);
+  const rows = await db.select().from(schema.todos).where(eq(schema.todos.id, id)).limit(1);
+  return rows.length > 0 ? (rows[0] as Todo) : null;
 }
 
 export async function getTodayTodos(): Promise<Todo[]> {
-  const todos = await getAllTodos();
   const today = new Date().toISOString().split('T')[0];
+  const todos = await getAllTodos();
   return todos.filter((t) => t.scheduledDate?.startsWith(today) && t.status !== 'done');
 }
 
@@ -29,11 +36,9 @@ export async function getInProgressTodos(): Promise<Todo[]> {
 }
 
 export async function getOverdueTodos(): Promise<Todo[]> {
-  const todos = await getAllTodos();
   const today = new Date().toISOString().split('T')[0];
-  return todos.filter(
-    (t) => t.dueDate && t.dueDate < today && t.status !== 'done'
-  );
+  const todos = await getAllTodos();
+  return todos.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'done');
 }
 
 export async function getTodayGoals(): Promise<Todo[]> {
@@ -49,46 +54,59 @@ export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
 }
 
 export async function updateTodoStatus(id: string, status: Todo['status']): Promise<Todo | null> {
-  const existing = await getById<Todo>(TODOS_KEY, id);
+  const existing = await getTodo(id);
   if (!existing) return null;
-  const updated = {
-    ...existing,
-    status,
-    completedAt: status === 'done' ? now() : undefined,
-    updatedAt: now(),
-  };
-  return upsert(TODOS_KEY, updated);
+  const timestamp = now();
+  await db
+    .update(schema.todos)
+    .set({
+      status,
+      updatedAt: timestamp,
+    })
+    .where(eq(schema.todos.id, id));
+  return getTodo(id);
 }
 
 export async function createTodo(data: Partial<Todo>): Promise<Todo> {
-  const todo: Todo = {
-    id: generateId(),
+  const id = generateId();
+  const timestamp = now();
+  const todo = {
+    id,
     title: data.title || 'Untitled',
     description: data.description || '',
-    status: data.status || 'pending',
-    priority: data.priority || 'medium',
+    status: data.status || 'pending' as const,
+    priority: data.priority || 'medium' as const,
     estimatedMinutes: data.estimatedMinutes || 0,
-    scheduledDate: data.scheduledDate,
-    dueDate: data.dueDate,
+    scheduledDate: data.scheduledDate || null,
+    dueDate: data.dueDate || null,
     tags: data.tags || [],
     order: data.order || 0,
-    nodeType: data.nodeType || 'task',
-    createdAt: now(),
-    updatedAt: now(),
+    nodeType: data.nodeType || 'task' as const,
+    createdAt: timestamp,
+    updatedAt: timestamp,
   };
-  return upsert(TODOS_KEY, todo);
+  await db.insert(schema.todos).values(todo);
+  return todo as Todo;
 }
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<Todo | null> {
-  const existing = await getById<Todo>(TODOS_KEY, id);
+  const existing = await getTodo(id);
   if (!existing) return null;
-  const updated = { ...existing, ...updates, updatedAt: now() };
-  return upsert(TODOS_KEY, updated);
+  const { id: _, createdAt: _c, ...updateFields } = updates as any;
+  await db
+    .update(schema.todos)
+    .set({ ...updateFields, updatedAt: now() })
+    .where(eq(schema.todos.id, id));
+  return getTodo(id);
 }
 
 export async function deleteTodo(id: string): Promise<void> {
-  const existing = await getById<Todo>(TODOS_KEY, id);
+  const existing = await getTodo(id);
   if (existing) {
-    await upsert(TODOS_KEY, { ...existing, deletedAt: now(), updatedAt: now() });
+    const timestamp = now();
+    await db
+      .update(schema.todos)
+      .set({ deletedAt: timestamp, updatedAt: timestamp })
+      .where(eq(schema.todos.id, id));
   }
 }
