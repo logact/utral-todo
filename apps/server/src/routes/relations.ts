@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../index.js';
+import { eq, and, inArray, or } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 import { logChange } from '../sync/log.js';
 
 const router = Router();
@@ -11,8 +12,10 @@ async function validateRelationType(
   fromTodoId: string,
   toTodoId: string
 ): Promise<string | undefined> {
-  const fromTodo = await prisma.todo.findUnique({ where: { id: fromTodoId } });
-  const toTodo = await prisma.todo.findUnique({ where: { id: toTodoId } });
+  const fromRows = await db.select().from(schema.todo).where(eq(schema.todo.id, fromTodoId)).limit(1);
+  const toRows = await db.select().from(schema.todo).where(eq(schema.todo.id, toTodoId)).limit(1);
+  const fromTodo = fromRows[0];
+  const toTodo = toRows[0];
 
   if (!fromTodo || !toTodo) return 'One or both todos do not exist';
 
@@ -57,7 +60,7 @@ async function validateRelationType(
 }
 
 router.get('/', async (_req, res) => {
-  const relations = await prisma.todoRelation.findMany();
+  const relations = await db.select().from(schema.todoRelation);
   res.json(relations);
 });
 
@@ -72,22 +75,24 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: validationError });
   }
 
-  const existing = await prisma.todoRelation.findFirst({
-    where: { fromTodoId, toTodoId, type },
-  });
-  if (existing) {
+  const existingRows = await db.select().from(schema.todoRelation).where(
+    and(
+      eq(schema.todoRelation.fromTodoId, fromTodoId),
+      eq(schema.todoRelation.toTodoId, toTodoId),
+      eq(schema.todoRelation.type, type)
+    )
+  ).limit(1);
+  if (existingRows[0]) {
     return res.status(409).json({ error: 'This relation already exists' });
   }
-  const relation = await prisma.todoRelation.create({
-    data: { fromTodoId, toTodoId, type },
-  });
+  const relation = (await db.insert(schema.todoRelation).values({ fromTodoId, toTodoId, type }).returning())[0];
   await logChange(req, 'todoRelation', 'create', relation.id, relation);
   res.status(201).json(relation);
 });
 
 router.delete('/:id', async (req, res) => {
   const id = req.params.id;
-  await prisma.todoRelation.delete({ where: { id } });
+  await db.delete(schema.todoRelation).where(eq(schema.todoRelation.id, id));
   await logChange(req, 'todoRelation', 'delete', id);
   res.status(204).send();
 });
@@ -106,20 +111,29 @@ router.get('/source-chain/:id', async (req, res) => {
 
   while (currentId && !visited.has(currentId)) {
     visited.add(currentId);
-    const todo = await prisma.todo.findUnique({ where: { id: currentId } });
+    const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, currentId)).limit(1);
+    const todo = todoRows[0];
     if (!todo) break;
 
     chain.unshift(todo);
 
     if (todo.nodeType === 'goal') {
-      const incomingParent = await prisma.todoRelation.findFirst({
-        where: { toTodoId: currentId, type: { in: ['parent_of', 'source_from'] } },
-      });
+      const incomingParentRows = await db.select().from(schema.todoRelation).where(
+        and(
+          eq(schema.todoRelation.toTodoId, currentId),
+          inArray(schema.todoRelation.type, ['parent_of', 'source_from'])
+        )
+      ).limit(1);
+      const incomingParent = incomingParentRows[0];
       currentId = incomingParent?.fromTodoId ?? '';
     } else if (todo.nodeType === 'task') {
-      const incomingAchieves = await prisma.todoRelation.findFirst({
-        where: { toTodoId: currentId, type: 'achieves' },
-      });
+      const incomingAchievesRows = await db.select().from(schema.todoRelation).where(
+        and(
+          eq(schema.todoRelation.toTodoId, currentId),
+          eq(schema.todoRelation.type, 'achieves')
+        )
+      ).limit(1);
+      const incomingAchieves = incomingAchievesRows[0];
       currentId = incomingAchieves?.fromTodoId ?? '';
     } else {
       break;
@@ -132,16 +146,20 @@ router.get('/source-chain/:id', async (req, res) => {
 // Road to Goal: all relations relevant to the new model for a given todo.
 router.get('/road-to-goal/:id', async (req, res) => {
   const todoId = req.params.id;
-  const todo = await prisma.todo.findUnique({ where: { id: todoId } });
+  const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, todoId)).limit(1);
+  const todo = todoRows[0];
   if (!todo) return res.status(404).json({ error: 'Todo not found' });
 
   const relevantTypes = ['parent_of', 'source_from', 'achieves', 'ordered_before'];
-  const all = await prisma.todoRelation.findMany({
-    where: {
-      type: { in: relevantTypes },
-      OR: [{ fromTodoId: todoId }, { toTodoId: todoId }],
-    },
-  });
+  const all = await db.select().from(schema.todoRelation).where(
+    and(
+      inArray(schema.todoRelation.type, relevantTypes),
+      or(
+        eq(schema.todoRelation.fromTodoId, todoId),
+        eq(schema.todoRelation.toTodoId, todoId)
+      )
+    )
+  );
 
   const connectedIds = new Set<string>([todoId]);
   for (const rel of all) {
@@ -154,9 +172,9 @@ router.get('/road-to-goal/:id', async (req, res) => {
     connectedIds.add(todo.parentId);
   }
 
-  const todos = await prisma.todo.findMany({
-    where: { id: { in: Array.from(connectedIds) } },
-  });
+  const todos = await db.select().from(schema.todo).where(
+    inArray(schema.todo.id, Array.from(connectedIds))
+  );
 
   res.json({ todo, todos, relations: all });
 });

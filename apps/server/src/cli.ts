@@ -1,4 +1,5 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { eq, ne, and, or, isNotNull, lt, gte, desc, asc, sql } from 'drizzle-orm';
+import { db, schema } from './db/index.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,8 +9,6 @@ import { readFile } from 'fs/promises';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../.env.local'), override: true });
-
-const prisma = new PrismaClient();
 
 // ─── Global State ───────────────────────────────────────────────────────────
 
@@ -175,23 +174,28 @@ function startOfDay(date: Date): Date {
 
 function isSameDay(a: Date, b: Date): boolean {
   const da = new Date(a);
-  const db = new Date(b);
+  const dbDate = new Date(b);
   return (
-    da.getDate() === db.getDate() &&
-    da.getMonth() === db.getMonth() &&
-    da.getFullYear() === db.getFullYear()
+    da.getDate() === dbDate.getDate() &&
+    da.getMonth() === dbDate.getMonth() &&
+    da.getFullYear() === dbDate.getFullYear()
   );
 }
 
 // ─── Todos ──────────────────────────────────────────────────────────────────
 
 async function listTodos(args: Record<string, string | boolean>) {
-  const where: Record<string, unknown> = {};
-  if (args.status) where.status = args.status;
-  if (args.priority) where.priority = args.priority;
-  if (args.parentId) where.parentId = args.parentId;
+  const conditions = [];
+  if (args.status) conditions.push(eq(schema.todo.status, String(args.status)));
+  if (args.priority) conditions.push(eq(schema.todo.priority, String(args.priority)));
+  if (args.parentId) conditions.push(eq(schema.todo.parentId, String(args.parentId)));
+
+  const baseQuery = conditions.length > 0
+    ? db.select().from(schema.todo).where(and(...conditions)).orderBy(schema.todo.order)
+    : db.select().from(schema.todo).orderBy(schema.todo.order);
+
   if (args.tag) {
-    const all = await prisma.todo.findMany({ where, orderBy: { order: 'asc' } });
+    const all = await baseQuery;
     const filtered = all.filter((t) => {
       const tags = t.tags as string[];
       return tags.includes(String(args.tag));
@@ -204,7 +208,7 @@ async function listTodos(args: Record<string, string | boolean>) {
     return;
   }
 
-  const rows = await prisma.todo.findMany({ where, orderBy: { order: 'asc' } });
+  const rows = await baseQuery;
   printOutput(
     applyLimit(rows).map((r) =>
       pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate']),
@@ -213,17 +217,15 @@ async function listTodos(args: Record<string, string | boolean>) {
 }
 
 async function getTodo(id: string) {
-  const row = await prisma.todo.findUnique({
-    where: { id },
-    include: { logs: true },
-  });
+  const row = (await db.select().from(schema.todo).where(eq(schema.todo.id, id)).limit(1))[0];
   if (!row) return fail('Todo not found');
-  printOutput(row);
+  const logs = await db.select().from(schema.todoLog).where(eq(schema.todoLog.todoId, id));
+  printOutput({ ...row, logs });
 }
 
 async function createTodo(args: Record<string, string | boolean>) {
-  const maxOrder = await prisma.todo.aggregate({ _max: { order: true } });
-  const finalOrder = (maxOrder._max.order ?? 0) + 1;
+  const maxResult = (await db.select({ max: sql<number>`max(${schema.todo.order})` }).from(schema.todo))[0]?.max ?? 0;
+  const finalOrder = (maxResult ?? 0) + 1;
 
   const data = {
     title: String(args.title ?? 'Untitled'),
@@ -240,7 +242,7 @@ async function createTodo(args: Record<string, string | boolean>) {
     nodeType: args.nodeType === 'goal' || args.nodeType === 'goal' ? 'goal' : 'todo',
   };
 
-  const todo = await prisma.todo.create({ data: data as never });
+  const todo = (await db.insert(schema.todo).values(data as typeof schema.todo.$inferInsert).returning())[0];
 
   if (!quietMode) console.log('Created todo:', todo.id);
   printOutput(todo);
@@ -261,7 +263,7 @@ async function updateTodo(id: string, args: Record<string, string | boolean>) {
   if (args.nodeType !== undefined) data.nodeType = String(args.nodeType);
   if (args.order !== undefined) data.order = Number(args.order);
 
-  const todo = await prisma.todo.update({ where: { id }, data });
+  const todo = (await db.update(schema.todo).set(data).where(eq(schema.todo.id, id)).returning())[0];
 
   if (!quietMode) console.log('Updated todo:', todo.id);
   printOutput(todo);
@@ -269,13 +271,12 @@ async function updateTodo(id: string, args: Record<string, string | boolean>) {
 
 async function deleteTodo(id: string) {
   // Delete assigned instances first
-  const assignedRelations = await prisma.todoRelation.findMany({
-    where: { fromTodoId: id, type: 'assign_from' },
-  });
+  const assignedRelations = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, id), eq(schema.todoRelation.type, 'assign_from')));
   for (const rel of assignedRelations) {
-    await prisma.todo.delete({ where: { id: rel.toTodoId } }).catch(() => {});
+    await db.delete(schema.todo).where(eq(schema.todo.id, rel.toTodoId));
   }
-  await prisma.todo.delete({ where: { id } }).catch(() => {});
+  await db.delete(schema.todo).where(eq(schema.todo.id, id));
   if (!quietMode) console.log('Deleted todo:', id);
 }
 
@@ -284,21 +285,18 @@ async function setTodoStatus(id: string, args: Record<string, string | boolean>)
   if (!['pending', 'in_progress', 'done'].includes(status)) {
     return fail('Status must be one of: pending, in_progress, done');
   }
-  const data: Prisma.TodoUpdateInput = { status };
+  const data: Record<string, unknown> = { status };
   if (status === 'in_progress') data.startedAt = new Date();
   if (status === 'pending') data.startedAt = null;
   if (status === 'done') data.completedAt = new Date();
-  const todo = await prisma.todo.update({ where: { id }, data });
+  const todo = (await db.update(schema.todo).set(data).where(eq(schema.todo.id, id)).returning())[0];
   if (!quietMode) console.log(`Status updated to ${status}:`, todo.id);
   printOutput(todo);
 }
 
 async function scheduleTodo(id: string, args: Record<string, string | boolean>) {
   const date = args.date ? new Date(String(args.date)) : null;
-  const todo = await prisma.todo.update({
-    where: { id },
-    data: { scheduledDate: date },
-  });
+  const todo = (await db.update(schema.todo).set({ scheduledDate: date }).where(eq(schema.todo.id, id)).returning())[0];
   if (!quietMode) console.log(date ? `Scheduled for ${date.toISOString().split('T')[0]}:` : 'Unscheduled:', todo.id);
   printOutput(todo);
 }
@@ -307,10 +305,9 @@ async function todosToday() {
   const today = startOfDay(new Date());
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const rows = await prisma.todo.findMany({
-    where: { scheduledDate: { gte: today, lt: tomorrow } },
-    orderBy: { order: 'asc' },
-  });
+  const rows = await db.select().from(schema.todo)
+    .where(and(gte(schema.todo.scheduledDate, today), lt(schema.todo.scheduledDate, tomorrow)))
+    .orderBy(schema.todo.order);
   printOutput(
     rows.map((r) =>
       pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate']),
@@ -319,10 +316,9 @@ async function todosToday() {
 }
 
 async function todosUnscheduled() {
-  const rows = await prisma.todo.findMany({
-    where: { scheduledDate: null, status: { not: 'done' } },
-    orderBy: { order: 'asc' },
-  });
+  const rows = await db.select().from(schema.todo)
+    .where(and(eq(schema.todo.scheduledDate, null as unknown as Date), ne(schema.todo.status, 'done')))
+    .orderBy(schema.todo.order);
   printOutput(
     rows.map((r) =>
       pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate']),
@@ -332,10 +328,9 @@ async function todosUnscheduled() {
 
 async function todosOverdue() {
   const today = startOfDay(new Date());
-  const rows = await prisma.todo.findMany({
-    where: { status: { not: 'done' }, dueDate: { lt: today } },
-    orderBy: { order: 'asc' },
-  });
+  const rows = await db.select().from(schema.todo)
+    .where(and(ne(schema.todo.status, 'done'), lt(schema.todo.dueDate, today)))
+    .orderBy(schema.todo.order);
   printOutput(
     rows.map((r) =>
       pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate']),
@@ -344,10 +339,9 @@ async function todosOverdue() {
 }
 
 async function todosInbox() {
-  const rows = await prisma.todo.findMany({
-    where: { parentId: null, status: { not: 'done' } },
-    orderBy: { order: 'asc' },
-  });
+  const rows = await db.select().from(schema.todo)
+    .where(and(eq(schema.todo.parentId, null as unknown as string), ne(schema.todo.status, 'done')))
+    .orderBy(schema.todo.order);
   printOutput(
     rows.map((r) =>
       pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority', 'dueDate', 'scheduledDate']),
@@ -356,7 +350,7 @@ async function todosInbox() {
 }
 
 async function searchTodos(query: string) {
-  const all = await prisma.todo.findMany({ orderBy: { order: 'asc' } });
+  const all = await db.select().from(schema.todo).orderBy(schema.todo.order);
   const q = query.toLowerCase();
   const rows = all.filter(
     (t) =>
@@ -372,7 +366,7 @@ async function searchTodos(query: string) {
 
 async function reorderTodo(id: string, args: Record<string, string | boolean>) {
   const order = Number(args.order ?? args._positional ?? 0);
-  const todo = await prisma.todo.update({ where: { id }, data: { order } });
+  const todo = (await db.update(schema.todo).set({ order }).where(eq(schema.todo.id, id)).returning())[0];
   if (!quietMode) console.log('Reordered todo:', todo.id, 'to order', order);
   printOutput(todo);
 }
@@ -380,31 +374,31 @@ async function reorderTodo(id: string, args: Record<string, string | boolean>) {
 async function bulkReorderTodos(args: Record<string, string | boolean>) {
   const ids = String(args.ids ?? args._positional ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   if (ids.length === 0) return fail('No ids provided. Use --ids=id1,id2,id3');
-  await prisma.$transaction(
-    ids.map((id, index) => prisma.todo.update({ where: { id }, data: { order: index } })),
-  );
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < ids.length; i++) {
+      await tx.update(schema.todo).set({ order: i }).where(eq(schema.todo.id, ids[i]));
+    }
+  });
   if (!quietMode) console.log('Reordered', ids.length, 'todos');
 }
 
 async function getSpawnedTodos(id: string) {
-  const relations = await prisma.todoRelation.findMany({
-    where: { fromTodoId: id, type: 'source_from' },
-  });
+  const relations = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, id), eq(schema.todoRelation.type, 'source_from')));
   const todos = [];
   for (const rel of relations) {
-    const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
+    const todo = (await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1))[0];
     if (todo) todos.push(todo);
   }
   printOutput(todos.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'priority'])));
 }
 
 async function getTodoInstances(id: string) {
-  const relations = await prisma.todoRelation.findMany({
-    where: { fromTodoId: id, type: 'assign_from' },
-  });
+  const relations = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, id), eq(schema.todoRelation.type, 'assign_from')));
   const todos = [];
   for (const rel of relations) {
-    const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
+    const todo = (await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1))[0];
     if (todo) todos.push(todo);
   }
   printOutput(todos.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'title', 'status', 'scheduledDate'])));
@@ -412,10 +406,10 @@ async function getTodoInstances(id: string) {
 
 async function setRepeatRule(id: string, args: Record<string, string | boolean>) {
   const rule = args.rule ? JSON.parse(String(args.rule)) : null;
-  const template = await prisma.todo.findUnique({ where: { id } });
+  const template = (await db.select().from(schema.todo).where(eq(schema.todo.id, id)).limit(1))[0];
   if (!template) return fail('Todo not found');
 
-  await prisma.todo.update({ where: { id }, data: { repeatRule: rule } });
+  await db.update(schema.todo).set({ repeatRule: rule }).where(eq(schema.todo.id, id));
 
   if (!rule) {
     if (!quietMode) console.log('Repeat rule removed for:', id);
@@ -423,14 +417,13 @@ async function setRepeatRule(id: string, args: Record<string, string | boolean>)
   }
 
   // Clean up invalid instances
-  const existingInstances = await prisma.todoRelation.findMany({
-    where: { fromTodoId: id, type: 'assign_from' },
-  });
+  const existingInstances = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, id), eq(schema.todoRelation.type, 'assign_from')));
   const typedRule = rule as { type: string; weekDays?: number[]; interval?: number; endDate?: string };
   const ruleEnd = typedRule.endDate ? startOfDay(new Date(typedRule.endDate)) : undefined;
 
   for (const rel of existingInstances) {
-    const instance = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
+    const instance = (await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1))[0];
     if (!instance || !instance.scheduledDate) continue;
 
     const date = startOfDay(new Date(instance.scheduledDate));
@@ -447,9 +440,12 @@ async function setRepeatRule(id: string, args: Record<string, string | boolean>)
     if (ruleEnd && date > ruleEnd) matches = false;
 
     if (!matches) {
-      await prisma.todoRelation.deleteMany({ where: { OR: [{ fromTodoId: instance.id }, { toTodoId: instance.id }] } });
-      await prisma.todoLog.deleteMany({ where: { todoId: instance.id } });
-      await prisma.todo.delete({ where: { id: instance.id } }).catch(() => {});
+      await db.delete(schema.todoRelation).where(or(
+        eq(schema.todoRelation.fromTodoId, instance.id),
+        eq(schema.todoRelation.toTodoId, instance.id),
+      ));
+      await db.delete(schema.todoLog).where(eq(schema.todoLog.todoId, instance.id));
+      await db.delete(schema.todo).where(eq(schema.todo.id, instance.id));
     }
   }
 
@@ -460,9 +456,7 @@ async function syncRepeatTodos(args: Record<string, string | boolean>) {
   const startDate = new Date(String(args.startDate ?? args._positional ?? new Date()));
   const endDate = new Date(String(args.endDate ?? args._positional2 ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
 
-  const templates = await prisma.todo.findMany({
-    where: { repeatRule: { not: Prisma.JsonNull } },
-  });
+  const templates = await db.select().from(schema.todo).where(isNotNull(schema.todo.repeatRule));
 
   let createdCount = 0;
   const start = startOfDay(startDate);
@@ -488,32 +482,31 @@ async function syncRepeatTodos(args: Record<string, string | boolean>) {
       current.setDate(current.getDate() + 1);
     }
 
-    const existingInstances = await prisma.todoRelation.findMany({
-      where: { fromTodoId: template.id, type: 'assign_from' },
-    });
+    const existingInstances = await db.select().from(schema.todoRelation)
+      .where(and(eq(schema.todoRelation.fromTodoId, template.id), eq(schema.todoRelation.type, 'assign_from')));
     const instanceTodos = [];
     for (const rel of existingInstances) {
-      const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
+      const todo = (await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1))[0];
       if (todo) instanceTodos.push(todo);
     }
 
     for (const date of targetDates) {
       const hasInstance = instanceTodos.some((inst) => inst.scheduledDate && isSameDay(new Date(inst.scheduledDate), date));
       if (!hasInstance) {
-        const instance = await prisma.todo.create({
-          data: {
-            title: template.title,
-            description: template.description,
-            priority: template.priority,
-            estimatedMinutes: template.estimatedMinutes,
-            tags: template.tags as string[],
-            scheduledDate: date,
-            status: 'pending',
-            order: 0,
-          },
-        });
-        await prisma.todoRelation.create({
-          data: { fromTodoId: template.id, toTodoId: instance.id, type: 'assign_from' },
+        const instance = (await db.insert(schema.todo).values({
+          title: template.title,
+          description: template.description,
+          priority: template.priority,
+          estimatedMinutes: template.estimatedMinutes,
+          tags: template.tags as string[],
+          scheduledDate: date,
+          status: 'pending',
+          order: 0,
+        }).returning())[0];
+        await db.insert(schema.todoRelation).values({
+          fromTodoId: template.id,
+          toTodoId: instance.id,
+          type: 'assign_from',
         });
         createdCount++;
       }
@@ -527,11 +520,16 @@ async function syncRepeatTodos(args: Record<string, string | boolean>) {
 // ─── Relations ──────────────────────────────────────────────────────────────
 
 async function listRelations(args: Record<string, string | boolean>) {
-  const where: Record<string, unknown> = {};
-  if (args.fromTodoId) where.fromTodoId = String(args.fromTodoId);
-  if (args.toTodoId) where.toTodoId = String(args.toTodoId);
-  if (args.type) where.type = String(args.type);
-  const rows = await prisma.todoRelation.findMany({ where, orderBy: { createdAt: 'desc' } });
+  const conditions = [];
+  if (args.fromTodoId) conditions.push(eq(schema.todoRelation.fromTodoId, String(args.fromTodoId)));
+  if (args.toTodoId) conditions.push(eq(schema.todoRelation.toTodoId, String(args.toTodoId)));
+  if (args.type) conditions.push(eq(schema.todoRelation.type, String(args.type)));
+
+  const baseQuery = conditions.length > 0
+    ? db.select().from(schema.todoRelation).where(and(...conditions)).orderBy(desc(schema.todoRelation.createdAt))
+    : db.select().from(schema.todoRelation).orderBy(desc(schema.todoRelation.createdAt));
+
+  const rows = await baseQuery;
   printOutput(rows.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'fromTodoId', 'toTodoId', 'type', 'createdAt'])));
 }
 
@@ -542,16 +540,18 @@ async function createRelation(args: Record<string, string | boolean>) {
   if (!fromTodoId || !toTodoId) return fail('fromTodoId and toTodoId are required');
   if (fromTodoId === toTodoId) return fail('Cannot create a relation from a todo to itself');
 
-  const existing = await prisma.todoRelation.findFirst({ where: { fromTodoId, toTodoId, type } });
+  const existing = (await db.select().from(schema.todoRelation).where(
+    and(eq(schema.todoRelation.fromTodoId, fromTodoId), eq(schema.todoRelation.toTodoId, toTodoId), eq(schema.todoRelation.type, type))
+  ).limit(1))[0];
   if (existing) return fail('This relation already exists');
 
-  const relation = await prisma.todoRelation.create({ data: { fromTodoId, toTodoId, type } });
+  const relation = (await db.insert(schema.todoRelation).values({ fromTodoId, toTodoId, type }).returning())[0];
   if (!quietMode) console.log('Created relation:', relation.id);
   printOutput(relation);
 }
 
 async function deleteRelation(id: string) {
-  await prisma.todoRelation.delete({ where: { id } });
+  await db.delete(schema.todoRelation).where(eq(schema.todoRelation.id, id));
   if (!quietMode) console.log('Deleted relation:', id);
 }
 
@@ -562,11 +562,11 @@ async function sourceChain(id: string) {
 
   while (currentId && !visited.has(currentId)) {
     visited.add(currentId);
-    const todo = await prisma.todo.findUnique({ where: { id: currentId } });
+    const todo = (await db.select().from(schema.todo).where(eq(schema.todo.id, currentId)).limit(1))[0];
     if (!todo) break;
-    const incomingSource = await prisma.todoRelation.findFirst({
-      where: { toTodoId: currentId, type: 'source_from' },
-    });
+    const incomingSource = (await db.select().from(schema.todoRelation).where(
+      and(eq(schema.todoRelation.toTodoId, currentId), eq(schema.todoRelation.type, 'source_from'))
+    ).limit(1))[0];
     chain.unshift(todo as unknown as Record<string, unknown>);
     currentId = incomingSource?.fromTodoId ?? '';
   }
@@ -577,38 +577,41 @@ async function sourceChain(id: string) {
 // ─── Todo Logs ──────────────────────────────────────────────────────────────
 
 async function listTodoLogs(args: Record<string, string | boolean>) {
-  const where: Record<string, unknown> = {};
-  if (args.todoId) where.todoId = String(args.todoId);
-  if (args.type) where.type = String(args.type);
-  const rows = await prisma.todoLog.findMany({ where, orderBy: { createdAt: 'asc' } });
+  const conditions = [];
+  if (args.todoId) conditions.push(eq(schema.todoLog.todoId, String(args.todoId)));
+  if (args.type) conditions.push(eq(schema.todoLog.type, String(args.type)));
+
+  const baseQuery = conditions.length > 0
+    ? db.select().from(schema.todoLog).where(and(...conditions)).orderBy(schema.todoLog.createdAt)
+    : db.select().from(schema.todoLog).orderBy(schema.todoLog.createdAt);
+
+  const rows = await baseQuery;
   printOutput(
     applyLimit(rows).map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'todoId', 'type', 'content', 'minutesSpent', 'createdAt'])),
   );
 }
 
 async function createTodoLog(args: Record<string, string | boolean>) {
-  const log = await prisma.todoLog.create({
-    data: {
-      todoId: String(args.todoId ?? ''),
-      type: String(args.type ?? 'thought'),
-      content: String(args.content ?? ''),
-      minutesSpent: args.minutesSpent ? Number(args.minutesSpent) : null,
-      metadata: args.metadata ? JSON.parse(String(args.metadata)) : null,
-    },
-  });
+  const log = (await db.insert(schema.todoLog).values({
+    todoId: String(args.todoId ?? ''),
+    type: String(args.type ?? 'thought'),
+    content: String(args.content ?? ''),
+    minutesSpent: args.minutesSpent ? Number(args.minutesSpent) : null,
+    metadata: args.metadata ? JSON.parse(String(args.metadata)) : null,
+  }).returning())[0];
   if (!quietMode) console.log('Created todo log:', log.id);
   printOutput(log);
 }
 
 async function deleteTodoLog(id: string) {
-  await prisma.todoLog.delete({ where: { id } });
+  await db.delete(schema.todoLog).where(eq(schema.todoLog.id, id));
   if (!quietMode) console.log('Deleted todo log:', id);
 }
 
 // ─── Action Edges ───────────────────────────────────────────────────────────
 
 async function listActionEdges() {
-  const rows = await prisma.actionEdge.findMany({ orderBy: { createdAt: 'desc' } });
+  const rows = await db.select().from(schema.actionEdge).orderBy(desc(schema.actionEdge.createdAt));
   printOutput(rows.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'fromTodoId', 'toTodoId', 'type', 'createdAt'])));
 }
 
@@ -619,50 +622,50 @@ async function createActionEdge(args: Record<string, string | boolean>) {
   if (!fromTodoId || !toTodoId) return fail('fromTodoId and toTodoId are required');
   if (fromTodoId === toTodoId) return fail('Cannot create an edge from a todo to itself');
 
-  const existing = await prisma.actionEdge.findFirst({ where: { fromTodoId, toTodoId, type } });
+  const existing = (await db.select().from(schema.actionEdge).where(
+    and(eq(schema.actionEdge.fromTodoId, fromTodoId), eq(schema.actionEdge.toTodoId, toTodoId), eq(schema.actionEdge.type, type))
+  ).limit(1))[0];
   if (existing) return fail('This edge already exists');
 
-  const edge = await prisma.actionEdge.create({ data: { fromTodoId, toTodoId, type } });
+  const edge = (await db.insert(schema.actionEdge).values({ fromTodoId, toTodoId, type }).returning())[0];
   if (!quietMode) console.log('Created action edge:', edge.id);
   printOutput(edge);
 }
 
 async function deleteActionEdge(id: string) {
-  await prisma.actionEdge.delete({ where: { id } });
+  await db.delete(schema.actionEdge).where(eq(schema.actionEdge.id, id));
   if (!quietMode) console.log('Deleted action edge:', id);
 }
 
 async function actionEdgesForTodo(todoId: string) {
-  const rows = await prisma.actionEdge.findMany({
-    where: { OR: [{ fromTodoId: todoId }, { toTodoId: todoId }] },
-  });
+  const rows = await db.select().from(schema.actionEdge).where(
+    or(eq(schema.actionEdge.fromTodoId, todoId), eq(schema.actionEdge.toTodoId, todoId))
+  );
   printOutput(rows.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'fromTodoId', 'toTodoId', 'type'])));
 }
 
 // ─── Pluses ─────────────────────────────────────────────────────────────────
 
 async function listPluses() {
-  const rows = await prisma.pluse.findMany({ orderBy: { createdAt: 'desc' } });
+  const rows = await db.select().from(schema.pluse).orderBy(desc(schema.pluse.createdAt));
   printOutput(rows.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'name', 'description', 'intervals', 'repeatCount', 'createdAt'])));
 }
 
 async function getPluse(id: string) {
-  const row = await prisma.pluse.findUnique({ where: { id } });
+  const row = (await db.select().from(schema.pluse).where(eq(schema.pluse.id, id)).limit(1))[0];
   if (!row) return fail('Pluse not found');
   printOutput(row);
 }
 
 async function createPluse(args: Record<string, string | boolean>) {
-  const row = await prisma.pluse.create({
-    data: {
-      name: String(args.name ?? 'Untitled'),
-      description: String(args.description ?? ''),
-      intervals: args.intervals ? JSON.parse(String(args.intervals)) : [1500, 300],
-      repeatCount: args.repeatCount ? Number(args.repeatCount) : 1,
-      intervalTodos: args.intervalTodos ? JSON.parse(String(args.intervalTodos)) : null,
-      autoAdvance: args.autoAdvance === true || args.autoAdvance === 'true',
-    },
-  });
+  const row = (await db.insert(schema.pluse).values({
+    name: String(args.name ?? 'Untitled'),
+    description: String(args.description ?? ''),
+    intervals: args.intervals ? JSON.parse(String(args.intervals)) : [1500, 300],
+    repeatCount: args.repeatCount ? Number(args.repeatCount) : 1,
+    intervalTodos: args.intervalTodos ? JSON.parse(String(args.intervalTodos)) : null,
+    autoAdvance: args.autoAdvance === true || args.autoAdvance === 'true',
+  }).returning())[0];
   if (!quietMode) console.log('Created pluse:', row.id);
   printOutput(row);
 }
@@ -675,23 +678,28 @@ async function updatePluse(id: string, args: Record<string, string | boolean>) {
   if (args.repeatCount !== undefined) data.repeatCount = Number(args.repeatCount);
   if (args.intervalTodos !== undefined) data.intervalTodos = JSON.parse(String(args.intervalTodos));
   if (args.autoAdvance !== undefined) data.autoAdvance = args.autoAdvance === true || args.autoAdvance === 'true';
-  const row = await prisma.pluse.update({ where: { id }, data });
+  const row = (await db.update(schema.pluse).set(data).where(eq(schema.pluse.id, id)).returning())[0];
   if (!quietMode) console.log('Updated pluse:', row.id);
   printOutput(row);
 }
 
 async function deletePluse(id: string) {
-  await prisma.pluse.delete({ where: { id } });
+  await db.delete(schema.pluse).where(eq(schema.pluse.id, id));
   if (!quietMode) console.log('Deleted pluse:', id);
 }
 
 // ─── Timer Sessions ─────────────────────────────────────────────────────────
 
 async function listTimerSessions(args: Record<string, string | boolean>) {
-  const where: Record<string, unknown> = {};
-  if (args.status) where.status = String(args.status);
-  if (args.type) where.type = String(args.type);
-  const rows = await prisma.timerSession.findMany({ where, orderBy: { createdAt: 'desc' } });
+  const conditions = [];
+  if (args.status) conditions.push(eq(schema.timerSession.status, String(args.status)));
+  if (args.type) conditions.push(eq(schema.timerSession.type, String(args.type)));
+
+  const baseQuery = conditions.length > 0
+    ? db.select().from(schema.timerSession).where(and(...conditions)).orderBy(desc(schema.timerSession.createdAt))
+    : db.select().from(schema.timerSession).orderBy(desc(schema.timerSession.createdAt));
+
+  const rows = await baseQuery;
   printOutput(
     applyLimit(rows).map((r) =>
       pick(r as unknown as Record<string, unknown>, ['id', 'name', 'type', 'status', 'elapsedSeconds', 'todoId', 'createdAt']),
@@ -700,26 +708,24 @@ async function listTimerSessions(args: Record<string, string | boolean>) {
 }
 
 async function getTimerSession(id: string) {
-  const row = await prisma.timerSession.findUnique({ where: { id } });
+  const row = (await db.select().from(schema.timerSession).where(eq(schema.timerSession.id, id)).limit(1))[0];
   if (!row) return fail('Timer session not found');
   printOutput(row);
 }
 
 async function createTimerSession(args: Record<string, string | boolean>) {
-  const row = await prisma.timerSession.create({
-    data: {
-      type: String(args.type ?? 'stopwatch'),
-      name: String(args.name ?? 'Timer Session'),
-      pluseId: args.pluseId ? String(args.pluseId) : null,
-      todoId: args.todoId ? String(args.todoId) : null,
-      intervals: args.intervals ? JSON.parse(String(args.intervals)) : null,
-      repeatCount: args.repeatCount ? Number(args.repeatCount) : 1,
-      startedAt: args.startedAt ? new Date(String(args.startedAt)) : new Date(),
-      status: String(args.status ?? 'running'),
-      currentIndex: args.currentIndex ? Number(args.currentIndex) : 0,
-      elapsedSeconds: args.elapsedSeconds ? Number(args.elapsedSeconds) : 0,
-    },
-  });
+  const row = (await db.insert(schema.timerSession).values({
+    type: String(args.type ?? 'stopwatch'),
+    name: String(args.name ?? 'Timer Session'),
+    pluseId: args.pluseId ? String(args.pluseId) : null,
+    todoId: args.todoId ? String(args.todoId) : null,
+    intervals: args.intervals ? JSON.parse(String(args.intervals)) : null,
+    repeatCount: args.repeatCount ? Number(args.repeatCount) : 1,
+    startedAt: args.startedAt ? new Date(String(args.startedAt)) : new Date(),
+    status: String(args.status ?? 'running'),
+    currentIndex: args.currentIndex ? Number(args.currentIndex) : 0,
+    elapsedSeconds: args.elapsedSeconds ? Number(args.elapsedSeconds) : 0,
+  }).returning())[0];
   if (!quietMode) console.log('Created timer session:', row.id);
   printOutput(row);
 }
@@ -737,16 +743,13 @@ async function updateTimerSession(id: string, args: Record<string, string | bool
   if (args.currentIndex !== undefined) data.currentIndex = Number(args.currentIndex);
   if (args.elapsedSeconds !== undefined) data.elapsedSeconds = Number(args.elapsedSeconds);
   if (args.status !== undefined) data.status = String(args.status);
-  const row = await prisma.timerSession.update({ where: { id }, data });
+  const row = (await db.update(schema.timerSession).set(data).where(eq(schema.timerSession.id, id)).returning())[0];
   if (!quietMode) console.log('Updated timer session:', row.id);
   printOutput(row);
 }
 
 async function startTimerSession(id: string) {
-  const row = await prisma.timerSession.update({
-    where: { id },
-    data: { status: 'running', startedAt: new Date(), pausedAt: null },
-  });
+  const row = (await db.update(schema.timerSession).set({ status: 'running', startedAt: new Date(), pausedAt: null }).where(eq(schema.timerSession.id, id)).returning())[0];
   if (!quietMode) console.log('Started timer session:', row.id);
   printOutput(row);
 }
@@ -755,38 +758,32 @@ async function pauseTimerSession(id: string, args: Record<string, string | boole
   const elapsed = args.elapsedSeconds ? Number(args.elapsedSeconds) : undefined;
   const data: Record<string, unknown> = { status: 'paused', pausedAt: new Date() };
   if (elapsed !== undefined) data.elapsedSeconds = elapsed;
-  const row = await prisma.timerSession.update({ where: { id }, data });
+  const row = (await db.update(schema.timerSession).set(data).where(eq(schema.timerSession.id, id)).returning())[0];
   if (!quietMode) console.log('Paused timer session:', row.id);
   printOutput(row);
 }
 
 async function resumeTimerSession(id: string) {
-  const row = await prisma.timerSession.update({
-    where: { id },
-    data: { status: 'running', pausedAt: null },
-  });
+  const row = (await db.update(schema.timerSession).set({ status: 'running', pausedAt: null }).where(eq(schema.timerSession.id, id)).returning())[0];
   if (!quietMode) console.log('Resumed timer session:', row.id);
   printOutput(row);
 }
 
 async function stopTimerSession(id: string) {
-  const row = await prisma.timerSession.update({
-    where: { id },
-    data: { status: 'completed', completedAt: new Date() },
-  });
+  const row = (await db.update(schema.timerSession).set({ status: 'completed', completedAt: new Date() }).where(eq(schema.timerSession.id, id)).returning())[0];
   if (!quietMode) console.log('Stopped timer session:', row.id);
   printOutput(row);
 }
 
 async function deleteTimerSession(id: string) {
-  await prisma.timerSession.delete({ where: { id } });
+  await db.delete(schema.timerSession).where(eq(schema.timerSession.id, id));
   if (!quietMode) console.log('Deleted timer session:', id);
 }
 
 // ─── Devices ────────────────────────────────────────────────────────────────
 
 async function listDevices() {
-  const rows = await prisma.device.findMany({ orderBy: { lastSeenAt: 'desc' } });
+  const rows = await db.select().from(schema.device).orderBy(desc(schema.device.lastSeenAt));
   printOutput(rows.map((r) => pick(r as unknown as Record<string, unknown>, ['id', 'deviceId', 'platform', 'name', 'lastSeenAt'])));
 }
 
@@ -795,24 +792,23 @@ async function registerDevice(args: Record<string, string | boolean>) {
   const platform = String(args.platform ?? '');
   if (!deviceId || !platform) return fail('deviceId and platform are required');
 
-  const device = await prisma.device.upsert({
-    where: { deviceId },
-    update: {
+  const deviceRow = (await db.insert(schema.device).values({
+    deviceId,
+    platform,
+    name: args.name ? String(args.name) : null,
+    pushToken: args.pushToken ? String(args.pushToken) : null,
+    appVersion: args.appVersion ? String(args.appVersion) : null,
+  }).onConflictDoUpdate({
+    target: schema.device.deviceId,
+    set: {
       platform,
       name: args.name ? String(args.name) : null,
       pushToken: args.pushToken ? String(args.pushToken) : null,
       appVersion: args.appVersion ? String(args.appVersion) : null,
     },
-    create: {
-      deviceId,
-      platform,
-      name: args.name ? String(args.name) : null,
-      pushToken: args.pushToken ? String(args.pushToken) : null,
-      appVersion: args.appVersion ? String(args.appVersion) : null,
-    },
-  });
-  if (!quietMode) console.log('Registered device:', device.deviceId);
-  printOutput(device);
+  }).returning())[0];
+  if (!quietMode) console.log('Registered device:', deviceRow.deviceId);
+  printOutput(deviceRow);
 }
 
 async function updateDevice(deviceId: string, args: Record<string, string | boolean>) {
@@ -820,25 +816,25 @@ async function updateDevice(deviceId: string, args: Record<string, string | bool
   if (args.name !== undefined) data.name = String(args.name) || null;
   if (args.pushToken !== undefined) data.pushToken = String(args.pushToken) || null;
   if (args.appVersion !== undefined) data.appVersion = String(args.appVersion) || null;
-  const device = await prisma.device.update({ where: { deviceId }, data });
-  if (!quietMode) console.log('Updated device:', device.deviceId);
-  printOutput(device);
+  const deviceRow = (await db.update(schema.device).set(data).where(eq(schema.device.deviceId, deviceId)).returning())[0];
+  if (!quietMode) console.log('Updated device:', deviceRow.deviceId);
+  printOutput(deviceRow);
 }
 
 async function deleteDevice(deviceId: string) {
-  await prisma.device.delete({ where: { deviceId } });
+  await db.delete(schema.device).where(eq(schema.device.deviceId, deviceId));
   if (!quietMode) console.log('Deleted device:', deviceId);
 }
 
 // ─── Sync ───────────────────────────────────────────────────────────────────
 
 async function syncPull() {
-  const todos = await prisma.todo.findMany();
-  const relations = await prisma.todoRelation.findMany();
-  const todoLogs = await prisma.todoLog.findMany();
-  const actionEdges = await prisma.actionEdge.findMany();
-  const pluses = await prisma.pluse.findMany();
-  const timerSessions = await prisma.timerSession.findMany();
+  const todos = await db.select().from(schema.todo);
+  const relations = await db.select().from(schema.todoRelation);
+  const todoLogs = await db.select().from(schema.todoLog);
+  const actionEdges = await db.select().from(schema.actionEdge);
+  const pluses = await db.select().from(schema.pluse);
+  const timerSessions = await db.select().from(schema.timerSession);
 
   printOutput({
     todos: todos.map((t) => ({
@@ -866,12 +862,12 @@ async function syncPull() {
 // ─── Export / Import ────────────────────────────────────────────────────────
 
 async function exportJson(args: Record<string, string | boolean>) {
-  const todos = await prisma.todo.findMany();
-  const relations = await prisma.todoRelation.findMany();
-  const todoLogs = await prisma.todoLog.findMany();
-  const actionEdges = await prisma.actionEdge.findMany();
-  const pluses = await prisma.pluse.findMany();
-  const timerSessions = await prisma.timerSession.findMany();
+  const todos = await db.select().from(schema.todo);
+  const relations = await db.select().from(schema.todoRelation);
+  const todoLogs = await db.select().from(schema.todoLog);
+  const actionEdges = await db.select().from(schema.actionEdge);
+  const pluses = await db.select().from(schema.pluse);
+  const timerSessions = await db.select().from(schema.timerSession);
 
   const data = {
     todos,
@@ -901,47 +897,47 @@ async function importJson(args: Record<string, string | boolean>) {
   const content = await readFile(file, 'utf-8');
   const data = JSON.parse(content);
 
-  await prisma.$transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     if (data.todos?.length) {
       for (const item of data.todos) {
-        const existing = await tx.todo.findUnique({ where: { id: item.id } });
-        if (existing) await tx.todo.update({ where: { id: item.id }, data: item });
-        else await tx.todo.create({ data: item });
+        const existing = (await tx.select().from(schema.todo).where(eq(schema.todo.id, item.id)).limit(1))[0];
+        if (existing) await tx.update(schema.todo).set(item).where(eq(schema.todo.id, item.id));
+        else await tx.insert(schema.todo).values(item);
       }
     }
     if (data.relations?.length) {
       for (const item of data.relations) {
-        const existing = await tx.todoRelation.findUnique({ where: { id: item.id } });
-        if (existing) await tx.todoRelation.update({ where: { id: item.id }, data: item });
-        else await tx.todoRelation.create({ data: item });
+        const existing = (await tx.select().from(schema.todoRelation).where(eq(schema.todoRelation.id, item.id)).limit(1))[0];
+        if (existing) await tx.update(schema.todoRelation).set(item).where(eq(schema.todoRelation.id, item.id));
+        else await tx.insert(schema.todoRelation).values(item);
       }
     }
     if (data.todoLogs?.length) {
       for (const item of data.todoLogs) {
-        const existing = await tx.todoLog.findUnique({ where: { id: item.id } });
-        if (existing) await tx.todoLog.update({ where: { id: item.id }, data: item });
-        else await tx.todoLog.create({ data: item });
+        const existing = (await tx.select().from(schema.todoLog).where(eq(schema.todoLog.id, item.id)).limit(1))[0];
+        if (existing) await tx.update(schema.todoLog).set(item).where(eq(schema.todoLog.id, item.id));
+        else await tx.insert(schema.todoLog).values(item);
       }
     }
     if (data.actionEdges?.length) {
       for (const item of data.actionEdges) {
-        const existing = await tx.actionEdge.findUnique({ where: { id: item.id } });
-        if (existing) await tx.actionEdge.update({ where: { id: item.id }, data: item });
-        else await tx.actionEdge.create({ data: item });
+        const existing = (await tx.select().from(schema.actionEdge).where(eq(schema.actionEdge.id, item.id)).limit(1))[0];
+        if (existing) await tx.update(schema.actionEdge).set(item).where(eq(schema.actionEdge.id, item.id));
+        else await tx.insert(schema.actionEdge).values(item);
       }
     }
     if (data.pluses?.length) {
       for (const item of data.pluses) {
-        const existing = await tx.pluse.findUnique({ where: { id: item.id } });
-        if (existing) await tx.pluse.update({ where: { id: item.id }, data: item });
-        else await tx.pluse.create({ data: item });
+        const existing = (await tx.select().from(schema.pluse).where(eq(schema.pluse.id, item.id)).limit(1))[0];
+        if (existing) await tx.update(schema.pluse).set(item).where(eq(schema.pluse.id, item.id));
+        else await tx.insert(schema.pluse).values(item);
       }
     }
     if (data.timerSessions?.length) {
       for (const item of data.timerSessions) {
-        const existing = await tx.timerSession.findUnique({ where: { id: item.id } });
-        if (existing) await tx.timerSession.update({ where: { id: item.id }, data: item });
-        else await tx.timerSession.create({ data: item });
+        const existing = (await tx.select().from(schema.timerSession).where(eq(schema.timerSession.id, item.id)).limit(1))[0];
+        if (existing) await tx.update(schema.timerSession).set(item).where(eq(schema.timerSession.id, item.id));
+        else await tx.insert(schema.timerSession).values(item);
       }
     }
   });
@@ -952,28 +948,30 @@ async function importJson(args: Record<string, string | boolean>) {
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
 async function showStats() {
-  const todoCounts = await prisma.todo.groupBy({ by: ['status'], _count: { status: true } });
-  const totalTodos = await prisma.todo.count();
-  const totalRelations = await prisma.todoRelation.count();
-  const totalPluses = await prisma.pluse.count();
-  const activeTimers = await prisma.timerSession.count({ where: { status: 'running' } });
-  const totalDevices = await prisma.device.count();
+  const todoCounts = await db.select({
+    status: schema.todo.status,
+    count: sql<number>`count(*)`,
+  }).from(schema.todo).groupBy(schema.todo.status);
+
+  const totalTodos = (await db.select({ count: sql<number>`count(*)` }).from(schema.todo))[0].count;
+  const totalRelations = (await db.select({ count: sql<number>`count(*)` }).from(schema.todoRelation))[0].count;
+  const totalPluses = (await db.select({ count: sql<number>`count(*)` }).from(schema.pluse))[0].count;
+  const activeTimers = (await db.select({ count: sql<number>`count(*)` }).from(schema.timerSession).where(eq(schema.timerSession.status, 'running')))[0].count;
+  const totalDevices = (await db.select({ count: sql<number>`count(*)` }).from(schema.device))[0].count;
 
   const today = startOfDay(new Date());
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const todayCount = await prisma.todo.count({
-    where: { scheduledDate: { gte: today, lt: tomorrow } },
-  });
+  const todayCount = (await db.select({ count: sql<number>`count(*)` }).from(schema.todo)
+    .where(and(gte(schema.todo.scheduledDate, today), lt(schema.todo.scheduledDate, tomorrow))))[0].count;
 
-  const overdueCount = await prisma.todo.count({
-    where: { status: { not: 'done' }, dueDate: { lt: today } },
-  });
+  const overdueCount = (await db.select({ count: sql<number>`count(*)` }).from(schema.todo)
+    .where(and(ne(schema.todo.status, 'done'), lt(schema.todo.dueDate, today))))[0].count;
 
   const stats = {
     todos: {
       total: totalTodos,
-      byStatus: Object.fromEntries(todoCounts.map((c) => [c.status, c._count.status])),
+      byStatus: Object.fromEntries(todoCounts.map((c) => [c.status, c.count])),
       today: todayCount,
       overdue: overdueCount,
     },
@@ -989,16 +987,16 @@ async function showStats() {
 // ─── All Data ───────────────────────────────────────────────────────────────
 
 async function wipeAll() {
-  await prisma.timerSession.deleteMany();
-  await prisma.todoLog.deleteMany();
-  await prisma.todoRelation.deleteMany();
-  await prisma.actionEdge.deleteMany();
-  await prisma.pluse.deleteMany();
-  await prisma.repeatOccurrence.deleteMany();
-  await prisma.plan.deleteMany();
-  await prisma.syncEvent.deleteMany();
-  await prisma.todo.deleteMany();
-  await prisma.device.deleteMany();
+  await db.delete(schema.timerSession);
+  await db.delete(schema.todoLog);
+  await db.delete(schema.todoRelation);
+  await db.delete(schema.actionEdge);
+  await db.delete(schema.pluse);
+  await db.delete(schema.repeatOccurrence);
+  await db.delete(schema.plan);
+  await db.delete(schema.syncEvent);
+  await db.delete(schema.todo);
+  await db.delete(schema.device);
   if (!quietMode) console.log('All data wiped.');
 }
 
@@ -1255,8 +1253,6 @@ async function main() {
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
-  } finally {
-    await prisma.$disconnect();
   }
 }
 

@@ -11,11 +11,13 @@ COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/desktop/package.json ./apps/desktop/
 COPY packages/types/package.json ./packages/types/
+COPY packages/sync/package.json ./packages/sync/
 
 RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY packages/types ./packages/types
+COPY packages/sync ./packages/sync
 COPY apps/server ./apps/server
 COPY apps/desktop ./apps/desktop
 
@@ -26,7 +28,7 @@ RUN pnpm install
 RUN find . -name "*.tsbuildinfo" -delete
 
 RUN pnpm --filter @utral/types build
-RUN pnpm --filter server db:generate
+RUN pnpm --filter @utral/sync build
 RUN pnpm --filter server build
 RUN pnpm --filter desktop build
 
@@ -44,13 +46,14 @@ COPY --from=builder /app/node_modules /app/node_modules
 
 # Copy server app preserving directory structure for symlink integrity
 COPY --from=builder /app/apps/server/dist ./dist
-COPY --from=builder /app/apps/server/prisma ./prisma
+COPY --from=builder /app/apps/server/drizzle ./drizzle
 COPY --from=builder /app/apps/server/package.json ./
 COPY --from=builder /app/apps/server/node_modules ./node_modules
 COPY --from=builder /app/apps/server/docker-entrypoint.sh ./
 
 # Copy workspace packages so symlinks in node_modules resolve
 COPY --from=builder /app/packages/types /app/packages/types
+COPY --from=builder /app/packages/sync /app/packages/sync
 
 # Copy built frontend apps
 COPY --from=builder /app/apps/desktop/dist /app/static/desktop
@@ -58,9 +61,6 @@ COPY --from=builder /app/apps/desktop/dist /app/static/desktop
 # Remove default nginx config and copy ours
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY apps/server/nginx.conf /etc/nginx/http.d/default.conf
-
-# Create data directory for SQLite
-RUN mkdir -p /var/lib/utral-todo/data
 
 ENV NODE_ENV=production
 ENV PORT=3001

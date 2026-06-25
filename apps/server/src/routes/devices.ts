@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../index.js';
+import { eq, desc } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 
 const router = Router();
 
@@ -17,22 +18,21 @@ router.post('/register', async (req, res) => {
   }
 
   try {
-    const device = await prisma.device.upsert({
-      where: { deviceId },
-      update: {
+    const [device] = await db.insert(schema.device).values({
+      deviceId,
+      platform,
+      name: name ?? null,
+      pushToken: pushToken ?? null,
+      appVersion: appVersion ?? null,
+    }).onConflictDoUpdate({
+      target: schema.device.deviceId,
+      set: {
         platform,
         name: name ?? null,
         pushToken: pushToken ?? null,
         appVersion: appVersion ?? null,
       },
-      create: {
-        deviceId,
-        platform,
-        name: name ?? null,
-        pushToken: pushToken ?? null,
-        appVersion: appVersion ?? null,
-      },
-    });
+    }).returning();
     res.status(201).json(device);
   } catch (err) {
     console.error('Device registration error:', err);
@@ -43,7 +43,7 @@ router.post('/register', async (req, res) => {
 // GET /api/devices — List all registered devices
 router.get('/', async (_req, res) => {
   try {
-    const devices = await prisma.device.findMany({ orderBy: { lastSeenAt: 'desc' } });
+    const devices = await db.select().from(schema.device).orderBy(desc(schema.device.lastSeenAt));
     res.json(devices);
   } catch (err) {
     console.error('List devices error:', err);
@@ -55,7 +55,7 @@ router.get('/', async (_req, res) => {
 router.delete('/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
   try {
-    await prisma.device.delete({ where: { deviceId } });
+    await db.delete(schema.device).where(eq(schema.device.deviceId, deviceId));
     res.status(204).send();
   } catch (err) {
     console.error('Delete device error:', err);
@@ -69,19 +69,16 @@ router.patch('/:deviceId', async (req, res) => {
   const { name, pushToken, appVersion } = req.body;
 
   try {
-    const existing = await prisma.device.findUnique({ where: { deviceId } });
+    const [existing] = await db.select().from(schema.device).where(eq(schema.device.deviceId, deviceId)).limit(1);
     if (!existing) {
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    const device = await prisma.device.update({
-      where: { deviceId },
-      data: {
-        name: name !== undefined ? (name ?? null) : undefined,
-        pushToken: pushToken !== undefined ? (pushToken ?? null) : undefined,
-        appVersion: appVersion !== undefined ? (appVersion ?? null) : undefined,
-      },
-    });
+    const [device] = await db.update(schema.device).set({
+      name: name !== undefined ? (name ?? null) : undefined,
+      pushToken: pushToken !== undefined ? (pushToken ?? null) : undefined,
+      appVersion: appVersion !== undefined ? (appVersion ?? null) : undefined,
+    }).where(eq(schema.device.deviceId, deviceId)).returning();
     res.json(device);
   } catch (err) {
     console.error('Update device error:', err);

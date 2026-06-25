@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { Prisma } from '@prisma/client';
+import { eq } from 'drizzle-orm';
 import type { SyncPayload, SyncEvent, HLCTimestamp } from '@utral/types';
-import { prisma } from '../index.js';
-import { broadcast, createSyncEvent, applyChange, getEventsSince } from '../sync/broadcaster.js';
+import { db, schema } from '../db/index.js';
+import { syncHandler } from '../sync/setup.js';
 
 const router = Router();
 
@@ -30,41 +30,15 @@ function parseHLC(value: unknown): HLCTimestamp {
 // POST /api/sync/push — unified push endpoint for sync engine
 router.post('/push', async (req, res) => {
   const { deviceId, changes } = req.body as { deviceId: string; changes: SyncEvent[] };
-  const accepted: string[] = [];
-  const rejected: Array<{ recordId: string; reason: string }> = [];
 
   if (!deviceId || !Array.isArray(changes)) {
     return res.status(400).json({ error: 'Invalid request: deviceId and changes array required' });
   }
 
   try {
-    for (const rawEvent of changes) {
-      const event: SyncEvent = {
-        ...rawEvent,
-        createdAt: parseHLC(rawEvent.createdAt),
-      };
-      try {
-        const result = await applyChange(event);
-        if (result === 'skipped') {
-          rejected.push({ recordId: event.recordId, reason: 'stale_timestamp' });
-          continue;
-        }
-        const logged = await createSyncEvent(
-          event.table,
-          event.operation,
-          event.recordId,
-          event.payload,
-          deviceId
-        );
-        broadcast(logged, deviceId);
-        accepted.push(event.recordId);
-      } catch (err) {
-        console.error(`[sync] Failed to apply change for ${event.table}/${event.recordId}:`, err);
-        rejected.push({ recordId: event.recordId, reason: String(err) });
-      }
-    }
-
-    res.json({ accepted: accepted.length, rejected });
+    const parsed = changes.map((e) => ({ ...e, createdAt: parseHLC(e.createdAt) }));
+    const result = await syncHandler.acceptPush(deviceId, parsed);
+    res.json(result);
   } catch (err) {
     console.error('Sync push error:', err);
     res.status(500).json({ error: 'Sync push failed', details: String(err) });
@@ -94,22 +68,18 @@ router.get('/stream', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
 
+  const conn = {
+    write(data: string) { res.write(data); },
+    onClose(cb: () => void) { res.on('close', cb); },
+  };
+
   // Send initial delta
-  try {
-    if (since) {
-      const sinceDate = new Date(since);
-      const events = await getEventsSince(sinceDate);
-      if (events.length > 0) {
-        res.write(`data: ${JSON.stringify({ type: 'delta', events }, (_k, v) => typeof v === 'bigint' ? Number(v) : v)}\n\n`);
-      }
-    }
-  } catch (err) {
-    console.error('[sync] Failed to send initial delta:', err);
+  if (since) {
+    await syncHandler.sendInitialDelta(deviceId, conn, new Date(since));
   }
 
-  // Register for broadcasts
-  const { subscribe } = await import('../sync/broadcaster.js');
-  subscribe(deviceId, res);
+  // Register for future broadcasts
+  syncHandler.subscribe(deviceId, conn);
 });
 
 // POST /api/sync/events — fallback poll endpoint
@@ -120,7 +90,7 @@ router.post('/events', async (req, res) => {
   }
 
   try {
-    const events = await getEventsSince(new Date(since));
+    const events = await syncHandler.getEventsSince(new Date(since));
     res.json({ events });
   } catch (err) {
     console.error('Sync events error:', err);
@@ -148,7 +118,7 @@ router.post('/', async (req, res) => {
   });
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       // Merge todos
       if (payload.todos?.length) {
         let count = 0;
@@ -161,7 +131,7 @@ router.post('/', async (req, res) => {
             status: item.status as string,
             priority: item.priority as string,
             estimatedMinutes: (item.estimatedMinutes as number) ?? 60,
-            tags: JSON.stringify(item.tags ?? []),
+            tags: (item.tags as string[]) ?? [],
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
             dueDate: toDate(item.dueDate),
@@ -169,16 +139,16 @@ router.post('/', async (req, res) => {
             scheduledEndDate: toDate(item.scheduledEndDate),
             startedAt: toDate(item.startedAt),
             completedAt: toDate(item.completedAt),
-            repeatRule: item.repeatRule ? JSON.stringify(item.repeatRule) : Prisma.DbNull,
+            repeatRule: item.repeatRule ?? null,
             order: (item.order as number) ?? 0,
             parentId: (item.parentId as string) || null,
           };
 
-          const existing = await tx.todo.findUnique({ where: { id } });
-          if (existing) {
-            await tx.todo.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.todo).where(eq(schema.todo.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.todo).set(data).where(eq(schema.todo.id, id));
           } else {
-            await tx.todo.create({ data: data as unknown as Parameters<typeof tx.todo.create>[0]['data'] });
+            await tx.insert(schema.todo).values(data);
           }
           count++;
         }
@@ -199,11 +169,11 @@ router.post('/', async (req, res) => {
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.todoRelation.findUnique({ where: { id } });
-          if (existing) {
-            await tx.todoRelation.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.todoRelation).where(eq(schema.todoRelation.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.todoRelation).set(data).where(eq(schema.todoRelation.id, id));
           } else {
-            await tx.todoRelation.create({ data });
+            await tx.insert(schema.todoRelation).values(data);
           }
           count++;
         }
@@ -221,16 +191,16 @@ router.post('/', async (req, res) => {
             type: item.type as string,
             content: item.content as string,
             minutesSpent: (item.minutesSpent as number) || null,
-            metadata: item.metadata ? JSON.stringify(item.metadata) : Prisma.DbNull,
+            metadata: item.metadata ?? null,
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.todoLog.findUnique({ where: { id } });
-          if (existing) {
-            await tx.todoLog.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.todoLog).where(eq(schema.todoLog.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.todoLog).set(data).where(eq(schema.todoLog.id, id));
           } else {
-            await tx.todoLog.create({ data });
+            await tx.insert(schema.todoLog).values(data);
           }
           count++;
         }
@@ -251,11 +221,11 @@ router.post('/', async (req, res) => {
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.actionEdge.findUnique({ where: { id } });
-          if (existing) {
-            await tx.actionEdge.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.actionEdge).where(eq(schema.actionEdge.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.actionEdge).set(data).where(eq(schema.actionEdge.id, id));
           } else {
-            await tx.actionEdge.create({ data });
+            await tx.insert(schema.actionEdge).values(data);
           }
           count++;
         }
@@ -271,17 +241,17 @@ router.post('/', async (req, res) => {
             id,
             name: item.name as string,
             description: (item.description as string) || '',
-            intervals: JSON.stringify(item.intervals ?? [1500]),
+            intervals: item.intervals ?? [1500],
             repeatCount: (item.repeatCount as number) ?? 1,
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.pluse.findUnique({ where: { id } });
-          if (existing) {
-            await tx.pluse.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.pluse).where(eq(schema.pluse.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.pluse).set(data).where(eq(schema.pluse.id, id));
           } else {
-            await tx.pluse.create({ data });
+            await tx.insert(schema.pluse).values(data);
           }
           count++;
         }
@@ -299,7 +269,7 @@ router.post('/', async (req, res) => {
             name: item.name as string,
             pluseId: (item.pluseId as string) || null,
             todoId: (item.todoId as string) || null,
-            intervals: item.intervals ? JSON.stringify(item.intervals) : Prisma.DbNull,
+            intervals: item.intervals ?? null,
             repeatCount: (item.repeatCount as number) ?? 1,
             startedAt: toDate(item.startedAt) ?? new Date(),
             pausedAt: toDate(item.pausedAt),
@@ -311,11 +281,11 @@ router.post('/', async (req, res) => {
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.timerSession.findUnique({ where: { id } });
-          if (existing) {
-            await tx.timerSession.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.timerSession).where(eq(schema.timerSession.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.timerSession).set(data).where(eq(schema.timerSession.id, id));
           } else {
-            await tx.timerSession.create({ data });
+            await tx.insert(schema.timerSession).values(data);
           }
           count++;
         }
@@ -338,11 +308,11 @@ router.post('/', async (req, res) => {
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.repeatOccurrence.findUnique({ where: { id } });
-          if (existing) {
-            await tx.repeatOccurrence.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.repeatOccurrence).where(eq(schema.repeatOccurrence.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.repeatOccurrence).set(data).where(eq(schema.repeatOccurrence.id, id));
           } else {
-            await tx.repeatOccurrence.create({ data });
+            await tx.insert(schema.repeatOccurrence).values(data);
           }
           count++;
         }
@@ -360,17 +330,17 @@ router.post('/', async (req, res) => {
             id,
             goalTodoId: item.goalTodoId as string,
             title: item.title as string,
-            nodeIds: JSON.stringify(nodeIds),
-            edgeIds: JSON.stringify(edgeIds),
+            nodeIds,
+            edgeIds,
             createdAt: toDate(item.createdAt) ?? new Date(),
             updatedAt: toDate(item.updatedAt) ?? new Date(),
           };
 
-          const existing = await tx.plan.findUnique({ where: { id } });
-          if (existing) {
-            await tx.plan.update({ where: { id }, data });
+          const existingRows = await tx.select().from(schema.plan).where(eq(schema.plan.id, id)).limit(1);
+          if (existingRows[0]) {
+            await tx.update(schema.plan).set(data).where(eq(schema.plan.id, id));
           } else {
-            await tx.plan.create({ data });
+            await tx.insert(schema.plan).values(data);
           }
           count++;
         }
@@ -390,47 +360,28 @@ router.post('/', async (req, res) => {
 router.get('/', async (_req, res) => {
   console.log('[sync] Legacy pull request');
   try {
-    const todos = await prisma.todo.findMany();
-    const relations = await prisma.todoRelation.findMany();
-    const todoLogs = await prisma.todoLog.findMany();
-    const actionEdges = await prisma.actionEdge.findMany();
-    const pluses = await prisma.pluse.findMany();
-    const timerSessions = await prisma.timerSession.findMany();
-    const repeatOccurrences = await prisma.repeatOccurrence.findMany();
-    const plans = await prisma.plan.findMany();
+    const todos = await db.select().from(schema.todo);
+    const relations = await db.select().from(schema.todoRelation);
+    const todoLogs = await db.select().from(schema.todoLog);
+    const actionEdges = await db.select().from(schema.actionEdge);
+    const pluses = await db.select().from(schema.pluse);
+    const timerSessions = await db.select().from(schema.timerSession);
+    const repeatOccurrences = await db.select().from(schema.repeatOccurrence);
+    const plans = await db.select().from(schema.plan);
 
     res.json({
-      todos: todos.map((t) => ({
-        ...t,
-        tags: typeof t.tags === 'string' ? JSON.parse(t.tags) : t.tags,
-        repeatRule: typeof t.repeatRule === 'string' ? JSON.parse(t.repeatRule) : t.repeatRule,
-      })),
+      todos,
       relations,
-      todoLogs: todoLogs.map((l) => ({
-        ...l,
-        metadata: typeof l.metadata === 'string' ? JSON.parse(l.metadata) : l.metadata,
-      })),
+      todoLogs,
       actionEdges,
-      pluses: pluses.map((p) => ({
-        ...p,
-        intervals: typeof p.intervals === 'string' ? JSON.parse(p.intervals) : p.intervals,
-      })),
-      timerSessions: timerSessions.map((s) => ({
-        ...s,
-        intervals: typeof s.intervals === 'string' ? JSON.parse(s.intervals) : s.intervals,
-      })),
+      pluses,
+      timerSessions,
       repeatOccurrences,
-      plans: plans.map((p) => {
-        const nodeIds = typeof p.nodeIds === 'string' ? JSON.parse(p.nodeIds) : p.nodeIds;
-        const edgeIds = typeof p.edgeIds === 'string' ? JSON.parse(p.edgeIds) : p.edgeIds;
-        return {
-          ...p,
-          nodeIds,
-          edgeIds,
-          // Temporary: keep todoIds for old desktop clients during transition
-          todoIds: nodeIds ?? [],
-        };
-      }),
+      plans: plans.map((p) => ({
+        ...p,
+        // Temporary: keep todoIds for old desktop clients during transition
+        todoIds: p.nodeIds ?? [],
+      })),
     });
   } catch (err) {
     console.error('Sync pull error:', err);
@@ -440,8 +391,7 @@ router.get('/', async (_req, res) => {
 
 router.post('/gc', async (_req, res) => {
   try {
-    const { garbageCollectTombstones } = await import('../sync/broadcaster.js');
-    const deleted = await garbageCollectTombstones();
+    const deleted = await syncHandler.garbageCollectTombstones();
     res.json({ deleted });
   } catch (err) {
     console.error('Tombstone GC error:', err);

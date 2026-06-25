@@ -1,2 +1,0 @@
--- DropRoadmapTable
-DROP TABLE "Roadmap";

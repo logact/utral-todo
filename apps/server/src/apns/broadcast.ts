@@ -1,4 +1,5 @@
-import { prisma } from '../index.js';
+import { db, schema } from '../db/index.js';
+import { isNotNull, ne, and, inArray } from 'drizzle-orm';
 import { sendNotifications, isApnsConfigured, type ApnsNotification } from './client.js';
 
 export interface SyncBroadcastPayload {
@@ -14,13 +15,15 @@ export async function broadcastToDevices(
   if (!isApnsConfigured()) return;
 
   try {
-    const devices = await prisma.device.findMany({
-      where: {
-        pushToken: { not: null },
-        platform: { in: ['ios', 'watchos'] },
-        ...(excludeDeviceId ? { deviceId: { not: excludeDeviceId } } : {}),
-      },
-    });
+    const conditions = [
+      isNotNull(schema.device.pushToken),
+      inArray(schema.device.platform, ['ios', 'watchos']),
+    ];
+    if (excludeDeviceId) {
+      conditions.push(ne(schema.device.deviceId, excludeDeviceId));
+    }
+
+    const devices = await db.select().from(schema.device).where(and(...conditions));
 
     if (devices.length === 0) return;
 

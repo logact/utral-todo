@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../index.js';
+import { eq, and, desc } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 import { logChange } from '../sync/log.js';
 import { sendLiveActivityPush, sendLiveActivityEnd } from '../apns/liveActivity.js';
 
@@ -7,20 +8,19 @@ const router = Router();
 
 router.get('/', async (req, res) => {
   const { status, type } = req.query;
-  const sessions = await prisma.timerSession.findMany({
-    where: {
-      ...(status ? { status: String(status) } : {}),
-      ...(type ? { type: String(type) } : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const conditions = [];
+  if (status) conditions.push(eq(schema.timerSession.status, String(status)));
+  if (type) conditions.push(eq(schema.timerSession.type, String(type)));
+
+  const query = db.select().from(schema.timerSession);
+  const sessions = conditions.length > 0
+    ? await query.where(and(...conditions)).orderBy(desc(schema.timerSession.createdAt))
+    : await query.orderBy(desc(schema.timerSession.createdAt));
   res.json(sessions);
 });
 
 router.get('/:id', async (req, res) => {
-  const session = await prisma.timerSession.findUnique({
-    where: { id: req.params.id },
-  });
+  const session = (await db.select().from(schema.timerSession).where(eq(schema.timerSession.id, req.params.id)).limit(1))[0];
   if (!session) {
     return res.status(404).json({ error: 'Session not found' });
   }
@@ -41,20 +41,18 @@ router.post('/', async (req, res) => {
     elapsedSeconds,
   } = req.body;
 
-  const session = await prisma.timerSession.create({
-    data: {
-      type,
-      name: name ?? 'Timer Session',
-      pluseId: pluseId ?? null,
-      todoId: todoId ?? null,
-      intervals: intervals ?? null,
-      repeatCount: repeatCount ?? 1,
-      startedAt: startedAt ? new Date(startedAt) : new Date(),
-      status: status ?? 'running',
-      currentIndex: currentIndex ?? 0,
-      elapsedSeconds: elapsedSeconds ?? 0,
-    },
-  });
+  const session = (await db.insert(schema.timerSession).values({
+    type,
+    name: name ?? 'Timer Session',
+    pluseId: pluseId ?? null,
+    todoId: todoId ?? null,
+    intervals: intervals ?? null,
+    repeatCount: repeatCount ?? 1,
+    startedAt: startedAt ? new Date(startedAt) : new Date(),
+    status: status ?? 'running',
+    currentIndex: currentIndex ?? 0,
+    elapsedSeconds: elapsedSeconds ?? 0,
+  }).returning())[0];
   await logChange(req, 'timerSession', 'create', session.id, session);
 
   if (status === 'running' && intervals) {
@@ -91,22 +89,19 @@ router.patch('/:id', async (req, res) => {
     status,
   } = req.body;
 
-  const session = await prisma.timerSession.update({
-    where: { id: req.params.id },
-    data: {
-      ...(name !== undefined ? { name } : {}),
-      ...(pluseId !== undefined ? { pluseId } : {}),
-      ...(todoId !== undefined ? { todoId } : {}),
-      ...(intervals !== undefined ? { intervals } : {}),
-      ...(repeatCount !== undefined ? { repeatCount } : {}),
-      ...(startedAt !== undefined ? { startedAt: new Date(startedAt) } : {}),
-      ...(pausedAt !== undefined ? { pausedAt: pausedAt ? new Date(pausedAt) : null } : {}),
-      ...(completedAt !== undefined ? { completedAt: completedAt ? new Date(completedAt) : null } : {}),
-      ...(currentIndex !== undefined ? { currentIndex } : {}),
-      ...(elapsedSeconds !== undefined ? { elapsedSeconds } : {}),
-      ...(status !== undefined ? { status } : {}),
-    },
-  });
+  const session = (await db.update(schema.timerSession).set({
+    ...(name !== undefined ? { name } : {}),
+    ...(pluseId !== undefined ? { pluseId } : {}),
+    ...(todoId !== undefined ? { todoId } : {}),
+    ...(intervals !== undefined ? { intervals } : {}),
+    ...(repeatCount !== undefined ? { repeatCount } : {}),
+    ...(startedAt !== undefined ? { startedAt: new Date(startedAt) } : {}),
+    ...(pausedAt !== undefined ? { pausedAt: pausedAt ? new Date(pausedAt) : null } : {}),
+    ...(completedAt !== undefined ? { completedAt: completedAt ? new Date(completedAt) : null } : {}),
+    ...(currentIndex !== undefined ? { currentIndex } : {}),
+    ...(elapsedSeconds !== undefined ? { elapsedSeconds } : {}),
+    ...(status !== undefined ? { status } : {}),
+  }).where(eq(schema.timerSession.id, req.params.id)).returning())[0];
   await logChange(req, 'timerSession', 'update', session.id, session);
 
   const deviceId = req.headers['x-device-id'] as string | undefined;
@@ -153,15 +148,12 @@ router.patch('/:id', async (req, res) => {
 router.patch('/:id/timer-state', async (req, res) => {
   const { elapsedSeconds, currentIndex, status, startedAt } = req.body;
 
-  const session = await prisma.timerSession.update({
-    where: { id: req.params.id },
-    data: {
-      ...(elapsedSeconds !== undefined ? { elapsedSeconds } : {}),
-      ...(currentIndex !== undefined ? { currentIndex } : {}),
-      ...(status !== undefined ? { status } : {}),
-      ...(startedAt !== undefined ? { startedAt: new Date(startedAt) } : {}),
-    },
-  });
+  const session = (await db.update(schema.timerSession).set({
+    ...(elapsedSeconds !== undefined ? { elapsedSeconds } : {}),
+    ...(currentIndex !== undefined ? { currentIndex } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(startedAt !== undefined ? { startedAt: new Date(startedAt) } : {}),
+  }).where(eq(schema.timerSession.id, req.params.id)).returning())[0];
   await logChange(req, 'timerSession', 'update', session.id, session);
 
   res.json(session);
@@ -169,7 +161,7 @@ router.patch('/:id/timer-state', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const id = req.params.id;
-  await prisma.timerSession.delete({ where: { id } });
+  await db.delete(schema.timerSession).where(eq(schema.timerSession.id, id));
   await logChange(req, 'timerSession', 'delete', id);
   res.status(204).send();
 });

@@ -1,7 +1,6 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '../index.js';
-import { dateMatchesRule, computeVirtualTodo } from '@utral/types';
-import type { Todo as PrismaTodo, RepeatOccurrence as PrismaOccurrence } from '@prisma/client';
+import { db, schema } from '../db/index.js';
+import { isNotNull, and, gte, lt, inArray } from 'drizzle-orm';
+import { dateMatchesRule, computeVirtualTodo, type RepeatRule } from '@utral/types';
 
 export interface VirtualTodo {
   id: string;
@@ -28,7 +27,7 @@ export interface VirtualTodo {
   goalStatus?: string | null;
 }
 
-function toTodoLike(template: PrismaTodo): VirtualTodo {
+function toTodoLike(template: typeof schema.todo.$inferSelect): VirtualTodo {
   return {
     id: template.id,
     nodeType: template.nodeType,
@@ -38,7 +37,7 @@ function toTodoLike(template: PrismaTodo): VirtualTodo {
     status: template.status,
     priority: template.priority,
     estimatedMinutes: template.estimatedMinutes,
-    tags: typeof template.tags === 'string' ? JSON.parse(template.tags) : (template.tags as string[]) ?? [],
+    tags: (template.tags as string[]) ?? [],
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
     dueDate: template.dueDate,
@@ -46,7 +45,7 @@ function toTodoLike(template: PrismaTodo): VirtualTodo {
     scheduledEndDate: template.scheduledEndDate,
     startedAt: template.startedAt,
     completedAt: template.completedAt,
-    repeatRule: template.repeatRule ? (typeof template.repeatRule === 'string' ? JSON.parse(template.repeatRule) : template.repeatRule) : undefined,
+    repeatRule: template.repeatRule ?? undefined,
     order: template.order,
     motivation: template.motivation,
     successCriteria: template.successCriteria,
@@ -59,26 +58,22 @@ export async function getVirtualTodosForDate(date: Date): Promise<VirtualTodo[]>
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
 
-  const templates = await prisma.todo.findMany({
-    where: { repeatRule: { not: Prisma.JsonNull } },
-  });
+  const templates = await db.select().from(schema.todo).where(isNotNull(schema.todo.repeatRule));
 
   if (templates.length === 0) return [];
 
   const templateIds = templates.map((t) => t.id);
 
   // Get all occurrences for these templates
-  const occurrences = await prisma.repeatOccurrence.findMany({
-    where: {
-      templateId: { in: templateIds },
-      date: {
-        gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
-        lt: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
-      },
-    },
-  });
+  const occurrences = await db.select().from(schema.repeatOccurrence).where(
+    and(
+      inArray(schema.repeatOccurrence.templateId, templateIds),
+      gte(schema.repeatOccurrence.date, new Date(d.getFullYear(), d.getMonth(), d.getDate())),
+      lt(schema.repeatOccurrence.date, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)),
+    ),
+  );
 
-  const occurrencesByTemplate = new Map<string, PrismaOccurrence>();
+  const occurrencesByTemplate = new Map<string, typeof schema.repeatOccurrence.$inferSelect>();
   for (const o of occurrences) {
     occurrencesByTemplate.set(o.templateId, o);
   }
@@ -88,9 +83,7 @@ export async function getVirtualTodosForDate(date: Date): Promise<VirtualTodo[]>
   for (const template of templates) {
     if (!template.repeatRule) continue;
 
-    const rule = typeof template.repeatRule === 'string'
-      ? JSON.parse(template.repeatRule)
-      : template.repeatRule;
+    const rule = template.repeatRule as RepeatRule;
 
     if (!dateMatchesRule(d, rule)) continue;
 
@@ -109,9 +102,7 @@ export async function getVirtualTodosForDateRange(
   start: Date,
   end: Date
 ): Promise<VirtualTodo[]> {
-  const templates = await prisma.todo.findMany({
-    where: { repeatRule: { not: Prisma.JsonNull } },
-  });
+  const templates = await db.select().from(schema.todo).where(isNotNull(schema.todo.repeatRule));
 
   if (templates.length === 0) return [];
 
@@ -119,14 +110,15 @@ export async function getVirtualTodosForDateRange(
   const startTime = new Date(start).setHours(0, 0, 0, 0);
   const endTime = new Date(end).setHours(0, 0, 0, 0);
 
-  const occurrences = await prisma.repeatOccurrence.findMany({
-    where: {
-      templateId: { in: templateIds },
-      date: { gte: new Date(startTime), lt: new Date(endTime + 24 * 60 * 60 * 1000) },
-    },
-  });
+  const occurrences = await db.select().from(schema.repeatOccurrence).where(
+    and(
+      inArray(schema.repeatOccurrence.templateId, templateIds),
+      gte(schema.repeatOccurrence.date, new Date(startTime)),
+      lt(schema.repeatOccurrence.date, new Date(endTime + 24 * 60 * 60 * 1000)),
+    ),
+  );
 
-  const occurrencesByKey = new Map<string, PrismaOccurrence>();
+  const occurrencesByKey = new Map<string, typeof schema.repeatOccurrence.$inferSelect>();
   for (const o of occurrences) {
     const dateKey = new Date(o.date).toISOString().split('T')[0];
     occurrencesByKey.set(`${o.templateId}:${dateKey}`, o);
@@ -137,9 +129,7 @@ export async function getVirtualTodosForDateRange(
   for (const template of templates) {
     if (!template.repeatRule) continue;
 
-    const rule = typeof template.repeatRule === 'string'
-      ? JSON.parse(template.repeatRule)
-      : template.repeatRule;
+    const rule = template.repeatRule as RepeatRule;
 
     const current = new Date(start);
     current.setHours(0, 0, 0, 0);

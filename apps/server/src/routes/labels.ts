@@ -1,14 +1,12 @@
 import { Router } from 'express';
-import type { Todo } from '@prisma/client';
-import { prisma } from '../index.js';
+import { eq } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 import { logChange } from '../sync/log.js';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
-  const todos = await prisma.todo.findMany({
-    select: { tags: true },
-  });
+  const todos = await db.select({ tags: schema.todo.tags }).from(schema.todo);
 
   const tagCount = new Map<string, number>();
   for (const todo of todos) {
@@ -43,7 +41,7 @@ router.patch('/rename', async (req, res) => {
     return res.status(400).json({ error: 'oldName and newName are the same' });
   }
 
-  const allTodos = await prisma.todo.findMany();
+  const allTodos = await db.select().from(schema.todo);
   const todosWithLabel = allTodos.filter((t) => {
     const tags = t.tags as string[];
     return tags.includes(trimmedOld);
@@ -55,10 +53,7 @@ router.patch('/rename', async (req, res) => {
     const newTags = tags.map((t) => (t === trimmedOld ? trimmedNew : t));
     const uniqueTags = [...new Set(newTags)];
 
-    await prisma.todo.update({
-      where: { id: todo.id },
-      data: { tags: uniqueTags } as never,
-    });
+    await db.update(schema.todo).set({ tags: uniqueTags }).where(eq(schema.todo.id, todo.id));
     await logChange(req, 'todo', 'update', todo.id);
     updated++;
   }
@@ -73,7 +68,7 @@ router.delete('/:name', async (req, res) => {
     return res.status(400).json({ error: 'Label name is required' });
   }
 
-  const allTodos = await prisma.todo.findMany();
+  const allTodos = await db.select().from(schema.todo);
   const todosWithLabel = allTodos.filter((t) => {
     const tags = t.tags as string[];
     return tags.includes(tagName);
@@ -84,10 +79,7 @@ router.delete('/:name', async (req, res) => {
     const tags = todo.tags as string[];
     const newTags = tags.filter((t) => t !== tagName);
 
-    await prisma.todo.update({
-      where: { id: todo.id },
-      data: { tags: newTags } as never,
-    });
+    await db.update(schema.todo).set({ tags: newTags }).where(eq(schema.todo.id, todo.id));
     await logChange(req, 'todo', 'update', todo.id);
     updated++;
   }

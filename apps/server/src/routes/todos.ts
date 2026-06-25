@@ -1,7 +1,6 @@
 import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { prisma } from '../index.js';
-import type { Todo } from '@prisma/client';
+import { eq, ne, and, or, lt, gte, isNotNull, isNull, inArray, sql } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 import { logChange } from '../sync/log.js';
 import { getVirtualTodosForDate } from '../lib/virtualTodos.js';
 
@@ -39,20 +38,23 @@ router.get('/', async (req, res) => {
   const { parentId, root, nodeType, date, tag, unscheduled, overdue, unassigned, repeatTemplates } = req.query;
 
   if (nodeType) {
-    const todos = await prisma.todo.findMany({
-      where: { nodeType: String(nodeType) },
-      orderBy: { order: 'asc' },
-    });
+    const todos = await db.select().from(schema.todo)
+      .where(eq(schema.todo.nodeType, String(nodeType)))
+      .orderBy(schema.todo.order);
     return res.json(todos);
   }
 
   if (parentId) {
-    const todos = await prisma.todo.findMany({ where: { parentId: String(parentId) }, orderBy: { order: 'asc' } });
+    const todos = await db.select().from(schema.todo)
+      .where(eq(schema.todo.parentId, String(parentId)))
+      .orderBy(schema.todo.order);
     return res.json(todos);
   }
 
   if (root === 'true') {
-    const todos = await prisma.todo.findMany({ where: { parentId: null }, orderBy: { order: 'asc' } });
+    const todos = await db.select().from(schema.todo)
+      .where(isNull(schema.todo.parentId))
+      .orderBy(schema.todo.order);
     return res.json(todos);
   }
 
@@ -62,67 +64,52 @@ router.get('/', async (req, res) => {
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
     const [realTodos, virtualTodos] = await Promise.all([
-      prisma.todo.findMany({
-        where: {
-          scheduledDate: { gte: start, lt: end },
-        },
-        orderBy: { order: 'asc' },
-      }),
+      db.select().from(schema.todo)
+        .where(and(gte(schema.todo.scheduledDate, start), lt(schema.todo.scheduledDate, end)))
+        .orderBy(schema.todo.order),
       getVirtualTodosForDate(d),
     ]);
     return res.json([...realTodos, ...virtualTodos]);
   }
 
   if (unscheduled === 'true') {
-    const todos = await prisma.todo.findMany({
-      where: {
-        scheduledDate: null,
-        status: { not: 'done' },
-      },
-      orderBy: { order: 'asc' },
-    });
+    const todos = await db.select().from(schema.todo)
+      .where(and(isNull(schema.todo.scheduledDate), ne(schema.todo.status, 'done')))
+      .orderBy(schema.todo.order);
     return res.json(todos);
   }
 
   if (overdue === 'true') {
     const today = startOfDay(new Date());
-    const todos = await prisma.todo.findMany({
-      where: {
-        status: { not: 'done' },
-        dueDate: { lt: today },
-      },
-      orderBy: { order: 'asc' },
-    });
+    const todos = await db.select().from(schema.todo)
+      .where(and(ne(schema.todo.status, 'done'), lt(schema.todo.dueDate, today)))
+      .orderBy(schema.todo.order);
     return res.json(todos);
   }
 
   if (unassigned === 'true') {
-    const todos = await prisma.todo.findMany({
-      where: {
-        parentId: null,
-        status: { not: 'done' },
-      },
-      orderBy: { order: 'asc' },
-    });
+    const todos = await db.select().from(schema.todo)
+      .where(and(isNull(schema.todo.parentId), ne(schema.todo.status, 'done')))
+      .orderBy(schema.todo.order);
     return res.json(todos);
   }
 
   if (tag) {
-    const all = await prisma.todo.findMany({ orderBy: { order: 'asc' } });
-    const filtered = all.filter((t: Todo) => {
+    const all = await db.select().from(schema.todo).orderBy(schema.todo.order);
+    const filtered = all.filter((t) => {
       const tags = t.tags as string[];
-      return tags.includes(String(tag));
+      return tags?.includes(String(tag));
     });
     return res.json(filtered);
   }
 
   if (repeatTemplates === 'true') {
-    const all = await prisma.todo.findMany({ orderBy: { order: 'asc' } });
-    const filtered = all.filter((t: Todo) => t.repeatRule !== null);
+    const all = await db.select().from(schema.todo).orderBy(schema.todo.order);
+    const filtered = all.filter((t) => t.repeatRule !== null);
     return res.json(filtered);
   }
 
-  const todos = await prisma.todo.findMany({ orderBy: { order: 'asc' } });
+  const todos = await db.select().from(schema.todo).orderBy(schema.todo.order);
   res.json(todos);
 });
 
@@ -140,7 +127,8 @@ router.post('/', async (req, res) => {
 
   // Validate goal parent must be a goal
   if (parentId) {
-    const parent = await prisma.todo.findUnique({ where: { id: parentId } });
+    const parentRows = await db.select().from(schema.todo).where(eq(schema.todo.id, parentId)).limit(1);
+    const parent = parentRows[0];
     if (parent && resolvedNodeType === 'goal' && parent.nodeType !== 'goal') {
       return res.status(400).json({ error: 'Goal parent must be a goal' });
     }
@@ -149,10 +137,8 @@ router.post('/', async (req, res) => {
   // Compute next order if not explicitly provided
   let finalOrder = order;
   if (finalOrder === undefined || finalOrder === null) {
-    const maxOrder = await prisma.todo.aggregate({
-      _max: { order: true },
-    });
-    finalOrder = (maxOrder._max.order ?? 0) + 1;
+    const maxResult = await db.select({ max: sql<number>`max(${schema.todo.order})` }).from(schema.todo);
+    finalOrder = (maxResult[0]?.max ?? 0) + 1;
   }
 
   const isTaskNode = resolvedNodeType === 'task';
@@ -179,7 +165,7 @@ router.post('/', async (req, res) => {
     goalStatus: isGoalNode ? (goalStatus || 'active') : null,
   };
 
-  const todo = await prisma.todo.create({ data: todoData as never });
+  const todo = (await db.insert(schema.todo).values(todoData as any).returning())[0];
 
   await logChange(req, 'todo', 'create', todo.id, todo);
   res.status(201).json(todo);
@@ -189,92 +175,77 @@ router.get('/today', async (_req, res) => {
   const today = startOfDay(new Date());
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const todos = await prisma.todo.findMany({
-    where: {
-      scheduledDate: { gte: today, lt: tomorrow },
-    },
-    orderBy: { order: 'asc' },
-  });
+  const todos = await db.select().from(schema.todo)
+    .where(and(gte(schema.todo.scheduledDate, today), lt(schema.todo.scheduledDate, tomorrow)))
+    .orderBy(schema.todo.order);
   res.json(todos);
 });
 
 router.get('/unscheduled', async (_req, res) => {
-  const todos = await prisma.todo.findMany({
-    where: {
-      scheduledDate: null,
-      status: { not: 'done' },
-    },
-    orderBy: { order: 'asc' },
-  });
+  const todos = await db.select().from(schema.todo)
+    .where(and(isNull(schema.todo.scheduledDate), ne(schema.todo.status, 'done')))
+    .orderBy(schema.todo.order);
   res.json(todos);
 });
 
 router.get('/overdue', async (_req, res) => {
   const today = startOfDay(new Date());
-  const todos = await prisma.todo.findMany({
-    where: {
-      status: { not: 'done' },
-      dueDate: { lt: today },
-    },
-    orderBy: { order: 'asc' },
-  });
+  const todos = await db.select().from(schema.todo)
+    .where(and(ne(schema.todo.status, 'done'), lt(schema.todo.dueDate, today)))
+    .orderBy(schema.todo.order);
   res.json(todos);
 });
 
 router.get('/unassigned', async (_req, res) => {
-  const todos = await prisma.todo.findMany({
-    where: {
-      parentId: null,
-      status: { not: 'done' },
-    },
-    orderBy: { order: 'asc' },
-  });
+  const todos = await db.select().from(schema.todo)
+    .where(and(isNull(schema.todo.parentId), ne(schema.todo.status, 'done')))
+    .orderBy(schema.todo.order);
   res.json(todos);
 });
 
 router.get('/repeat-templates', async (_req, res) => {
-  const all = await prisma.todo.findMany({ orderBy: { order: 'asc' } });
+  const all = await db.select().from(schema.todo).orderBy(schema.todo.order);
   const filtered = all.filter((t) => t.repeatRule !== null);
   res.json(filtered);
 });
 
 router.get('/:id', async (req, res) => {
-  const todo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  const rows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.params.id)).limit(1);
+  const todo = rows[0];
   if (!todo) return res.status(404).json({ error: 'Todo not found' });
   res.json(todo);
 });
 
 router.get('/:id/spawned', async (req, res) => {
-  const relations = await prisma.todoRelation.findMany({
-    where: { fromTodoId: req.params.id, type: 'source_from' },
-  });
+  const relations = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, req.params.id), eq(schema.todoRelation.type, 'source_from')));
   const todos = [];
   for (const rel of relations) {
-    const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
-    if (todo) todos.push(todo);
+    const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1);
+    if (todoRows[0]) todos.push(todoRows[0]);
   }
   res.json(todos);
 });
 
 router.get('/:id/instances', async (req, res) => {
-  const relations = await prisma.todoRelation.findMany({
-    where: { fromTodoId: req.params.id, type: 'assign_from' },
-  });
+  const relations = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, req.params.id), eq(schema.todoRelation.type, 'assign_from')));
   const todos = [];
   for (const rel of relations) {
-    const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
-    if (todo) todos.push(todo);
+    const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1);
+    if (todoRows[0]) todos.push(todoRows[0]);
   }
   res.json(todos);
 });
 
 router.get('/:id/template', async (req, res) => {
-  const relation = await prisma.todoRelation.findFirst({
-    where: { toTodoId: req.params.id, type: 'assign_from' },
-  });
+  const relationRows = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.toTodoId, req.params.id), eq(schema.todoRelation.type, 'assign_from')))
+    .limit(1);
+  const relation = relationRows[0];
   if (!relation) return res.json(null);
-  const todo = await prisma.todo.findUnique({ where: { id: relation.fromTodoId } });
-  res.json(todo);
+  const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, relation.fromTodoId)).limit(1);
+  res.json(todoRows[0] ?? null);
 });
 
 router.patch('/:id', async (req, res) => {
@@ -282,7 +253,8 @@ router.patch('/:id', async (req, res) => {
 
   validateNodeType(req.body);
 
-  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  const existingRows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.params.id)).limit(1);
+  const existingTodo = existingRows[0];
   if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
   if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
 
@@ -290,7 +262,8 @@ router.patch('/:id', async (req, res) => {
   if (req.body.parentId) {
     const isGoal = req.body.nodeType === 'goal' || (!req.body.nodeType && existingTodo?.nodeType === 'goal');
     if (isGoal) {
-      const parent = await prisma.todo.findUnique({ where: { id: req.body.parentId } });
+      const parentRows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.body.parentId)).limit(1);
+      const parent = parentRows[0];
       if (parent && parent.nodeType !== 'goal') {
         return res.status(400).json({ error: 'Goal parent must be a goal' });
       }
@@ -309,10 +282,7 @@ router.patch('/:id', async (req, res) => {
     updateData.nodeType = nodeType;
   }
 
-  const todo = await prisma.todo.update({
-    where: { id: req.params.id },
-    data: updateData as never,
-  });
+  const todo = (await db.update(schema.todo).set(updateData as any).where(eq(schema.todo.id, req.params.id)).returning())[0];
 
   await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
@@ -320,11 +290,12 @@ router.patch('/:id', async (req, res) => {
 
 router.patch('/:id/status', async (req, res) => {
   const { status } = req.body;
-  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  const existingRows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.params.id)).limit(1);
+  const existingTodo = existingRows[0];
   if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
   if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
 
-  const data: Prisma.TodoUpdateInput = { status };
+  const data: Record<string, unknown> = { status };
   if (status === 'in_progress') {
     data.startedAt = new Date();
   } else if (status === 'pending') {
@@ -332,24 +303,22 @@ router.patch('/:id/status', async (req, res) => {
   } else if (status === 'done') {
     data.completedAt = new Date();
   }
-  const todo = await prisma.todo.update({
-    where: { id: req.params.id },
-    data,
-  });
+  const todo = (await db.update(schema.todo).set(data).where(eq(schema.todo.id, req.params.id)).returning())[0];
   await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
 
 router.patch('/:id/schedule', async (req, res) => {
   const { scheduledDate } = req.body;
-  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  const existingRows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.params.id)).limit(1);
+  const existingTodo = existingRows[0];
   if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
   if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
 
-  const todo = await prisma.todo.update({
-    where: { id: req.params.id },
-    data: { scheduledDate: scheduledDate ? new Date(scheduledDate) : null },
-  });
+  const todo = (await db.update(schema.todo)
+    .set({ scheduledDate: scheduledDate ? new Date(scheduledDate) : null })
+    .where(eq(schema.todo.id, req.params.id))
+    .returning())[0];
   await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
@@ -357,30 +326,28 @@ router.patch('/:id/schedule', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
 
-  const existingTodo = await prisma.todo.findUnique({ where: { id } });
+  const existingRows = await db.select().from(schema.todo).where(eq(schema.todo.id, id)).limit(1);
+  const existingTodo = existingRows[0];
   if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
   if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot delete system tasks' });
 
   // Delete assigned instances first
-  const assignedRelations = await prisma.todoRelation.findMany({
-    where: { fromTodoId: id, type: 'assign_from' },
-  });
+  const assignedRelations = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, id), eq(schema.todoRelation.type, 'assign_from')));
   for (const rel of assignedRelations) {
-    await prisma.todo.delete({ where: { id: rel.toTodoId } }).catch(() => {});
+    await db.delete(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).catch(() => {});
     await logChange(req, 'todo', 'delete', rel.toTodoId);
   }
 
   // Delete the todo (cascade handles children, relations, logs)
-  await prisma.todo.delete({ where: { id } }).catch(() => {});
+  await db.delete(schema.todo).where(eq(schema.todo.id, id)).catch(() => {});
   await logChange(req, 'todo', 'delete', id);
   res.status(204).send();
 });
 
 router.post('/sync-repeats', async (req, res) => {
   const { startDate, endDate } = req.body;
-  const templates = await prisma.todo.findMany({
-    where: { repeatRule: { not: Prisma.JsonNull } },
-  });
+  const templates = await db.select().from(schema.todo).where(isNotNull(schema.todo.repeatRule));
 
   let createdCount = 0;
   const start = startOfDay(new Date(startDate));
@@ -419,13 +386,12 @@ router.post('/sync-repeats', async (req, res) => {
       current.setDate(current.getDate() + 1);
     }
 
-    const existingInstances = await prisma.todoRelation.findMany({
-      where: { fromTodoId: template.id, type: 'assign_from' },
-    });
+    const existingInstances = await db.select().from(schema.todoRelation)
+      .where(and(eq(schema.todoRelation.fromTodoId, template.id), eq(schema.todoRelation.type, 'assign_from')));
     const instanceTodos = [];
     for (const rel of existingInstances) {
-      const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
-      if (todo) instanceTodos.push(todo);
+      const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1);
+      if (todoRows[0]) instanceTodos.push(todoRows[0]);
     }
 
     for (const date of targetDates) {
@@ -435,28 +401,24 @@ router.post('/sync-repeats', async (req, res) => {
       });
 
       if (!hasInstance) {
-        const instance = await prisma.todo.create({
-          data: {
-            nodeType: 'task',
-            pattern: template.pattern ?? 'task',
-            title: template.title,
-            description: template.description,
-            priority: template.priority,
-            estimatedMinutes: template.estimatedMinutes,
-            tags: template.tags as string[],
-            scheduledDate: date,
-            status: 'pending',
-            order: 0,
-          },
-        });
+        const instance = (await db.insert(schema.todo).values({
+          nodeType: 'task',
+          pattern: template.pattern ?? 'task',
+          title: template.title,
+          description: template.description,
+          priority: template.priority,
+          estimatedMinutes: template.estimatedMinutes,
+          tags: template.tags as string[],
+          scheduledDate: date,
+          status: 'pending',
+          order: 0,
+        }).returning())[0];
         await logChange(req, 'todo', 'create', instance.id, instance);
-        const relation = await prisma.todoRelation.create({
-          data: {
-            fromTodoId: template.id,
-            toTodoId: instance.id,
-            type: 'assign_from',
-          },
-        });
+        const relation = (await db.insert(schema.todoRelation).values({
+          fromTodoId: template.id,
+          toTodoId: instance.id,
+          type: 'assign_from',
+        }).returning())[0];
         await logChange(req, 'todoRelation', 'create', relation.id, relation);
         createdCount++;
       }
@@ -468,14 +430,15 @@ router.post('/sync-repeats', async (req, res) => {
 
 router.patch('/:id/reorder', async (req, res) => {
   const { order } = req.body;
-  const existingTodo = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  const existingRows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.params.id)).limit(1);
+  const existingTodo = existingRows[0];
   if (!existingTodo) return res.status(404).json({ error: 'Todo not found' });
   if (existingTodo.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
 
-  const todo = await prisma.todo.update({
-    where: { id: req.params.id },
-    data: { order: order ?? 0 },
-  });
+  const todo = (await db.update(schema.todo)
+    .set({ order: order ?? 0 })
+    .where(eq(schema.todo.id, req.params.id))
+    .returning())[0];
   await logChange(req, 'todo', 'update', todo.id, todo);
   res.json(todo);
 });
@@ -486,14 +449,11 @@ router.post('/reorder', async (req, res) => {
     return res.status(400).json({ error: 'orderedIds must be an array' });
   }
 
-  await prisma.$transaction(
-    orderedIds.map((id, index) =>
-      prisma.todo.update({
-        where: { id },
-        data: { order: index },
-      })
-    )
-  );
+  await db.transaction(async (tx) => {
+    for (let index = 0; index < orderedIds.length; index++) {
+      await tx.update(schema.todo).set({ order: index }).where(eq(schema.todo.id, orderedIds[index]));
+    }
+  });
 
   for (const id of orderedIds) {
     await logChange(req, 'todo', 'update', id);
@@ -504,25 +464,25 @@ router.post('/reorder', async (req, res) => {
 
 router.patch('/:id/repeat-rule', async (req, res) => {
   const { rule } = req.body;
-  const template = await prisma.todo.findUnique({ where: { id: req.params.id } });
+  const templateRows = await db.select().from(schema.todo).where(eq(schema.todo.id, req.params.id)).limit(1);
+  const template = templateRows[0];
   if (!template) return res.status(404).json({ error: 'Todo not found' });
   if (template.isSystemTask) return res.status(403).json({ error: 'Cannot modify system tasks' });
 
-  const updatedTodo = await prisma.todo.update({
-    where: { id: req.params.id },
-    data: { repeatRule: rule ?? null },
-  });
+  const updatedTodo = (await db.update(schema.todo)
+    .set({ repeatRule: rule ?? null })
+    .where(eq(schema.todo.id, req.params.id))
+    .returning())[0];
   await logChange(req, 'todo', 'update', updatedTodo.id, updatedTodo);
 
   if (!rule) return res.json({ updated: true });
 
-  const existingInstances = await prisma.todoRelation.findMany({
-    where: { fromTodoId: req.params.id, type: 'assign_from' },
-  });
+  const existingInstances = await db.select().from(schema.todoRelation)
+    .where(and(eq(schema.todoRelation.fromTodoId, req.params.id), eq(schema.todoRelation.type, 'assign_from')));
   const instanceTodos = [];
   for (const rel of existingInstances) {
-    const todo = await prisma.todo.findUnique({ where: { id: rel.toTodoId } });
-    if (todo) instanceTodos.push(todo);
+    const todoRows = await db.select().from(schema.todo).where(eq(schema.todo.id, rel.toTodoId)).limit(1);
+    if (todoRows[0]) instanceTodos.push(todoRows[0]);
   }
 
   const typedRule = rule as { type: string; weekDays?: number[]; interval?: number; endDate?: string };
@@ -551,11 +511,11 @@ router.patch('/:id/repeat-rule', async (req, res) => {
     }
 
     if (!matches) {
-      await prisma.todoRelation.deleteMany({
-        where: { OR: [{ fromTodoId: instance.id }, { toTodoId: instance.id }] },
-      });
-      await prisma.todoLog.deleteMany({ where: { todoId: instance.id } });
-      await prisma.todo.delete({ where: { id: instance.id } }).catch(() => {});
+      await db.delete(schema.todoRelation).where(
+        or(eq(schema.todoRelation.fromTodoId, instance.id), eq(schema.todoRelation.toTodoId, instance.id))
+      );
+      await db.delete(schema.todoLog).where(eq(schema.todoLog.todoId, instance.id));
+      await db.delete(schema.todo).where(eq(schema.todo.id, instance.id)).catch(() => {});
       await logChange(req, 'todo', 'delete', instance.id);
     }
   }

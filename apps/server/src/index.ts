@@ -9,7 +9,8 @@ dotenv.config({ path: path.resolve(__dirname, '../.env.local'), override: true }
 
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import { db, schema } from './db/index.js';
+import { eq, isNotNull, sql } from 'drizzle-orm';
 import todosRouter from './routes/todos.js';
 import relationsRouter from './routes/relations.js';
 import todoLogsRouter from './routes/todoLogs.js';
@@ -21,8 +22,6 @@ import syncRouter from './routes/sync.js';
 import devicesRouter from './routes/devices.js';
 import watchRouter from './routes/watch.js';
 import labelsRouter from './routes/labels.js';
-
-export const prisma = new PrismaClient();
 
 const API_TOKEN = process.env.API_TOKEN;
 
@@ -71,15 +70,15 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.delete('/api/all-data', async (_req, res) => {
-  await prisma.timerSession.deleteMany();
-  await prisma.todoLog.deleteMany();
-  await prisma.todoRelation.deleteMany();
-  await prisma.actionEdge.deleteMany();
-  await prisma.pluse.deleteMany();
-  await prisma.repeatOccurrence.deleteMany();
-  await prisma.plan.deleteMany();
-  await prisma.syncEvent.deleteMany();
-  await prisma.todo.deleteMany();
+  await db.delete(schema.timerSession);
+  await db.delete(schema.todoLog);
+  await db.delete(schema.todoRelation);
+  await db.delete(schema.actionEdge);
+  await db.delete(schema.pluse);
+  await db.delete(schema.repeatOccurrence);
+  await db.delete(schema.plan);
+  await db.delete(schema.syncEvent);
+  await db.delete(schema.todo);
   res.status(204).send();
 });
 
@@ -89,31 +88,28 @@ async function runPlanMigration(): Promise<void> {
   const markerPath = path.resolve(__dirname, '../.migration-v37-plan-subgraph');
   if (fs.existsSync(markerPath)) return;
 
-  const plans = await prisma.plan.findMany();
-  const edges = await prisma.actionEdge.findMany();
+  const plans = await db.select().from(schema.plan);
+  const edges = await db.select().from(schema.actionEdge);
   let migrated = 0;
   for (const plan of plans) {
     const existingEdgeIds = Array.isArray(plan.edgeIds)
       ? (plan.edgeIds as string[])
-      : (typeof plan.edgeIds === 'string' ? JSON.parse(plan.edgeIds) : []);
+      : (typeof plan.edgeIds === 'string' ? JSON.parse(plan.edgeIds as string) : []);
     if (existingEdgeIds.length > 0) continue;
 
     const oldTodoIds = Array.isArray(plan.nodeIds)
       ? (plan.nodeIds as string[])
-      : (typeof plan.nodeIds === 'string' ? JSON.parse(plan.nodeIds) : []);
+      : (typeof plan.nodeIds === 'string' ? JSON.parse(plan.nodeIds as string) : []);
     const nodeIds = Array.isArray(oldTodoIds) ? [...oldTodoIds] : [];
     const nodeIdSet = new Set(nodeIds);
     const edgeIds = edges
       .filter((e) => nodeIdSet.has(e.fromTodoId) && nodeIdSet.has(e.toTodoId))
       .map((e) => e.id);
 
-    await prisma.plan.update({
-      where: { id: plan.id },
-      data: {
-        nodeIds: JSON.stringify(nodeIds),
-        edgeIds: JSON.stringify(edgeIds),
-      },
-    });
+    await db.update(schema.plan).set({
+      nodeIds: nodeIds,
+      edgeIds: edgeIds,
+    }).where(eq(schema.plan.id, plan.id));
     migrated++;
   }
 
@@ -126,15 +122,12 @@ async function runDataMigrations(): Promise<void> {
   if (fs.existsSync(markerPath)) return;
 
   // Migrate pluse intervals from minutes to seconds
-  const pluses = await prisma.pluse.findMany();
+  const pluses = await db.select().from(schema.pluse);
   for (const pluse of pluses) {
     const intervals = Array.isArray(pluse.intervals) ? (pluse.intervals as number[]) : [];
     if (intervals.length > 0) {
       const newIntervals = intervals.map((d: number) => d * 60);
-      await prisma.pluse.update({
-        where: { id: pluse.id },
-        data: { intervals: newIntervals },
-      });
+      await db.update(schema.pluse).set({ intervals: newIntervals }).where(eq(schema.pluse.id, pluse.id));
     }
   }
 
@@ -154,9 +147,7 @@ const SYSTEM_TASKS = [
 ];
 
 async function seedSystemTasks(): Promise<void> {
-  const existing = await prisma.todo.findMany({
-    where: { isSystemTask: true },
-  });
+  const existing = await db.select().from(schema.todo).where(eq(schema.todo.isSystemTask, true));
   const existingIds = new Set(existing.map((t) => t.id));
 
   const now = new Date();
@@ -166,24 +157,22 @@ async function seedSystemTasks(): Promise<void> {
   for (const task of SYSTEM_TASKS) {
     if (existingIds.has(task.id)) continue;
 
-    await prisma.todo.create({
-      data: {
-        id: task.id,
-        nodeType: 'task',
-        pattern: 'task',
-        title: task.title,
-        description: task.description,
-        status: 'pending',
-        priority: 'medium',
-        estimatedMinutes: 15,
-        tags: [],
-        createdAt: now,
-        updatedAt: now,
-        scheduledDate,
-        repeatRule: { type: 'daily' },
-        order: 0,
-        isSystemTask: true,
-      },
+    await db.insert(schema.todo).values({
+      id: task.id,
+      nodeType: 'task',
+      pattern: 'task',
+      title: task.title,
+      description: task.description,
+      status: 'pending',
+      priority: 'medium',
+      estimatedMinutes: 15,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+      scheduledDate,
+      repeatRule: { type: 'daily' },
+      order: 0,
+      isSystemTask: true,
     });
   }
 }

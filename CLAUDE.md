@@ -1,6 +1,6 @@
 # Utral Todo — pnpm Monorepo
 
-This repo contains four apps and a shared types package:
+This repo contains four apps and two shared packages:
 
 ```
 ├── apps/
@@ -8,9 +8,10 @@ This repo contains four apps and a shared types package:
 │   ├── desktop/    # Tauri + Vite + React + Dexie
 │   ├── expo-app/   # Expo + React Native iOS/Android app
 │   ├── iwatch/     # SwiftUI watchOS companion
-│   └── server/     # Express + Prisma + SQLite
+│   └── server/     # Express + Drizzle + PostgreSQL
 └── packages/
-    └── types/      # Shared TypeScript interfaces
+    ├── types/      # Shared TypeScript interfaces + HLC utilities
+    └── sync/       # Sync engine (client queue/push/SSE + server CRDT handler)
 ```
 
 ## Quick start
@@ -19,11 +20,11 @@ This repo contains four apps and a shared types package:
 # 1. Install dependencies
 pnpm install
 
-# 2. Build shared types
-pnpm --filter @utral/types build
+# 2. Build shared packages (types + sync)
+pnpm --filter @utral/types build && pnpm --filter @utral/sync build
 
-# 3. Generate Prisma client
-pnpm db:generate
+# 3. Generate Drizzle migrations (requires running PostgreSQL)
+pnpm --filter server db:generate
 
 # 4. Run both server and desktop UI together
 pnpm dev:all
@@ -48,24 +49,28 @@ pnpm dev:all
 | `pnpm build:cli` | Build CLI to `apps/cli/dist/` |
 | `pnpm build:desktop` | Build desktop UI to `apps/desktop/dist/` |
 | `pnpm build:server` | Compile server to `apps/server/dist/` |
-| `pnpm db:generate` | Generate Prisma client |
-| `pnpm db:migrate` | Run Prisma migrations |
-| `pnpm db:studio` | Open Prisma Studio |
+| `pnpm db:generate` | Generate Drizzle migrations |
+| `pnpm db:migrate` | Run Drizzle migrations |
+| `pnpm db:studio` | Open Drizzle Studio |
 
 ## Sync architecture
 
-- Desktop keeps its source of truth in IndexedDB via Dexie.
-- `/api/sync` supports bulk push/pull for full sync.
-- Optional real-time remote ops (`remoteOpsEnabled`) send individual creates/updates/deletes to `/api/todos`, `/api/projects`, etc.
+The `@utral/sync` package (`packages/sync/`) provides database-agnostic sync:
+
+- **Client** (`SyncEngine`): queues local changes in a `syncQueue` table when offline, pushes to `POST /api/sync/push` when online, receives real-time updates via SSE (`GET /api/sync/stream`), falls back to HTTP polling.
+- **Server** (`SyncHandler`): accepts pushes, resolves conflicts using HLC-based last-writer-wins, broadcasts to other connected clients via SSE.
+- **Conflict resolution**: Hybrid Logical Clocks (`{ wall, counter, node }`) — higher `updatedAt` wins. Soft deletes via tombstones, garbage-collected after 30 days.
+- **Storage adapters**: `DexieSyncStorage` (desktop), `DrizzleSyncStorage` (expo), `DrizzlePgSyncStorage` (server).
 - Configure sync endpoint in the desktop UI at **Settings > Sync**.
 
 ## Data model
 
 Server and desktop share the same conceptual entities: `Todo`, `Project`, `TodoRelation`, `TodoLog`, `Roadmap`, `ActionEdge`, `Pluse`, `TimerSession`.
 
-- Prisma schema: `apps/server/prisma/schema.prisma`
+- Drizzle schema: `apps/server/src/db/schema.ts`
 - Dexie schema: `apps/desktop/src/db/database.ts`
 - Shared types: `packages/types/src/index.ts`
+- Sync engine: `packages/sync/src/`
 
 ## Auth
 
@@ -90,7 +95,7 @@ Build context is the workspace root (`../..`) so the Dockerfile can access `pack
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Multi-stage build for the API server |
-| `docker-compose.yml` | Standalone server with SQLite volume |
+| `docker-compose.yml` | Server + PostgreSQL database |
 | `docker-compose.nginx.yml` | Server + nginx reverse proxy |
 | `nginx.conf` | Nginx config for `/api/*` proxy |
 | `docker-entrypoint.sh` | Runs migrations then starts the server |

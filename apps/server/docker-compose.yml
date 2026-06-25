@@ -1,18 +1,36 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: utral-todo-db
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=utral
+      - POSTGRES_PASSWORD=utral
+      - POSTGRES_DB=utral_todo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U utral -d utral_todo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   app:
     build:
       context: ../..
       dockerfile: apps/server/Dockerfile
     container_name: utral-todo-server
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8080:80"
-    volumes:
-      - /var/lib/utral-todo/data:/var/lib/utral-todo/data
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://utral:utral@db:5432/utral_todo
       - API_TOKEN=${API_TOKEN:-}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/api/health"]
@@ -20,3 +38,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  pgdata:

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../index.js';
+import { eq, and, gte, lt, inArray, asc, desc } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 import { logChange } from '../sync/log.js';
 import { getVirtualTodosForDate } from '../lib/virtualTodos.js';
 import type { WatchTodo, WatchTodayResponse } from '@utral/types';
@@ -20,18 +21,14 @@ router.get('/today', async (_req, res) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [realTodos, virtualTodos] = await Promise.all([
-      prisma.todo.findMany({
-        where: {
-          scheduledDate: { gte: today, lt: tomorrow },
-        },
-        orderBy: { order: 'asc' },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          estimatedMinutes: true,
-        },
-      }),
+      db.select({
+        id: schema.todo.id,
+        title: schema.todo.title,
+        status: schema.todo.status,
+        estimatedMinutes: schema.todo.estimatedMinutes,
+      }).from(schema.todo).where(
+        and(gte(schema.todo.scheduledDate, today), lt(schema.todo.scheduledDate, tomorrow))
+      ).orderBy(asc(schema.todo.order)),
       getVirtualTodosForDate(today),
     ]);
 
@@ -57,19 +54,14 @@ router.get('/today', async (_req, res) => {
 router.post('/todos/:id/complete', async (req, res) => {
   const { id } = req.params;
   try {
-    const todo = await prisma.todo.update({
-      where: { id },
-      data: { status: 'done', completedAt: new Date() },
-    });
+    const todo = (await db.update(schema.todo).set({ status: 'done', completedAt: new Date() }).where(eq(schema.todo.id, id)).returning())[0];
     await logChange(req, 'todo', 'update', todo.id, todo);
 
-    const todoLog = await prisma.todoLog.create({
-      data: {
-        todoId: id,
-        type: 'system',
-        content: 'Marked as done from Apple Watch',
-      },
-    });
+    const todoLog = (await db.insert(schema.todoLog).values({
+      todoId: id,
+      type: 'system',
+      content: 'Marked as done from Apple Watch',
+    }).returning())[0];
     await logChange(req, 'todoLog', 'create', todoLog.id, todoLog);
 
     res.json({ id: todo.id, status: todo.status });
@@ -82,10 +74,9 @@ router.post('/todos/:id/complete', async (req, res) => {
 // GET /api/watch/timer — Active running timer
 router.get('/timer', async (_req, res) => {
   try {
-    const session = await prisma.timerSession.findFirst({
-      where: { status: { in: ['running', 'paused'] } },
-      orderBy: { startedAt: 'desc' },
-    });
+    const session = (await db.select().from(schema.timerSession).where(
+      inArray(schema.timerSession.status, ['running', 'paused'])
+    ).orderBy(desc(schema.timerSession.startedAt)).limit(1))[0];
 
     if (!session) {
       return res.json({ active: false });
@@ -121,7 +112,7 @@ router.get('/timer', async (_req, res) => {
 router.post('/timer/:id/toggle', async (req, res) => {
   const { id } = req.params;
   try {
-    const session = await prisma.timerSession.findUnique({ where: { id } });
+    const session = (await db.select().from(schema.timerSession).where(eq(schema.timerSession.id, id)).limit(1))[0];
     if (!session) {
       return res.status(404).json({ error: 'Timer session not found' });
     }
@@ -129,26 +120,20 @@ router.post('/timer/:id/toggle', async (req, res) => {
     if (session.status === 'running') {
       // Pause: add elapsed time since start
       const sinceStart = Math.floor((Date.now() - session.startedAt.getTime()) / 1000);
-      const updated = await prisma.timerSession.update({
-        where: { id },
-        data: {
-          status: 'paused',
-          pausedAt: new Date(),
-          elapsedSeconds: session.elapsedSeconds + sinceStart,
-        },
-      });
+      const updated = (await db.update(schema.timerSession).set({
+        status: 'paused',
+        pausedAt: new Date(),
+        elapsedSeconds: session.elapsedSeconds + sinceStart,
+      }).where(eq(schema.timerSession.id, id)).returning())[0];
       await logChange(req, 'timerSession', 'update', updated.id, updated);
       res.json({ id: updated.id, status: updated.status, elapsedSeconds: updated.elapsedSeconds });
     } else {
       // Resume from paused
-      const updated = await prisma.timerSession.update({
-        where: { id },
-        data: {
-          status: 'running',
-          startedAt: new Date(),
-          pausedAt: null,
-        },
-      });
+      const updated = (await db.update(schema.timerSession).set({
+        status: 'running',
+        startedAt: new Date(),
+        pausedAt: null,
+      }).where(eq(schema.timerSession.id, id)).returning())[0];
       await logChange(req, 'timerSession', 'update', updated.id, updated);
       res.json({ id: updated.id, status: updated.status, elapsedSeconds: updated.elapsedSeconds });
     }
