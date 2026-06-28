@@ -1,21 +1,31 @@
-import { db } from './database';
+import { db } from './drizzle-adapter';
+import { repeatOccurrences, todos } from './schema';
+import { eq } from 'drizzle-orm';
 import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { createTodo } from './todos';
 import { newHLC, mergeHLC, makeVirtualTodoId } from '../types';
 import type { RepeatOccurrence, Todo, TodoStatus } from '../types';
+import { repeatOccurrenceToRow, rowToRepeatOccurrence, rowToTodo } from './schema';
 
 export async function getOccurrence(
   templateId: string,
   date: Date
 ): Promise<RepeatOccurrence | undefined> {
   const id = makeVirtualTodoId(templateId, date);
-  return db.repeatOccurrences.get(id);
+  const rows = await db.select().from(repeatOccurrences).where(
+    eq(repeatOccurrences.id, id)
+  ) as any[];
+  const row = rows[0];
+  return row ? rowToRepeatOccurrence(row) : undefined;
 }
 
 export async function getOccurrencesForTemplate(
   templateId: string
 ): Promise<RepeatOccurrence[]> {
-  return db.repeatOccurrences.where('templateId').equals(templateId).toArray();
+  const rows = await db.select().from(repeatOccurrences).where(
+    eq(repeatOccurrences.templateId, templateId)
+  ) as any[];
+  return rows.map(rowToRepeatOccurrence);
 }
 
 export async function getOccurrencesForDateRange(
@@ -41,16 +51,26 @@ export async function setOccurrenceStatus(
   const hlc = newHLC(nodeId);
   const now = new Date();
   const id = makeVirtualTodoId(templateId, date);
-  const existing = await db.repeatOccurrences.get(id);
+  const rows = await db.select().from(repeatOccurrences).where(
+    eq(repeatOccurrences.id, id)
+  ) as any[];
+  const existing = rows[0] ? rowToRepeatOccurrence(rows[0]) : undefined;
 
   if (existing) {
     const mergedUpdatedAt = existing.updatedAt
       ? mergeHLC(existing.updatedAt, hlc)
       : hlc;
-    const updates: Partial<RepeatOccurrence> = { status, updatedAt: mergedUpdatedAt };
-    if (status === 'done') updates.completedAt = now;
-    else updates.completedAt = undefined;
-    await db.repeatOccurrences.update(id, updates);
+    const updateData: Record<string, unknown> = {
+      status,
+      updated_at_wall: mergedUpdatedAt.wall,
+      updated_at_counter: mergedUpdatedAt.counter,
+      updated_at_node: mergedUpdatedAt.node,
+    };
+    if (status === 'done') updateData.completed_at = now;
+    else updateData.completed_at = null;
+    await db.update(repeatOccurrences).set(updateData as any).where(
+      eq(repeatOccurrences.id, id)
+    );
     onLocalChange('repeatOccurrences', 'update', id).catch(() => {});
   } else {
     const occurrence: RepeatOccurrence = {
@@ -62,7 +82,7 @@ export async function setOccurrenceStatus(
       createdAt: hlc,
       updatedAt: hlc,
     };
-    await db.repeatOccurrences.add(occurrence);
+    await db.insert(repeatOccurrences).values(repeatOccurrenceToRow(occurrence) as any);
     onLocalChange('repeatOccurrences', 'create', id).catch(() => {});
   }
 }
@@ -73,13 +93,14 @@ export async function materializeInstance(
 ): Promise<Todo> {
   const occurrence = await getOccurrence(template.id, date);
 
-  // If already materialized, return the existing todo
   if (occurrence?.materializedTodoId) {
-    const existing = await db.todos.get(occurrence.materializedTodoId);
+    const rows = await db.select().from(todos).where(
+      eq(todos.id, occurrence.materializedTodoId)
+    ) as any[];
+    const existing = rows[0] ? rowToTodo(rows[0]) : undefined;
     if (existing) return existing;
   }
 
-  // Create a real todo from the template
   const instance = await createTodo(template.title, {
     description: template.description,
     priority: template.priority,
@@ -89,7 +110,6 @@ export async function materializeInstance(
     status: occurrence?.status ?? 'pending',
   });
 
-  // Store the materialized reference
   const nodeId = await getOrCreateDeviceId();
   const hlc = newHLC(nodeId);
   const id = makeVirtualTodoId(template.id, date);
@@ -98,13 +118,15 @@ export async function materializeInstance(
     const mergedUpdatedAt = occurrence.updatedAt
       ? mergeHLC(occurrence.updatedAt, hlc)
       : hlc;
-    await db.repeatOccurrences.update(id, {
-      materializedTodoId: instance.id,
-      updatedAt: mergedUpdatedAt,
-    });
+    await db.update(repeatOccurrences).set({
+      materialized_todo_id: instance.id,
+      updated_at_wall: mergedUpdatedAt.wall,
+      updated_at_counter: mergedUpdatedAt.counter,
+      updated_at_node: mergedUpdatedAt.node,
+    } as any).where(eq(repeatOccurrences.id, id));
     onLocalChange('repeatOccurrences', 'update', id).catch(() => {});
   } else {
-    await db.repeatOccurrences.add({
+    await db.insert(repeatOccurrences).values(repeatOccurrenceToRow({
       id,
       templateId: template.id,
       date: new Date(date),
@@ -112,7 +134,7 @@ export async function materializeInstance(
       materializedTodoId: instance.id,
       createdAt: hlc,
       updatedAt: hlc,
-    });
+    }) as any);
     onLocalChange('repeatOccurrences', 'create', id).catch(() => {});
   }
 
@@ -122,11 +144,21 @@ export async function materializeInstance(
 export async function deleteOccurrence(id: string): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
   const hlc = newHLC(nodeId);
-  const existing = await db.repeatOccurrences.get(id);
+  const rows = await db.select().from(repeatOccurrences).where(
+    eq(repeatOccurrences.id, id)
+  ) as any[];
+  const existing = rows[0] ? rowToRepeatOccurrence(rows[0]) : undefined;
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
-  await db.repeatOccurrences.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
+  await db.update(repeatOccurrences).set({
+    deleted_at_wall: hlc.wall,
+    deleted_at_counter: hlc.counter,
+    deleted_at_node: hlc.node,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(repeatOccurrences.id, id));
   onLocalChange('repeatOccurrences', 'delete', id).catch(() => {});
 }
 
@@ -138,7 +170,14 @@ export async function deleteOccurrencesForTemplate(templateId: string): Promise<
     const mergedUpdatedAt = o.updatedAt
       ? mergeHLC(o.updatedAt, hlc)
       : hlc;
-    await db.repeatOccurrences.update(o.id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
+    await db.update(repeatOccurrences).set({
+      deleted_at_wall: hlc.wall,
+      deleted_at_counter: hlc.counter,
+      deleted_at_node: hlc.node,
+      updated_at_wall: mergedUpdatedAt.wall,
+      updated_at_counter: mergedUpdatedAt.counter,
+      updated_at_node: mergedUpdatedAt.node,
+    } as any).where(eq(repeatOccurrences.id, o.id));
     onLocalChange('repeatOccurrences', 'delete', o.id).catch(() => {});
   }
 }

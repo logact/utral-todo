@@ -120,33 +120,6 @@ export const todoLogRelations = relations(todoLog, ({ one }) => ({
   }),
 }));
 
-// ── TimerSession ────────────────────────────────────────────────────────────
-
-export const timerSession = pgTable('TimerSession', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  type: text('type').notNull(),
-  name: text('name').notNull(),
-  pluseId: text('pluseId'),
-  todoId: text('todoId'),
-  intervals: jsonb('intervals'),
-  repeatCount: integer('repeatCount').notNull().default(1),
-  startedAt: timestamp('startedAt').notNull().defaultNow(),
-  pausedAt: timestamp('pausedAt'),
-  completedAt: timestamp('completedAt'),
-  currentIndex: integer('currentIndex').notNull().default(0),
-  elapsedSeconds: integer('elapsedSeconds').notNull().default(0),
-  status: text('status').notNull(),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-  // HLC CRDT fields
-  versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
-  versionCounter: integer('versionCounter').notNull().default(0),
-  versionNode: text('versionNode').notNull().default(''),
-  deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-  deletedAtCounter: integer('deletedAtCounter'),
-  deletedAtNode: text('deletedAtNode'),
-});
-
 // ── Plan ────────────────────────────────────────────────────────────────────
 
 export const plan = pgTable(
@@ -199,6 +172,10 @@ export const pluse = pgTable('Pluse', {
   repeatCount: integer('repeatCount').notNull().default(1),
   intervalTodos: jsonb('intervalTodos'),
   autoAdvance: boolean('autoAdvance').notNull().default(true),
+  timerStatus: text('timerStatus').notNull().default('idle'),
+  currentIntervalIndex: integer('currentIntervalIndex').notNull().default(0),
+  startedAt: timestamp('startedAt'),
+  accumulatedSeconds: integer('accumulatedSeconds').notNull().default(0),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
   // HLC CRDT fields

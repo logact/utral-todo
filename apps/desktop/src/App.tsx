@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useCliBridge } from './hooks/useCliBridge';
 import { useSync } from './hooks/useSync';
 import { initIOSSync } from './db/iosSync';
+import { initDatabase } from './db/database';
 import { ensureRootGoal } from './db/todos';
 import { Sidebar } from './components/layout/Sidebar';
 import { QuickTodoModal } from './components/QuickTodoModal';
@@ -57,8 +58,12 @@ export default function App() {
   useSync();
 
   useEffect(() => {
-    ensureRootGoal().catch((err) => {
-      console.error('[App] Failed to ensure root goal:', err);
+    initDatabase().then(() => {
+      ensureRootGoal().catch((err) => {
+        console.error('[App] Failed to ensure root goal:', err);
+      });
+    }).catch((err) => {
+      console.error('[App] Failed to init database:', err);
     });
   }, []);
 

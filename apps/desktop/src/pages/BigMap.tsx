@@ -4,7 +4,9 @@ import { ArrowLeft, Home, Plus } from 'lucide-react';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
 import { getRootGoal, getTodo, ensureRootGoal } from '../db/todos';
 import { createRelation, deleteRelation, updateRelation } from '../db/relations';
-import { db } from '../db/database';
+import { db } from '../db/drizzle-adapter';
+import { todoRelations } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import type { Todo, TodoRelationType } from '../types';
 
 export function BigMap() {
@@ -53,7 +55,8 @@ export function BigMap() {
   const handleReconnectRelation = useCallback(
     async (relationId: string, fromTodoId: string, toTodoId: string) => {
       if (fromTodoId === toTodoId) return;
-      const relation = await db.relations.get(relationId);
+      const relationRows = await db.select().from(todoRelations).where(eq(todoRelations.id, relationId));
+      const relation = relationRows[0];
       if (!relation) return;
       if (relation.fromTodoId === fromTodoId && relation.toTodoId === toTodoId) return;
 
@@ -62,10 +65,10 @@ export function BigMap() {
       if (!fromTodo || !toTodo) return;
 
       const allowedTypes = allowedLinkTypesForReconnect(fromTodo, toTodo);
-      if (!allowedTypes.includes(relation.type)) return;
+      if (!allowedTypes.includes(relation.type as TodoRelationType)) return;
 
       await deleteRelation(relationId);
-      await createRelation(fromTodoId, toTodoId, relation.type);
+      await createRelation(fromTodoId, toTodoId, relation.type as TodoRelationType);
       handleReload();
     },
     [handleReload]

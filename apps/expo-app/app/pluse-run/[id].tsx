@@ -29,6 +29,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -232,7 +234,7 @@ export default function PluseRunScreen() {
                   sessionRef.current?.id &&
                     updateTimerSession(sessionRef.current.id, {
                       status: 'completed',
-                      completedAt: new Date().toISOString(),
+                      completedAt: new Date(),
                     }).catch(() => {});
                 }
                 return 0;
@@ -265,7 +267,7 @@ export default function PluseRunScreen() {
         await updateTimerSession(sessionRef.current.id, {
           elapsedSeconds,
           status: 'paused',
-          pausedAt: new Date().toISOString(),
+          pausedAt: new Date(),
         });
       }
     } else {
@@ -276,7 +278,7 @@ export default function PluseRunScreen() {
           intervals: pluse.intervals,
           repeatCount: pluse.repeatCount,
           status: 'running',
-          startedAt: new Date().toISOString(),
+          startedAt: new Date(),
           currentIndex,
           elapsedSeconds,
         });
@@ -284,7 +286,7 @@ export default function PluseRunScreen() {
       } else if (sessionRef.current) {
         await updateTimerSession(sessionRef.current.id, {
           status: 'running',
-          startedAt: new Date().toISOString(),
+          startedAt: new Date(),
           pausedAt: undefined,
         });
       }

@@ -1,0 +1,1 @@
+sync server is  a event transfer station , it is reponsible for transfert the operate event between the devices

@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -9,19 +8,10 @@ dotenv.config({ path: path.resolve(__dirname, '../.env.local'), override: true }
 
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 import { db, schema } from './db/index.js';
-import { eq, isNotNull, sql } from 'drizzle-orm';
-import todosRouter from './routes/todos.js';
-import relationsRouter from './routes/relations.js';
-import todoLogsRouter from './routes/todoLogs.js';
-import actionEdgesRouter from './routes/actionEdges.js';
-import plansRouter from './routes/plans.js';
-import plusesRouter from './routes/pluses.js';
-import timerSessionsRouter from './routes/timerSessions.js';
-import syncRouter from './routes/sync.js';
-import devicesRouter from './routes/devices.js';
-import watchRouter from './routes/watch.js';
-import labelsRouter from './routes/labels.js';
+import { syncHandler } from './sync/setup.js';
 
 const API_TOKEN = process.env.API_TOKEN;
 
@@ -53,134 +43,87 @@ app.use((_req, res, next) => {
 
 app.use('/api', requireAuth);
 
-app.use('/api/todos', todosRouter);
-app.use('/api/relations', relationsRouter);
-app.use('/api/todo-logs', todoLogsRouter);
-app.use('/api/action-edges', actionEdgesRouter);
-app.use('/api/plans', plansRouter);
-app.use('/api/pluses', plusesRouter);
-app.use('/api/timer-sessions', timerSessionsRouter);
-app.use('/api/sync', syncRouter);
-app.use('/api/devices', devicesRouter);
-app.use('/api/watch', watchRouter);
-app.use('/api/labels', labelsRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
 app.delete('/api/all-data', async (_req, res) => {
-  await db.delete(schema.timerSession);
-  await db.delete(schema.todoLog);
-  await db.delete(schema.todoRelation);
-  await db.delete(schema.actionEdge);
-  await db.delete(schema.pluse);
-  await db.delete(schema.repeatOccurrence);
-  await db.delete(schema.plan);
   await db.delete(schema.syncEvent);
-  await db.delete(schema.todo);
   res.status(204).send();
 });
 
-/* ---------- Data migrations ---------- */
+const PORT = process.env.PORT || 3001;
 
-async function runPlanMigration(): Promise<void> {
-  const markerPath = path.resolve(__dirname, '../.migration-v37-plan-subgraph');
-  if (fs.existsSync(markerPath)) return;
+const server = createServer(app);
 
-  const plans = await db.select().from(schema.plan);
-  const edges = await db.select().from(schema.actionEdge);
-  let migrated = 0;
-  for (const plan of plans) {
-    const existingEdgeIds = Array.isArray(plan.edgeIds)
-      ? (plan.edgeIds as string[])
-      : (typeof plan.edgeIds === 'string' ? JSON.parse(plan.edgeIds as string) : []);
-    if (existingEdgeIds.length > 0) continue;
+// WebSocket server for sync
+const wss = new WebSocketServer({ server, path: '/ws/sync' });
 
-    const oldTodoIds = Array.isArray(plan.nodeIds)
-      ? (plan.nodeIds as string[])
-      : (typeof plan.nodeIds === 'string' ? JSON.parse(plan.nodeIds as string) : []);
-    const nodeIds = Array.isArray(oldTodoIds) ? [...oldTodoIds] : [];
-    const nodeIdSet = new Set(nodeIds);
-    const edgeIds = edges
-      .filter((e) => nodeIdSet.has(e.fromTodoId) && nodeIdSet.has(e.toTodoId))
-      .map((e) => e.id);
+wss.on('connection', (ws, req) => {
+  const url = new URL(req.url || '/', `http://${req.headers.host}`);
+  const deviceId = url.searchParams.get('deviceId') || 'unknown';
+  const userId = url.searchParams.get('userId') || deviceId;
+  const channel = url.searchParams.get('channel') || 'default';
 
-    await db.update(schema.plan).set({
-      nodeIds: nodeIds,
-      edgeIds: edgeIds,
-    }).where(eq(schema.plan.id, plan.id));
-    migrated++;
-  }
-
-  fs.writeFileSync(markerPath, new Date().toISOString());
-  console.log(`[migrate] Migrated ${migrated} plans to subgraph shape`);
-}
-
-async function runDataMigrations(): Promise<void> {
-  const markerPath = path.resolve(__dirname, '../.migration-v1-pluse-seconds');
-  if (fs.existsSync(markerPath)) return;
-
-  // Migrate pluse intervals from minutes to seconds
-  const pluses = await db.select().from(schema.pluse);
-  for (const pluse of pluses) {
-    const intervals = Array.isArray(pluse.intervals) ? (pluse.intervals as number[]) : [];
-    if (intervals.length > 0) {
-      const newIntervals = intervals.map((d: number) => d * 60);
-      await db.update(schema.pluse).set({ intervals: newIntervals }).where(eq(schema.pluse.id, pluse.id));
+  // Verify token if required
+  if (API_TOKEN) {
+    const token = url.searchParams.get('token');
+    if (!token || token !== API_TOKEN) {
+      ws.close(1008, 'Unauthorized');
+      return;
     }
   }
 
-  fs.writeFileSync(markerPath, new Date().toISOString());
-  console.log(`Migrated ${pluses.length} pluses to seconds`);
-}
+  console.log(`[ws] Client connected: ${deviceId}`);
 
-/* ---------- System task seeding ---------- */
+  // Register the connection with sync handler
+  syncHandler.connect(deviceId, {
+    id: deviceId,
+    send: (data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    },
+    onClose: (cb) => {
+      ws.on('close', cb);
+    },
+  });
 
-const SYSTEM_TASKS = [
-  { id: 'system:day-startup', title: 'Day Startup Plan', description: 'Plan your day and set priorities', scheduledTime: '06:00' },
-  { id: 'system:morning-summary', title: 'Morning Summary', description: 'Review morning progress and adjust plans', scheduledTime: '12:00' },
-  { id: 'system:afternoon-startup', title: 'Afternoon Startup Plan', description: 'Plan afternoon tasks and refocus', scheduledTime: '13:00' },
-  { id: 'system:afternoon-summary', title: 'Afternoon Summary', description: 'Review afternoon progress and plan evening', scheduledTime: '17:00' },
-  { id: 'system:evening-startup', title: 'Evening Startup', description: 'Review day and plan evening tasks', scheduledTime: '19:00' },
-  { id: 'system:evening-summary', title: 'Evening Summary', description: 'Reflect on the day and prepare for tomorrow', scheduledTime: '21:30' },
-];
+  // Subscribe to channel
+  syncHandler.subscribe(deviceId, userId, channel);
 
-async function seedSystemTasks(): Promise<void> {
-  const existing = await db.select().from(schema.todo).where(eq(schema.todo.isSystemTask, true));
-  const existingIds = new Set(existing.map((t) => t.id));
+  // Handle incoming messages
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data.toString());
+      syncHandler.handleMessage(deviceId, data.toString());
+    } catch (err) {
+      console.error('[ws] Failed to parse message:', err);
+    }
+  });
 
-  const now = new Date();
-  const scheduledDate = new Date();
-  scheduledDate.setHours(0, 0, 0, 0);
+  ws.on('close', () => {
+    console.log(`[ws] Client disconnected: ${deviceId}`);
+    syncHandler.disconnect(deviceId);
+  });
 
-  for (const task of SYSTEM_TASKS) {
-    if (existingIds.has(task.id)) continue;
+  ws.on('error', (err) => {
+    console.error(`[ws] Error for ${deviceId}:`, err);
+  });
+});
 
-    await db.insert(schema.todo).values({
-      id: task.id,
-      nodeType: 'task',
-      pattern: 'task',
-      title: task.title,
-      description: task.description,
-      status: 'pending',
-      priority: 'medium',
-      estimatedMinutes: 15,
-      tags: [],
-      createdAt: now,
-      updatedAt: now,
-      scheduledDate,
-      repeatRule: { type: 'daily' },
-      order: 0,
-      isSystemTask: true,
+// Start server
+async function start(): Promise<void> {
+  try {
+    server.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`WebSocket server running on ws://localhost:${PORT}/ws/sync`);
     });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
   }
 }
 
-/* ---------- Start ---------- */
-
-const PORT = process.env.PORT || 3001;
-
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+start();

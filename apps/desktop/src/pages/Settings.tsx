@@ -14,9 +14,11 @@ import {
   Zap,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { clearAllData, db } from '../db/database';
+import { clearAllData } from '../db/database';
+import { db } from '../db/drizzle-adapter';
+import { todos, todoRelations, todoLogs, actionEdges, pluses } from '../db/schema';
 import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
-import { processQueue, start, stop } from '../db/syncEngine';
+import { processQueue, start, stop, getSyncStatus } from '../db/syncEngine';
 
 export function Settings() {
   const [saved, setSaved] = useState(false);
@@ -46,14 +48,17 @@ export function Settings() {
       setServerUrl('http://localhost:3001');
     }
 
-    db.syncState.get('lastSyncAt').then((state) => {
-      if (state?.value) setLastSync(new Date(state.value));
-    }).catch(() => {});
+    // Use localStorage for lastSyncAt since syncState is now in the sync engine
+    const lastSyncAt = localStorage.getItem('lastSyncAt');
+    if (lastSyncAt) setLastSync(new Date(lastSyncAt));
 
     const interval = setInterval(() => {
-      db.syncQueue.count().then((count) => {
-        setPendingCount(count);
-      }).catch(() => {});
+      try {
+        const status = getSyncStatus();
+        setPendingCount(status.pendingCount);
+      } catch {
+        // sync engine not started yet
+      }
     }, 2000);
 
     return () => clearInterval(interval);
@@ -129,9 +134,9 @@ export function Settings() {
     setError('');
     try {
       await processQueue();
-      const count = await db.syncQueue.count();
-      setPendingCount(count);
-      if (count === 0) {
+      const status = getSyncStatus();
+      setPendingCount(status.pendingCount);
+      if (status.pendingCount === 0) {
         setSyncStatus('idle');
         setLastSync(new Date());
       } else {
@@ -145,13 +150,17 @@ export function Settings() {
   }
 
   async function handleExport() {
+    const allTodos = await db.select().from(todos);
+    const allRelations = await db.select().from(todoRelations);
+    const allLogs = await db.select().from(todoLogs);
+    const allEdges = await db.select().from(actionEdges);
+    const allPluses = await db.select().from(pluses);
     const data = {
-      todos: await db.todos.toArray(),
-      relations: await db.relations.toArray(),
-      todoLogs: await db.todoLogs.toArray(),
-      actionEdges: await db.actionEdges.toArray(),
-      pluses: await db.pluses.toArray(),
-      timerSessions: await db.timerSessions.toArray(),
+      todos: allTodos,
+      relations: allRelations,
+      todoLogs: allLogs,
+      actionEdges: allEdges,
+      pluses: allPluses,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -168,12 +177,11 @@ export function Settings() {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      if (data.todos) await db.todos.bulkPut(data.todos);
-      if (data.relations) await db.relations.bulkPut(data.relations);
-      if (data.todoLogs) await db.todoLogs.bulkPut(data.todoLogs);
-      if (data.actionEdges) await db.actionEdges.bulkPut(data.actionEdges);
-      if (data.pluses) await db.pluses.bulkPut(data.pluses);
-      if (data.timerSessions) await db.timerSessions.bulkPut(data.timerSessions);
+      if (data.todos) await db.insert(todos).values(data.todos).onConflictDoUpdate({ target: todos.id, set: { title: todos.title } });
+      if (data.relations) await db.insert(todoRelations).values(data.relations).onConflictDoUpdate({ target: todoRelations.id, set: { type: todoRelations.type } });
+      if (data.todoLogs) await db.insert(todoLogs).values(data.todoLogs).onConflictDoUpdate({ target: todoLogs.id, set: { content: todoLogs.content } });
+      if (data.actionEdges) await db.insert(actionEdges).values(data.actionEdges).onConflictDoUpdate({ target: actionEdges.id, set: { type: actionEdges.type } });
+      if (data.pluses) await db.insert(pluses).values(data.pluses).onConflictDoUpdate({ target: pluses.id, set: { name: pluses.name } });
       setError('');
       alert('Import successful');
     } catch (err) {

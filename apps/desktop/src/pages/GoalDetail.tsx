@@ -11,7 +11,9 @@ import {
   PanelRightOpen,
 } from 'lucide-react';
 import { updateTodo, getTodo } from '../db/todos';
-import { db } from '../db/database';
+import { db } from '../db/drizzle-adapter';
+import { todoRelations } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import {
   createRelation,
   updateRelation,
@@ -115,7 +117,8 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
 
   async function handleReconnectRelation(relationId: string, fromTodoId: string, toTodoId: string) {
     if (fromTodoId === toTodoId) return;
-    const relation = await db.relations.get(relationId);
+    const relationRows = await db.select().from(todoRelations).where(eq(todoRelations.id, relationId));
+    const relation = relationRows[0];
     if (!relation) return;
     if (relation.fromTodoId === fromTodoId && relation.toTodoId === toTodoId) return;
 
@@ -124,10 +127,10 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     if (!fromTodo || !toTodo) return;
 
     const allowedTypes = allowedLinkTypesForReconnect(fromTodo, toTodo);
-    if (!allowedTypes.includes(relation.type)) return;
+    if (!allowedTypes.includes(relation.type as TodoRelationType)) return;
 
     await deleteRelation(relationId);
-    await createRelation(fromTodoId, toTodoId, relation.type);
+    await createRelation(fromTodoId, toTodoId, relation.type as TodoRelationType);
     setGraphTick((t) => t + 1);
   }
 

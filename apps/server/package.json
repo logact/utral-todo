@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @utral/types build && pnpm --filter @utral/sync-share build && pnpm --filter @utral/sync-server build",
     "dev": "nodemon --exec 'tsx src/index.ts' --ext ts",
     "build": "tsc",
     "start": "node dist/index.js",
@@ -16,19 +17,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@utral/sync": "workspace:*",
+    "@utral/sync-server": "workspace:*",
+    "@utral/sync-share": "workspace:*",
     "@utral/types": "workspace:*",
+    "better-sqlite3": "^11.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.44.0",
     "express": "^5.1.0",
-    "pg": "^8.16.0"
+    "pg": "^8.16.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.2",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.4",
+    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.0",
     "nodemon": "^3.1.14",
     "tsx": "^4.19.4",

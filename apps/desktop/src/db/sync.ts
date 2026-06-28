@@ -1,12 +1,17 @@
 import { fetch } from '@tauri-apps/plugin-http';
-import { db } from './database';
-import { parseTodo, parseRelation, parseLog, parseActionEdge, parsePluse, parseTimerSession, parsePlan } from './client';
-import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, TimerSession, Plan } from '../types';
+import { db } from './drizzle-adapter';
+import { todos, todoRelations, todoLogs, actionEdges, plans, pluses } from './schema';
+import { eq } from 'drizzle-orm';
+import { parseTodo, parseRelation, parseLog, parseActionEdge, parsePluse, parsePlan } from './client';
+import { todoToRow, relationToRow, todoLogToRow, actionEdgeToRow, planToRow, pluseToRow } from './schema';
+import type { Todo, TodoRelation, TodoLog, ActionEdge, Pluse, Plan } from '../types';
 
 export interface SyncConfig {
   serverUrl: string;
   apiToken?: string;
   remoteOpsEnabled?: boolean;
+  userId?: string;
+  channel?: string;
 }
 
 export interface SyncPayload {
@@ -16,7 +21,6 @@ export interface SyncPayload {
   actionEdges: ActionEdge[];
   plans: Plan[];
   pluses: Pluse[];
-  timerSessions: TimerSession[];
 }
 
 export interface SyncResult {
@@ -28,7 +32,6 @@ export interface SyncResult {
     actionEdges: number;
     plans: number;
     pluses: number;
-    timerSessions: number;
   };
   pushed: {
     todos: number;
@@ -37,7 +40,6 @@ export interface SyncResult {
     actionEdges: number;
     plans: number;
     pluses: number;
-    timerSessions: number;
   };
   error?: string;
 }
@@ -82,15 +84,20 @@ async function syncFetch(path: string, config: SyncConfig, options?: RequestInit
 }
 
 async function exportLocalData(): Promise<SyncPayload> {
+  const allTodos = (await db.select().from(todos)) as any[];
+  const allRelations = (await db.select().from(todoRelations)) as any[];
+  const allLogs = (await db.select().from(todoLogs)) as any[];
+  const allEdges = (await db.select().from(actionEdges)) as any[];
+  const allPlans = (await db.select().from(plans)) as any[];
+  const allPluses = (await db.select().from(pluses)) as any[];
   return {
-    todos: await db.todos.toArray(),
-    relations: await db.relations.toArray(),
-    todoLogs: await db.todoLogs.toArray(),
-    actionEdges: await db.actionEdges.toArray(),
-    plans: await db.plans.toArray(),
-    pluses: await db.pluses.toArray(),
-    timerSessions: await db.timerSessions.toArray(),
-  };
+    todos: allTodos,
+    relations: allRelations,
+    todoLogs: allLogs,
+    actionEdges: allEdges,
+    plans: allPlans,
+    pluses: allPluses,
+  } as unknown as SyncPayload;
 }
 
 function normalizeDates<T>(items: T[]): T[] {
@@ -101,18 +108,14 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
   console.log('[sync] starting legacy full sync to:', config.serverUrl);
   const result: SyncResult = {
     success: false,
-    pulled: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, plans: 0, pluses: 0, timerSessions: 0 },
-    pushed: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, plans: 0, pluses: 0, timerSessions: 0 },
+    pulled: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, plans: 0, pluses: 0 },
+    pushed: { todos: 0, relations: 0, todoLogs: 0, actionEdges: 0, plans: 0, pluses: 0 },
   };
 
   try {
     // 1. Push all local data to server
     console.log('[sync] exporting local data...');
     const localData = await exportLocalData();
-    console.log('[sync] local data:', {
-      todos: localData.todos.length,
-      relations: localData.relations.length,
-    });
     const pushRes = await syncFetch('/api/sync', config, {
       method: 'POST',
       body: JSON.stringify({
@@ -123,7 +126,6 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
         actionEdges: normalizeDates(localData.actionEdges),
         plans: normalizeDates(localData.plans),
         pluses: normalizeDates(localData.pluses),
-        timerSessions: normalizeDates(localData.timerSessions),
       }),
     });
     const pushResult = await pushRes.json() as { accepted: Partial<Record<keyof SyncPayload, number>> };
@@ -137,21 +139,17 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
     const pullRes = await syncFetch('/api/sync', config, { method: 'GET' });
     const remoteData = await pullRes.json() as SyncPayload;
 
-    // 3. Merge remote data into local
-    await db.transaction('rw', [
-      db.todos, db.relations, db.todoLogs,
-      db.actionEdges, db.plans, db.pluses, db.timerSessions,
-    ], async () => {
-      // Merge strategy: remote overwrites local for same IDs
-      // For todos: keep local-only items, overwrite with remote for matching IDs
+    // 3. Merge remote data into local using Drizzle transactions
+    await db.transaction(async (tx) => {
       if (remoteData.todos?.length) {
         for (const item of remoteData.todos) {
           const todo = parseTodo(item);
-          const existing = await db.todos.get(todo.id);
-          if (existing) {
-            await db.todos.update(todo.id, { ...todo });
+          const row = todoToRow(todo);
+          const existing = await tx.select().from(todos).where(eq(todos.id, todo.id));
+          if (existing.length > 0) {
+            await tx.update(todos).set(row as any).where(eq(todos.id, todo.id));
           } else {
-            await db.todos.add(todo);
+            await tx.insert(todos).values(row as any);
           }
         }
         result.pulled.todos = remoteData.todos.length;
@@ -160,11 +158,12 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
       if (remoteData.relations?.length) {
         for (const item of remoteData.relations) {
           const relation = parseRelation(item);
-          const existing = await db.relations.get(relation.id);
-          if (existing) {
-            await db.relations.update(relation.id, { ...relation });
+          const row = relationToRow(relation);
+          const existing = await tx.select().from(todoRelations).where(eq(todoRelations.id, relation.id));
+          if (existing.length > 0) {
+            await tx.update(todoRelations).set(row as any).where(eq(todoRelations.id, relation.id));
           } else {
-            await db.relations.add(relation);
+            await tx.insert(todoRelations).values(row as any);
           }
         }
         result.pulled.relations = remoteData.relations.length;
@@ -173,11 +172,12 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
       if (remoteData.todoLogs?.length) {
         for (const item of remoteData.todoLogs) {
           const log = parseLog(item);
-          const existing = await db.todoLogs.get(log.id);
-          if (existing) {
-            await db.todoLogs.update(log.id, { ...log });
+          const row = todoLogToRow(log);
+          const existing = await tx.select().from(todoLogs).where(eq(todoLogs.id, log.id));
+          if (existing.length > 0) {
+            await tx.update(todoLogs).set(row as any).where(eq(todoLogs.id, log.id));
           } else {
-            await db.todoLogs.add(log);
+            await tx.insert(todoLogs).values(row as any);
           }
         }
         result.pulled.todoLogs = remoteData.todoLogs.length;
@@ -186,11 +186,12 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
       if (remoteData.actionEdges?.length) {
         for (const item of remoteData.actionEdges) {
           const edge = parseActionEdge(item);
-          const existing = await db.actionEdges.get(edge.id);
-          if (existing) {
-            await db.actionEdges.update(edge.id, { ...edge });
+          const row = actionEdgeToRow(edge);
+          const existing = await tx.select().from(actionEdges).where(eq(actionEdges.id, edge.id));
+          if (existing.length > 0) {
+            await tx.update(actionEdges).set(row as any).where(eq(actionEdges.id, edge.id));
           } else {
-            await db.actionEdges.add(edge);
+            await tx.insert(actionEdges).values(row as any);
           }
         }
         result.pulled.actionEdges = remoteData.actionEdges.length;
@@ -199,11 +200,12 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
       if (remoteData.plans?.length) {
         for (const item of remoteData.plans) {
           const plan = parsePlan(item);
-          const existing = await db.plans.get(plan.id);
-          if (existing) {
-            await db.plans.update(plan.id, { ...plan });
+          const row = planToRow(plan);
+          const existing = await tx.select().from(plans).where(eq(plans.id, plan.id));
+          if (existing.length > 0) {
+            await tx.update(plans).set(row as any).where(eq(plans.id, plan.id));
           } else {
-            await db.plans.add(plan);
+            await tx.insert(plans).values(row as any);
           }
         }
         result.pulled.plans = remoteData.plans.length;
@@ -212,37 +214,21 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
       if (remoteData.pluses?.length) {
         for (const item of remoteData.pluses) {
           const pluse = parsePluse(item);
-          const existing = await db.pluses.get(pluse.id);
-          if (existing) {
-            await db.pluses.update(pluse.id, { ...pluse });
+          const row = pluseToRow(pluse);
+          const existing = await tx.select().from(pluses).where(eq(pluses.id, pluse.id));
+          if (existing.length > 0) {
+            await tx.update(pluses).set(row as any).where(eq(pluses.id, pluse.id));
           } else {
-            await db.pluses.add(pluse);
+            await tx.insert(pluses).values(row as any);
           }
         }
         result.pulled.pluses = remoteData.pluses.length;
-      }
-
-      if (remoteData.timerSessions?.length) {
-        for (const item of remoteData.timerSessions) {
-          const session = parseTimerSession(item);
-          const existing = await db.timerSessions.get(session.id);
-          if (existing) {
-            await db.timerSessions.update(session.id, { ...session });
-          } else {
-            await db.timerSessions.add(session);
-          }
-        }
-        result.pulled.timerSessions = remoteData.timerSessions.length;
       }
     });
 
     // Save last sync timestamp
     localStorage.setItem('lastSyncAt', new Date().toISOString());
     result.success = true;
-    console.log('[sync] legacy full sync completed:', {
-      pushed: result.pushed,
-      pulled: result.pulled,
-    });
     return result;
   } catch (err) {
     console.error('[sync] legacy full sync error:', err);

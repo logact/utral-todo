@@ -1,4 +1,4 @@
-import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, TimerSession, Plan, HLCTimestamp } from '../types';
+import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, Plan, HLCTimestamp } from '../types';
 import { newHLC, stringToHLC, dateToHLC } from '../types';
 
 export function parseDate(value: unknown): Date | undefined {
@@ -134,29 +134,12 @@ export function parsePluse(data: unknown): Pluse {
     repeatCount: (p.repeatCount as number) ?? 1,
     intervalTodos,
     autoAdvance: (p.autoAdvance as boolean | undefined) ?? true,
+    timerStatus: (p.timerStatus as Pluse['timerStatus']) ?? 'idle',
+    currentIntervalIndex: (p.currentIntervalIndex as number) ?? 0,
+    startedAt: parseDate(p.startedAt),
+    accumulatedSeconds: (p.accumulatedSeconds as number) ?? 0,
     createdAt,
     updatedAt: p.updatedAt ? parseHLC(p.updatedAt) : createdAt,
-  };
-}
-
-export function parseTimerSession(data: unknown): TimerSession {
-  const s = data as Record<string, unknown>;
-  return {
-    id: s.id as string,
-    type: s.type as TimerSession['type'],
-    name: s.name as string,
-    pluseId: (s.pluseId as string | undefined) ?? undefined,
-    todoId: (s.todoId as string | undefined) ?? undefined,
-    intervals: (s.intervals as number[] | undefined) ?? undefined,
-    repeatCount: (s.repeatCount as number) ?? 1,
-    startedAt: parseDate(s.startedAt)!,
-    pausedAt: parseDate(s.pausedAt),
-    completedAt: parseDate(s.completedAt),
-    currentIndex: (s.currentIndex as number) ?? 0,
-    elapsedSeconds: (s.elapsedSeconds as number) ?? 0,
-    status: s.status as TimerSession['status'],
-    createdAt: parseHLC(s.createdAt),
-    updatedAt: parseHLC(s.updatedAt),
   };
 }
 

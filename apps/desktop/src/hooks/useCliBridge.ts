@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { db } from '../db/database';
+import { db } from '../db/drizzle-adapter';
+import { todos, todoRelations, todoLogs, pluses } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import { clearAllData } from '../db/database';
 import * as todosDb from '../db/todos';
 import * as relationsDb from '../db/relations';
 import * as todoLogsDb from '../db/todoLogs';
@@ -118,7 +121,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       await todosDb.reorderSubTodos(String(args.id), [String(args.id)]);
       // Actually reorderSubTodos takes parentId and orderedIds - this is tricky
       // The bridge will just update the order field directly
-      await db.todos.update(String(args.id), { order: Number(args.order) });
+      await db.update(todos).set({ order: Number(args.order) }).where(eq(todos.id, String(args.id)));
       return { success: true };
     }
     case 'reorder-bulk': {
@@ -186,9 +189,9 @@ async function handleRelations(action: string, args: Record<string, unknown>) {
 async function handleTodoLogs(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'list': {
-      let logs = await db.todoLogs.toArray();
-      if (args.todoId) logs = logs.filter((l) => l.todoId === args.todoId);
-      if (args.type) logs = logs.filter((l) => l.type === args.type);
+      let logs = await db.select().from(todoLogs) as any[];
+      if (args.todoId) logs = logs.filter((l: any) => l.todo_id === args.todoId);
+      if (args.type) logs = logs.filter((l: any) => l.type === args.type);
       return { success: true, data: logs.map(serializeForJson) };
     }
     case 'create': {
@@ -284,85 +287,36 @@ async function handlePluses(action: string, args: Record<string, unknown>) {
   }
 }
 
-// ─── Timer Sessions ─────────────────────────────────────────────────────────
+// ─── Pluse Timers ──────────────────────────────────────────────────────────
 
-async function handleTimerSessions(action: string, args: Record<string, unknown>) {
+async function handlePluseTimers(action: string, args: Record<string, unknown>) {
   switch (action) {
-    case 'list': {
-      const filters: { status?: string; type?: string } = {};
-      if (args.status) filters.status = String(args.status);
-      if (args.type) filters.type = String(args.type);
-      const sessions = await timerSessionsDb.getTimerSessions(Object.keys(filters).length > 0 ? filters : undefined);
-      return { success: true, data: sessions.map(serializeForJson) };
-    }
-    case 'get': {
-      const session = await timerSessionsDb.getTimerSession(String(args.id));
-      return { success: true, data: session ? serializeForJson(session) : null };
-    }
-    case 'create': {
-      const session = await timerSessionsDb.createTimerSession({
-        type: (args.type as 'stopwatch' | 'pluse') ?? 'stopwatch',
-        name: String(args.name ?? 'Timer Session'),
-        pluseId: args.pluseId ? String(args.pluseId) : undefined,
-        todoId: args.todoId ? String(args.todoId) : undefined,
-        intervals: args.intervals ? (Array.isArray(args.intervals) ? (args.intervals as number[]) : JSON.parse(String(args.intervals))) : undefined,
-        repeatCount: args.repeatCount ? Number(args.repeatCount) : 1,
-        status: (args.status as 'running' | 'paused' | 'completed') ?? 'running',
-        currentIndex: args.currentIndex ? Number(args.currentIndex) : 0,
-        elapsedSeconds: args.elapsedSeconds ? Number(args.elapsedSeconds) : 0,
-      });
-      return { success: true, data: serializeForJson(session) };
-    }
-    case 'update': {
-      const updates: Partial<Record<string, unknown>> = {};
-      if (args.name !== undefined) updates.name = String(args.name);
-      if (args.pluseId !== undefined) updates.pluseId = String(args.pluseId) || null;
-      if (args.todoId !== undefined) updates.todoId = String(args.todoId) || null;
-      if (args.intervals !== undefined) updates.intervals = Array.isArray(args.intervals) ? args.intervals : JSON.parse(String(args.intervals));
-      if (args.repeatCount !== undefined) updates.repeatCount = Number(args.repeatCount);
-      if (args.startedAt !== undefined) updates.startedAt = new Date(String(args.startedAt));
-      if (args.pausedAt !== undefined) updates.pausedAt = args.pausedAt ? new Date(String(args.pausedAt)) : null;
-      if (args.completedAt !== undefined) updates.completedAt = args.completedAt ? new Date(String(args.completedAt)) : null;
-      if (args.currentIndex !== undefined) updates.currentIndex = Number(args.currentIndex);
-      if (args.elapsedSeconds !== undefined) updates.elapsedSeconds = Number(args.elapsedSeconds);
-      if (args.status !== undefined) updates.status = String(args.status);
-      await timerSessionsDb.updateTimerSession(String(args.id), updates);
-      return { success: true };
+    case 'active': {
+      const pluse = await timerSessionsDb.getActivePluseTimer();
+      return { success: true, data: pluse ? serializeForJson(pluse) : null };
     }
     case 'start': {
-      await timerSessionsDb.updateTimerSession(String(args.id), {
-        status: 'running',
-        startedAt: new Date(),
-        pausedAt: null,
-      });
-      return { success: true };
+      const pluse = await timerSessionsDb.startPluseTimer(String(args.id));
+      return { success: true, data: serializeForJson(pluse) };
     }
     case 'pause': {
-      const updates: Partial<Record<string, unknown>> = {
-        status: 'paused',
-        pausedAt: new Date(),
-      };
-      if (args.elapsedSeconds !== undefined) updates.elapsedSeconds = Number(args.elapsedSeconds);
-      await timerSessionsDb.updateTimerSession(String(args.id), updates);
-      return { success: true };
+      const accumulatedSeconds = args.accumulatedSeconds ? Number(args.accumulatedSeconds) : 0;
+      const currentIntervalIndex = args.currentIntervalIndex ? Number(args.currentIntervalIndex) : 0;
+      const pluse = await timerSessionsDb.pausePluseTimer(String(args.id), accumulatedSeconds, currentIntervalIndex);
+      return { success: true, data: serializeForJson(pluse) };
     }
     case 'resume': {
-      await timerSessionsDb.updateTimerSession(String(args.id), {
-        status: 'running',
-        pausedAt: null,
-      });
-      return { success: true };
+      const pluse = await timerSessionsDb.resumePluseTimer(String(args.id));
+      return { success: true, data: serializeForJson(pluse) };
     }
     case 'stop': {
-      await timerSessionsDb.updateTimerSession(String(args.id), {
-        status: 'completed',
-        completedAt: new Date(),
-      });
+      await timerSessionsDb.stopPluseTimer(String(args.id));
       return { success: true };
     }
-    case 'delete': {
-      await timerSessionsDb.deleteTimerSession(String(args.id));
-      return { success: true };
+    case 'advance': {
+      const currentIntervalIndex = args.currentIntervalIndex ? Number(args.currentIntervalIndex) : 0;
+      const pluse = await timerSessionsDb.advancePluseTimer(String(args.id), currentIntervalIndex);
+      return { success: true, data: serializeForJson(pluse) };
     }
     default:
       return { error: `Unknown action: ${action}` };
@@ -373,16 +327,7 @@ async function handleTimerSessions(action: string, args: Record<string, unknown>
 
 async function handleAllData(action: string) {
   if (action === 'wipe') {
-    await db.todos.clear();
-    await db.relations.clear();
-    await db.todoLogs.clear();
-    await db.actionEdges.clear();
-    await db.pluses.clear();
-    await db.timerSessions.clear();
-    await db.plans.clear();
-    await db.repeatOccurrences.clear();
-    await db.syncQueue.clear();
-    await db.syncState.clear();
+    await clearAllData();
     return { success: true };
   }
   return { error: `Unknown action: ${action}` };
@@ -391,10 +336,9 @@ async function handleAllData(action: string) {
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
 async function handleStats() {
-  const allTodos = await db.todos.toArray();
-  const allRelations = await db.relations.toArray();
-  const allPluses = await db.pluses.toArray();
-  const allTimers = await db.timerSessions.toArray();
+  const allTodos = await db.select().from(todos);
+  const allRelations = await db.select().from(todoRelations);
+  const allPluses = await db.select().from(pluses);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -412,7 +356,7 @@ async function handleStats() {
     return new Date(t.dueDate) < today;
   }).length;
 
-  const activeTimers = allTimers.filter((t) => t.status === 'running').length;
+  const activeTimers = allPluses.filter((p) => p.timerStatus === 'running').length;
 
   const byStatus: Record<string, number> = {};
   for (const t of allTodos) {
@@ -424,8 +368,7 @@ async function handleStats() {
     data: {
       todos: { total: allTodos.length, byStatus, today: todayCount, overdue: overdueCount },
       relations: { total: allRelations.length },
-      pluses: { total: allPluses.length },
-      timerSessions: { active: activeTimers },
+      pluses: { total: allPluses.length, activeTimers },
     },
   };
 }
@@ -463,8 +406,8 @@ export function useCliBridge() {
             case 'pluses':
               result = await handlePluses(action, args);
               break;
-            case 'timer-sessions':
-              result = await handleTimerSessions(action, args);
+            case 'pluse-timers':
+              result = await handlePluseTimers(action, args);
               break;
             case 'all-data':
               result = await handleAllData(action);

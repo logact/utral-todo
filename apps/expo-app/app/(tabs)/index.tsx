@@ -26,6 +26,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -42,8 +44,9 @@ function formatSeconds(totalSeconds: number): string {
   return `${s}s`;
 }
 
-function formatTime(isoString: string): string {
-  return new Date(isoString).toLocaleTimeString('en-US', {
+function formatTime(date: Date | string): string {
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -355,7 +358,7 @@ function PluseMiniTimer({
               if (completed) {
                 updateTimerSession(sessionRef.current.id, {
                   status: 'completed',
-                  completedAt: new Date().toISOString(),
+                  completedAt: new Date(),
                 }).catch(() => {});
               } else {
                 updateTimerSession(sessionRef.current.id, {
@@ -439,7 +442,7 @@ function PluseMiniTimer({
           intervals: pluse.intervals,
           repeatCount: pluse.repeatCount,
           status: 'running',
-          startedAt: new Date().toISOString(),
+          startedAt: new Date(),
           currentIndex,
           elapsedSeconds,
         });
@@ -670,7 +673,7 @@ export default function TodayScreen() {
     async (todo: Todo) => {
       const now = new Date();
       now.setHours(9, 0, 0, 0);
-      await updateTodoSchedule(todo.id, now.toISOString());
+      await updateTodoSchedule(todo.id, now);
       hapticImpact();
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     },

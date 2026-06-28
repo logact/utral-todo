@@ -23,10 +23,13 @@ import { getAllPluses } from '../db/pluse';
 import { createTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
 import {
-  getTimerSessions,
-  createTimerSession,
-  updateTimerSession,
-  deleteTimerSession,
+  getActivePluseTimer,
+  startPluseTimer,
+  pausePluseTimer,
+  resumePluseTimer,
+  stopPluseTimer,
+  advancePluseTimer,
+  getElapsedSeconds,
 } from '../db/timerSessions';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import {
@@ -332,18 +335,17 @@ function PluseMiniTimer({
 
   // On mount: restore from server
   useEffect(() => {
-    getTimerSessions({ type: 'pluse' }).then((sessions) => {
-      const active = sessions.find((s) => s.pluseId === pluse.id && s.status !== 'completed');
-      if (!active) return;
+    getActivePluseTimer().then((active) => {
+      if (!active || active.id !== pluse.id) return;
 
       setSessionId(active.id);
-      setCurrentIndex(active.currentIndex);
-      setIsRunning(active.status === 'running');
-      setIsCompleted(active.status === 'completed');
+      setCurrentIndex(active.currentIntervalIndex);
+      setIsRunning(active.timerStatus === 'running');
+      setIsCompleted(active.timerStatus === 'idle');
 
-      if (active.status === 'running' && active.startedAt) {
+      if (active.timerStatus === 'running' && active.startedAt) {
         const runningElapsed = Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
-        const totalElapsed = active.elapsedSeconds + runningElapsed;
+        const totalElapsed = active.accumulatedSeconds + runningElapsed;
         // Catch up through completed intervals
         let idx = active.currentIndex;
         let e = totalElapsed;

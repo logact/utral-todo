@@ -1,9 +1,18 @@
-import { db } from './database';
+import { db } from './drizzle-adapter';
+import { todos, todoRelations, plans as plansTable } from './schema';
+import { eq, and, isNotNull, lt, gte } from 'drizzle-orm';
 import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
 import { newHLC, mergeHLC } from '../types';
 import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern, Plan } from '../types';
+import {
+  todoToRow,
+  rowToTodo,
+  planToRow,
+  rowToPlan,
+  rowToRelation,
+} from './schema';
 
 export const ROOT_GOAL_ID = 'system:root-goal';
 
@@ -57,7 +66,7 @@ export async function createTodo(
     targetDate: options?.targetDate,
     goalStatus: nodeType === 'goal' ? (options?.goalStatus ?? 'active') : undefined,
   };
-  await db.todos.add(todo);
+  await db.insert(todos).values(todoToRow(todo) as any);
   onLocalChange('todos', 'create', todo.id).catch(() => {});
   return todo;
 }
@@ -109,21 +118,28 @@ export async function createTask(
 }
 
 export async function getAllTodos(): Promise<Todo[]> {
-  return db.todos.filter((t) => !t.deletedAt).toArray();
+  const rows = await db.select().from(todos).where(isNotNull(todos.deletedAtWall)) as any[];
+  return rows.map(rowToTodo);
 }
 
 export async function getRootTodos(): Promise<Todo[]> {
-  return db.todos.filter((t) => !t.parentId && !t.deletedAt).toArray();
+  const rows = await db.select().from(todos).where(
+    and(isNotNull(todos.deletedAtWall), eq(todos.parentId, null as any))
+  ) as any[];
+  return rows.map(rowToTodo);
 }
 
 export async function getRootGoal(): Promise<Todo | undefined> {
-  return db.todos.filter((t) => t.isRootGoal === true).first();
+  const rows = await db.select().from(todos).where(eq(todos.isRootGoal, true)) as any[];
+  const row = rows[0];
+  return row ? rowToTodo(row) : undefined;
 }
 
 export async function ensureRootGoal(): Promise<Todo> {
-  return db.transaction('rw', db.todos, db.plans, async () => {
-    const existing = await db.todos.get(ROOT_GOAL_ID);
-    if (existing) return existing as Todo;
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(todos).where(eq(todos.id, ROOT_GOAL_ID)) as any[];
+    const existing = rows[0];
+    if (existing) return rowToTodo(existing);
 
     const nodeId = await getOrCreateDeviceId();
     const hlc = newHLC(nodeId);
@@ -139,7 +155,7 @@ export async function ensureRootGoal(): Promise<Todo> {
       createdAt: hlc,
       updatedAt: hlc,
     };
-    await db.todos.add(rootGoal);
+    await tx.insert(todos).values(todoToRow(rootGoal) as any);
     onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
 
     const plan: Plan = {
@@ -152,10 +168,15 @@ export async function ensureRootGoal(): Promise<Todo> {
       createdAt: hlc,
       updatedAt: hlc,
     };
-    await db.plans.add(plan);
+    await tx.insert(plansTable).values(planToRow(plan) as any);
     onLocalChange('plans', 'create', plan.id).catch(() => {});
 
-    await db.todos.update(rootGoal.id, { activePlanId: plan.id, updatedAt: hlc });
+    await tx.update(todos).set({
+      active_plan_id: plan.id,
+      updated_at_wall: hlc.wall,
+      updated_at_counter: hlc.counter,
+      updated_at_node: hlc.node,
+    } as any).where(eq(todos.id, rootGoal.id));
     onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
 
     return { ...rootGoal, activePlanId: plan.id };
@@ -163,20 +184,26 @@ export async function ensureRootGoal(): Promise<Todo> {
 }
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
-  const todos = await db.todos.where('parentId').equals(parentId).filter((t) => !t.deletedAt).toArray();
-  return todos.sort((a, b) => {
+  const rows = await db.select().from(todos).where(
+    and(eq(todos.parentId, parentId), isNotNull(todos.deletedAtWall))
+  ) as any[];
+  const items = rows.map(rowToTodo);
+  return items.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
     return (b.createdAt?.wall ?? 0) - (a.createdAt?.wall ?? 0);
   });
 }
 
 export async function getSubGoals(parentId: string): Promise<Todo[]> {
-  const todos = await db.todos
-    .where('parentId')
-    .equals(parentId)
-    .and((t) => t.nodeType === 'goal' && !t.deletedAt)
-    .toArray();
-  return todos.sort((a, b) => {
+  const rows = await db.select().from(todos).where(
+    and(
+      eq(todos.parentId, parentId),
+      eq(todos.nodeType, 'goal'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  const items = rows.map(rowToTodo);
+  return items.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
     return (b.createdAt?.wall ?? 0) - (a.createdAt?.wall ?? 0);
   });
@@ -198,10 +225,15 @@ export async function traceParentChain(todoId: string): Promise<Todo[]> {
       continue;
     }
 
-    const relations = await db.relations.toArray();
-    const sourceRel = relations.find(
-      (r) => r.toTodoId === currentId && r.type === 'source_from'
-    );
+    const relRows = await db.select().from(todoRelations).where(
+      and(
+        eq(todoRelations.toTodoId, currentId),
+        eq(todoRelations.type, 'source_from'),
+        isNotNull(todoRelations.deletedAtWall)
+      )
+    ) as any[];
+    const relations = relRows.map(rowToRelation);
+    const sourceRel = relations[0];
     if (sourceRel) {
       currentId = sourceRel.fromTodoId;
       continue;
@@ -236,11 +268,17 @@ export async function getTodoDescendants(todoId: string): Promise<Todo[]> {
 export async function reorderSubTodos(_parentId: string, orderedIds: string[]): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
   for (let i = 0; i < orderedIds.length; i++) {
-    const existing = await db.todos.get(orderedIds[i]);
+    const rows = await db.select().from(todos).where(eq(todos.id, orderedIds[i])) as any[];
+    const existing = rows[0] ? rowToTodo(rows[0]) : undefined;
     const mergedUpdatedAt = existing?.updatedAt
       ? mergeHLC(existing.updatedAt, newHLC(nodeId))
       : newHLC(nodeId);
-    await db.todos.update(orderedIds[i], { order: i, updatedAt: mergedUpdatedAt });
+    await db.update(todos).set({
+      order: i,
+      updated_at_wall: mergedUpdatedAt.wall,
+      updated_at_counter: mergedUpdatedAt.counter,
+      updated_at_node: mergedUpdatedAt.node,
+    } as any).where(eq(todos.id, orderedIds[i]));
     onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
@@ -248,21 +286,29 @@ export async function reorderSubTodos(_parentId: string, orderedIds: string[]): 
 export async function reorderTodos(orderedIds: string[]): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
   for (let i = 0; i < orderedIds.length; i++) {
-    const existing = await db.todos.get(orderedIds[i]);
+    const rows = await db.select().from(todos).where(eq(todos.id, orderedIds[i])) as any[];
+    const existing = rows[0] ? rowToTodo(rows[0]) : undefined;
     const mergedUpdatedAt = existing?.updatedAt
       ? mergeHLC(existing.updatedAt, newHLC(nodeId))
       : newHLC(nodeId);
-    await db.todos.update(orderedIds[i], { order: i, updatedAt: mergedUpdatedAt });
+    await db.update(todos).set({
+      order: i,
+      updated_at_wall: mergedUpdatedAt.wall,
+      updated_at_counter: mergedUpdatedAt.counter,
+      updated_at_node: mergedUpdatedAt.node,
+    } as any).where(eq(todos.id, orderedIds[i]));
     onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
 export async function getTodo(id: string): Promise<Todo | undefined> {
-  return db.todos.get(id);
+  const rows = await db.select().from(todos).where(eq(todos.id, id)) as any[];
+  const row = rows[0];
+  return row ? rowToTodo(row) : undefined;
 }
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
-  const existing = await db.todos.get(id);
+  const existing = await getTodo(id);
   if (existing?.isRootGoal) {
     throw new Error('Cannot modify the root goal');
   }
@@ -273,12 +319,14 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  await db.todos.update(id, { ...updates, updatedAt: mergedUpdatedAt });
+  await db.update(todos).set({
+    ...todoToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Todo>),
+  } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }
 
 export async function deleteTodo(id: string): Promise<void> {
-  const todo = await db.todos.get(id);
+  const todo = await getTodo(id);
   if (todo?.isRootGoal) {
     throw new Error('Cannot delete the root goal');
   }
@@ -290,21 +338,32 @@ export async function deleteTodo(id: string): Promise<void> {
   const tombstoneHLC = newHLC(nodeId);
 
   if (todo?.nodeType === 'goal') {
-    const goalPlans = await db.plans.where('goalTodoId').equals(id).toArray();
+    const planRows = await db.select().from(plansTable).where(
+      eq(plansTable.goalTodoId, id)
+    ) as any[];
+    const goalPlans = planRows.map(rowToPlan);
     for (const plan of goalPlans) {
       const mergedPlanUpdatedAt = plan.updatedAt
         ? mergeHLC(plan.updatedAt, tombstoneHLC)
         : tombstoneHLC;
-      await db.plans.update(plan.id, {
-        deletedAt: tombstoneHLC,
-        updatedAt: mergedPlanUpdatedAt,
-      });
+      await db.update(plansTable).set({
+        deleted_at_wall: tombstoneHLC.wall,
+        deleted_at_counter: tombstoneHLC.counter,
+        deleted_at_node: tombstoneHLC.node,
+        updated_at_wall: mergedPlanUpdatedAt.wall,
+        updated_at_counter: mergedPlanUpdatedAt.counter,
+        updated_at_node: mergedPlanUpdatedAt.node,
+      } as any).where(eq(plansTable.id, plan.id));
       onLocalChange('plans', 'delete', plan.id).catch(() => {});
     }
   } else {
-    const plans = await db.plans.toArray();
-    const edges = await db.actionEdges.toArray();
-    for (const plan of plans) {
+    const allPlanRows = await db.select().from(plansTable) as any[];
+    const allPlans = allPlanRows.map(rowToPlan);
+    const allEdgeRows = await db.select().from(
+      (await import('./schema')).actionEdges
+    ) as any[];
+    const edges = allEdgeRows.map((await import('./schema')).rowToActionEdge);
+    for (const plan of allPlans) {
       if (plan.nodeIds.includes(id)) {
         const newNodeIds = plan.nodeIds.filter((tid) => tid !== id);
         const edgeIdsToRemove = new Set(
@@ -317,11 +376,13 @@ export async function deleteTodo(id: string): Promise<void> {
         const mergedPlanUpdatedAt = plan.updatedAt
           ? mergeHLC(plan.updatedAt, tombstoneHLC)
           : tombstoneHLC;
-        await db.plans.update(plan.id, {
-          nodeIds: newNodeIds,
-          edgeIds: newEdgeIds,
-          updatedAt: mergedPlanUpdatedAt,
-        });
+        await db.update(plansTable).set({
+          node_ids: JSON.stringify(newNodeIds),
+          edge_ids: JSON.stringify(newEdgeIds),
+          updated_at_wall: mergedPlanUpdatedAt.wall,
+          updated_at_counter: mergedPlanUpdatedAt.counter,
+          updated_at_node: mergedPlanUpdatedAt.node,
+        } as any).where(eq(plansTable.id, plan.id));
         onLocalChange('plans', 'update', plan.id).catch(() => {});
       }
     }
@@ -330,21 +391,33 @@ export async function deleteTodo(id: string): Promise<void> {
   const mergedUpdatedAt = todo?.updatedAt
     ? mergeHLC(todo.updatedAt, tombstoneHLC)
     : tombstoneHLC;
-  await db.todos.update(id, { deletedAt: tombstoneHLC, updatedAt: mergedUpdatedAt });
+  await db.update(todos).set({
+    deleted_at_wall: tombstoneHLC.wall,
+    deleted_at_counter: tombstoneHLC.counter,
+    deleted_at_node: tombstoneHLC.node,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'delete', id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
-  const existing = await db.todos.get(id);
+  const existing = await getTodo(id);
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  const updates: Partial<Todo> = { status, updatedAt: mergedUpdatedAt };
-  if (status === 'in_progress') updates.startedAt = new Date();
-  if (status === 'pending') updates.startedAt = undefined;
-  if (status === 'done') updates.completedAt = new Date();
-  await db.todos.update(id, updates);
+  const setValues: Record<string, unknown> = {
+    status,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  };
+  if (status === 'in_progress') setValues.started_at = new Date();
+  if (status === 'pending') setValues.started_at = null;
+  if (status === 'done') setValues.completed_at = new Date();
+  await db.update(todos).set(setValues as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }
 
@@ -353,11 +426,16 @@ export async function updateTodoSchedule(
   scheduledDate: Date | undefined
 ): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
-  const existing = await db.todos.get(id);
+  const existing = await getTodo(id);
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  await db.todos.update(id, { scheduledDate, updatedAt: mergedUpdatedAt });
+  await db.update(todos).set({
+    scheduled_date: scheduledDate,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }
 
@@ -370,11 +448,13 @@ export async function getVirtualTodosForDate(date: Date): Promise<Todo[]> {
   const templates = await getRepeatTemplates();
   if (templates.length === 0) return [];
 
-  // Get all occurrences for these templates on this date in one query
   const templateIds = templates.map((t) => t.id);
-  const allOccurrences = await db.repeatOccurrences.toArray();
+  const allOccRows = await db.select().from(
+    (await import('./schema')).repeatOccurrences
+  ) as any[];
+  const allOccurrences = allOccRows.map((await import('./schema')).rowToRepeatOccurrence);
   const dateKey = d.toISOString().split('T')[0];
-  const occurrencesByTemplate = new Map<string, typeof allOccurrences[0]>();
+  const occurrencesByTemplate = new Map<string, (typeof allOccurrences)[0]>();
   for (const o of allOccurrences) {
     if (!templateIds.includes(o.templateId)) continue;
     const oDateKey = new Date(o.date).toISOString().split('T')[0];
@@ -383,7 +463,6 @@ export async function getVirtualTodosForDate(date: Date): Promise<Todo[]> {
     }
   }
 
-  // Get materialized todo IDs for this date
   const materializedIds = new Set<string>();
   for (const o of allOccurrences) {
     const oDateKey = new Date(o.date).toISOString().split('T')[0];
@@ -397,10 +476,8 @@ export async function getVirtualTodosForDate(date: Date): Promise<Todo[]> {
     if (!template.repeatRule) continue;
     if (!dateMatchesRule(d, template.repeatRule)) continue;
 
-    // Check if there's already a materialized todo for this date
     const occurrence = occurrencesByTemplate.get(template.id);
     if (occurrence?.materializedTodoId) {
-      // The materialized todo will be fetched separately
       continue;
     }
 
@@ -420,9 +497,11 @@ export async function getVirtualTodosForDateRange(
   const virtualTodos: Todo[] = [];
   const endTime = new Date(end).setHours(0, 0, 0, 0);
 
-  // Pre-load all occurrences in range
-  const allOccurrences = await db.repeatOccurrences.toArray();
-  const occurrencesByKey = new Map<string, typeof allOccurrences[0]>();
+  const allOccRows = await db.select().from(
+    (await import('./schema')).repeatOccurrences
+  ) as any[];
+  const allOccurrences = allOccRows.map((await import('./schema')).rowToRepeatOccurrence);
+  const occurrencesByKey = new Map<string, (typeof allOccurrences)[0]>();
   for (const o of allOccurrences) {
     const key = `${o.templateId}:${new Date(o.date).toISOString().split('T')[0]}`;
     occurrencesByKey.set(key, o);
@@ -464,17 +543,24 @@ export async function getTodaysTodos(): Promise<Todo[]> {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const realTodos = await db.todos
-    .where('scheduledDate')
-    .between(today, tomorrow)
-    .and((t) => t.nodeType === 'task' && !t.deletedAt)
-    .toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      gte(todos.scheduledDate, today),
+      lt(todos.scheduledDate, tomorrow),
+      eq(todos.nodeType, 'task'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  const realTodos = rows.map(rowToTodo);
 
   const virtualTodos = await getVirtualTodosForDate(today);
 
-  // Filter out virtual todos whose template is already represented by a materialized todo
+  const allOccRows = await db.select().from(
+    (await import('./schema')).repeatOccurrences
+  ) as any[];
+  const allOccurrences = allOccRows.map((await import('./schema')).rowToRepeatOccurrence);
   const materializedIds = new Set(
-    (await db.repeatOccurrences.toArray())
+    allOccurrences
       .filter((o) => {
         const d = new Date(o.date);
         d.setHours(0, 0, 0, 0);
@@ -494,41 +580,67 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const realTodos = await db.todos.where('scheduledDate').between(start, end).filter((t) => !t.deletedAt).toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      gte(todos.scheduledDate, start),
+      lt(todos.scheduledDate, end),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  const realTodos = rows.map(rowToTodo);
   const virtualTodos = await getVirtualTodosForDate(date);
 
-  // Filter out materialized todos from real results (they're already there)
   return [...realTodos, ...virtualTodos];
 }
 
 export async function getUnscheduledTodos(): Promise<Todo[]> {
-  return db.todos
-    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.nodeType === 'task' && !t.deletedAt)
-    .toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      isNotNull(todos.scheduledDate),
+      eq(todos.status, 'done'),
+      eq(todos.nodeType, 'task'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
 }
 
 export async function getOverdueTodos(): Promise<Todo[]> {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  return db.todos
-    .where('dueDate')
-    .below(now)
-    .and((t) => t.status !== 'done' && t.nodeType === 'task' && !t.deletedAt)
-    .toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      lt(todos.dueDate, now),
+      eq(todos.status, 'done'),
+      eq(todos.nodeType, 'task'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  return rows.map(rowToTodo).filter((t) => t.status !== 'done');
 }
 
 export async function getInProgressTodos(): Promise<Todo[]> {
-  return db.todos
-    .where('status')
-    .equals('in_progress')
-    .and((t) => t.nodeType === 'task' && !t.deletedAt)
-    .toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      eq(todos.status, 'in_progress'),
+      eq(todos.nodeType, 'task'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  return rows.map(rowToTodo);
 }
 
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
-  return db.todos
-    .filter((t) => !t.scheduledDate && t.status !== 'done' && t.priority === 'high' && t.nodeType === 'task' && !t.deletedAt)
-    .toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      isNotNull(todos.scheduledDate),
+      eq(todos.status, 'done'),
+      eq(todos.priority, 'high'),
+      eq(todos.nodeType, 'task'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
 }
 
 export async function getTodaysGoals(): Promise<Todo[]> {
@@ -537,25 +649,32 @@ export async function getTodaysGoals(): Promise<Todo[]> {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  return db.todos
-    .filter((t) =>
-      t.nodeType === 'goal' &&
-      !t.deletedAt &&
-      t.targetDate != null &&
-      new Date(t.targetDate) >= today &&
-      new Date(t.targetDate) < tomorrow
+  const rows = await db.select().from(todos).where(
+    and(
+      eq(todos.nodeType, 'goal'),
+      isNotNull(todos.deletedAtWall),
+      isNotNull(todos.targetDate),
+      gte(todos.targetDate, today),
+      lt(todos.targetDate, tomorrow)
     )
-    .toArray();
+  ) as any[];
+  return rows.map(rowToTodo);
 }
 
 export async function getTodosByTag(tag: string): Promise<Todo[]> {
-  return db.todos.filter((t) => t.tags.includes(tag) && !t.deletedAt).toArray();
+  const rows = await db.select().from(todos).where(isNotNull(todos.deletedAtWall)) as any[];
+  return rows.map(rowToTodo).filter((t) => t.tags.includes(tag));
 }
 
 export async function getRepeatTemplates(): Promise<Todo[]> {
-  return db.todos
-    .filter((t) => t.repeatRule !== undefined && t.nodeType === 'task' && !t.deletedAt)
-    .toArray();
+  const rows = await db.select().from(todos).where(
+    and(
+      isNotNull(todos.repeatRule),
+      eq(todos.nodeType, 'task'),
+      isNotNull(todos.deletedAtWall)
+    )
+  ) as any[];
+  return rows.map(rowToTodo);
 }
 
 export async function updateRepeatRule(
@@ -563,10 +682,15 @@ export async function updateRepeatRule(
   rule: RepeatRule | undefined
 ): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
-  const existing = await db.todos.get(id);
+  const existing = await getTodo(id);
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  await db.todos.update(id, { repeatRule: rule, updatedAt: mergedUpdatedAt });
+  await db.update(todos).set({
+    repeat_rule: rule,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }

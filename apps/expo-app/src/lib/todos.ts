@@ -1,11 +1,7 @@
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db, schema } from '../db';
-import type { Todo } from './database';
+import type { Todo } from '@utral/types';
 import { scheduleSyncPush, addPendingChange } from './auto-sync';
-
-function now(): string {
-  return new Date().toISOString();
-}
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -15,14 +11,14 @@ export async function getAllTodos(): Promise<Todo[]> {
   const rows = await db
     .select()
     .from(schema.todos)
-    .where(isNull(schema.todos.deletedAt))
+    .where(isNull(schema.todos.deletedAtWall))
     .orderBy(asc(schema.todos.order));
-  return rows as Todo[];
+  return rows as unknown as Todo[];
 }
 
 export async function getTodo(id: string): Promise<Todo | null> {
   const rows = await db.select().from(schema.todos).where(eq(schema.todos.id, id)).limit(1);
-  return rows.length > 0 ? (rows[0] as Todo) : null;
+  return rows.length > 0 ? (rows[0] as unknown as Todo) : null;
 }
 
 export async function getTodayTodos(): Promise<Todo[]> {
@@ -30,13 +26,12 @@ export async function getTodayTodos(): Promise<Todo[]> {
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const todayStr = today.toISOString();
-  const tomorrowStr = tomorrow.toISOString();
 
   const todos = await getAllTodos();
   return todos.filter((t) => {
     if (t.nodeType !== 'task' || !t.scheduledDate) return false;
-    return t.scheduledDate >= todayStr && t.scheduledDate < tomorrowStr;
+    const schedDate = t.scheduledDate instanceof Date ? t.scheduledDate : new Date(t.scheduledDate);
+    return schedDate >= today && schedDate < tomorrow;
   });
 }
 
@@ -48,12 +43,13 @@ export async function getInProgressTodos(): Promise<Todo[]> {
 export async function getOverdueTodos(): Promise<Todo[]> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString();
 
   const todos = await getAllTodos();
-  return todos.filter(
-    (t) => t.nodeType === 'task' && t.dueDate && t.dueDate < todayStr && t.status !== 'done'
-  );
+  return todos.filter((t) => {
+    if (t.nodeType !== 'task' || !t.dueDate || t.status === 'done') return false;
+    const dueDate = t.dueDate instanceof Date ? t.dueDate : new Date(t.dueDate);
+    return dueDate < today;
+  });
 }
 
 export async function getTodayGoals(): Promise<Todo[]> {
@@ -61,17 +57,13 @@ export async function getTodayGoals(): Promise<Todo[]> {
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const todayStr = today.toISOString();
-  const tomorrowStr = tomorrow.toISOString();
 
   const todos = await getAllTodos();
-  return todos.filter(
-    (t) =>
-      t.nodeType === 'goal' &&
-      t.targetDate != null &&
-      t.targetDate >= todayStr &&
-      t.targetDate < tomorrowStr
-  );
+  return todos.filter((t) => {
+    if (t.nodeType !== 'goal' || !t.targetDate) return false;
+    const targetDate = t.targetDate instanceof Date ? t.targetDate : new Date(t.targetDate);
+    return targetDate >= today && targetDate < tomorrow;
+  });
 }
 
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
@@ -88,14 +80,14 @@ export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
 export async function updateTodoStatus(id: string, status: Todo['status']): Promise<Todo | null> {
   const existing = await getTodo(id);
   if (!existing) return null;
-  const timestamp = now();
+  const now = Date.now();
   const updates: Record<string, unknown> = {
     status,
-    updatedAt: timestamp,
+    updatedAtWall: now,
   };
-  if (status === 'in_progress') updates.startedAt = timestamp;
+  if (status === 'in_progress') updates.startedAt = new Date();
   if (status === 'pending') updates.startedAt = null;
-  if (status === 'done') updates.completedAt = timestamp;
+  if (status === 'done') updates.completedAt = new Date();
 
   await db.update(schema.todos).set(updates).where(eq(schema.todos.id, id));
   addPendingChange('todo', 'update', id);
@@ -103,12 +95,12 @@ export async function updateTodoStatus(id: string, status: Todo['status']): Prom
   return getTodo(id);
 }
 
-export async function updateTodoSchedule(id: string, scheduledDate: string | null): Promise<Todo | null> {
+export async function updateTodoSchedule(id: string, scheduledDate: Date | null): Promise<Todo | null> {
   const existing = await getTodo(id);
   if (!existing) return null;
   await db
     .update(schema.todos)
-    .set({ scheduledDate, updatedAt: now() })
+    .set({ scheduledDate, updatedAtWall: Date.now() })
     .where(eq(schema.todos.id, id));
   addPendingChange('todo', 'update', id);
   scheduleSyncPush();
@@ -117,7 +109,7 @@ export async function updateTodoSchedule(id: string, scheduledDate: string | nul
 
 export async function createTodo(data: Partial<Todo>): Promise<Todo> {
   const id = generateId();
-  const timestamp = now();
+  const now = Date.now();
   const todo = {
     id,
     title: data.title || 'Untitled',
@@ -142,22 +134,27 @@ export async function createTodo(data: Partial<Todo>): Promise<Todo> {
     repeatRule: data.repeatRule || null,
     startedAt: data.startedAt || null,
     completedAt: data.completedAt || null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
+    createdAtWall: now,
+    createdAtCounter: 0,
+    createdAtNode: '',
+    updatedAtWall: now,
+    updatedAtCounter: 0,
+    updatedAtNode: '',
   };
   await db.insert(schema.todos).values(todo);
   addPendingChange('todo', 'create', id);
   scheduleSyncPush();
-  return todo as Todo;
+  return todo as unknown as Todo;
 }
 
 export async function updateTodo(id: string, updates: Partial<Todo>): Promise<Todo | null> {
   const existing = await getTodo(id);
   if (!existing) return null;
-  const { id: _, createdAt: _c, ...updateFields } = updates as any;
+  const { id: _, createdAt: _c, updatedAt: _u, ...updateFields } = updates as any;
+  const now = Date.now();
   await db
     .update(schema.todos)
-    .set({ ...updateFields, updatedAt: now() })
+    .set({ ...updateFields, updatedAtWall: now })
     .where(eq(schema.todos.id, id));
   addPendingChange('todo', 'update', id);
   scheduleSyncPush();
@@ -167,10 +164,10 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<To
 export async function deleteTodo(id: string): Promise<void> {
   const existing = await getTodo(id);
   if (existing) {
-    const timestamp = now();
+    const now = Date.now();
     await db
       .update(schema.todos)
-      .set({ deletedAt: timestamp, updatedAt: timestamp })
+      .set({ deletedAtWall: now, updatedAtWall: now })
       .where(eq(schema.todos.id, id));
     addPendingChange('todo', 'update', id);
     scheduleSyncPush();

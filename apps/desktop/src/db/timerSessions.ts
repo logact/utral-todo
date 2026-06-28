@@ -1,107 +1,128 @@
-import { db } from './database';
+import { db } from './drizzle-adapter';
+import { pluses } from './schema';
+import { eq } from 'drizzle-orm';
 import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { newHLC, mergeHLC } from '../types';
-import type { TimerSession } from '../types';
+import type { Pluse } from '../types';
+import { pluseToRow, rowToPluse } from './schema';
 
-export async function getTimerSessions(filters?: { status?: string; type?: string }): Promise<TimerSession[]> {
-  let query = db.timerSessions.toCollection();
-  if (filters?.status) {
-    query = db.timerSessions.where('status').equals(filters.status);
-  }
-  if (filters?.type) {
-    const all = await query.toArray();
-    return all.filter((s) => s.type === filters.type);
-  }
-  return query.toArray();
+export async function getActivePluseTimer(): Promise<Pluse | undefined> {
+  const rows = await db.select().from(pluses).where(eq(pluses.timerStatus, 'running')) as any[];
+  if (rows.length > 0) return rowToPluse(rows[0]);
+  const paused = await db.select().from(pluses).where(eq(pluses.timerStatus, 'paused')) as any[];
+  return paused.length > 0 ? rowToPluse(paused[0]) : undefined;
 }
 
-export async function getTimerSession(id: string): Promise<TimerSession | undefined> {
-  return db.timerSessions.get(id);
-}
-
-export async function createTimerSession(data: {
-  type: TimerSession['type'];
-  name: string;
-  pluseId?: string;
-  todoId?: string;
-  intervals?: number[];
-  repeatCount?: number;
-  startedAt?: Date;
-  status?: TimerSession['status'];
-  currentIndex?: number;
-  elapsedSeconds?: number;
-}): Promise<TimerSession> {
+export async function startPluseTimer(pluseId: string): Promise<Pluse> {
   const nodeId = await getOrCreateDeviceId();
-  const hlc = newHLC(nodeId);
-  const now = new Date();
-  const session: TimerSession = {
-    id: crypto.randomUUID(),
-    type: data.type,
-    name: data.name,
-    pluseId: data.pluseId,
-    todoId: data.todoId,
-    intervals: data.intervals,
-    repeatCount: data.repeatCount ?? 1,
-    startedAt: data.startedAt ?? now,
-    currentIndex: data.currentIndex ?? 0,
-    elapsedSeconds: data.elapsedSeconds ?? 0,
-    status: data.status ?? 'running',
-    createdAt: hlc,
-    updatedAt: hlc,
-  };
-  await db.timerSessions.add(session);
-  onLocalChange('timerSessions', 'create', session.id).catch(() => {});
-  return session;
-}
-
-export async function updateTimerSession(
-  id: string,
-  data: Partial<{
-    name: string;
-    pluseId: string | null;
-    todoId: string | null;
-    intervals: number[] | null;
-    repeatCount: number;
-    startedAt: Date;
-    pausedAt: Date | null;
-    completedAt: Date | null;
-    currentIndex: number;
-    elapsedSeconds: number;
-    status: TimerSession['status'];
-  }>
-): Promise<TimerSession> {
-  const nodeId = await getOrCreateDeviceId();
-  const existing = await db.timerSessions.get(id);
-  const mergedUpdatedAt = existing?.updatedAt
+  const rows = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  const existing = rows[0] ? rowToPluse(rows[0]) : undefined;
+  if (!existing) throw new Error('Pluse not found');
+  const mergedUpdatedAt = existing.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  const body: Partial<TimerSession> & { updatedAt: typeof mergedUpdatedAt } = { updatedAt: mergedUpdatedAt };
-  if (data.name !== undefined) body.name = data.name;
-  if (data.pluseId !== undefined) body.pluseId = data.pluseId ?? undefined;
-  if (data.todoId !== undefined) body.todoId = data.todoId ?? undefined;
-  if (data.intervals !== undefined) body.intervals = data.intervals ?? undefined;
-  if (data.repeatCount !== undefined) body.repeatCount = data.repeatCount;
-  if (data.startedAt !== undefined) body.startedAt = data.startedAt;
-  if (data.pausedAt !== undefined) body.pausedAt = data.pausedAt ?? undefined;
-  if (data.completedAt !== undefined) body.completedAt = data.completedAt ?? undefined;
-  if (data.currentIndex !== undefined) body.currentIndex = data.currentIndex;
-  if (data.elapsedSeconds !== undefined) body.elapsedSeconds = data.elapsedSeconds;
-  if (data.status !== undefined) body.status = data.status;
-
-  await db.timerSessions.update(id, body);
-  onLocalChange('timerSessions', 'update', id).catch(() => {});
-  const session = await db.timerSessions.get(id);
-  if (!session) throw new Error('Timer session not found');
-  return session;
+  await db.update(pluses).set({
+    timer_status: 'running',
+    started_at: new Date(),
+    accumulated_seconds: 0,
+    current_interval_index: 0,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(pluses.id, pluseId));
+  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+  const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  return rowToPluse(updated[0]);
 }
 
-export async function deleteTimerSession(id: string): Promise<void> {
+export async function pausePluseTimer(pluseId: string, accumulatedSeconds: number, currentIntervalIndex: number): Promise<Pluse> {
   const nodeId = await getOrCreateDeviceId();
-  const hlc = newHLC(nodeId);
-  const existing = await db.timerSessions.get(id);
-  const mergedUpdatedAt = existing?.updatedAt
-    ? mergeHLC(existing.updatedAt, hlc)
-    : hlc;
-  await db.timerSessions.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
-  onLocalChange('timerSessions', 'delete', id).catch(() => {});
+  const rows = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  const existing = rows[0] ? rowToPluse(rows[0]) : undefined;
+  if (!existing) throw new Error('Pluse not found');
+  const mergedUpdatedAt = existing.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.update(pluses).set({
+    timer_status: 'paused',
+    started_at: null,
+    accumulated_seconds: accumulatedSeconds,
+    current_interval_index: currentIntervalIndex,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(pluses.id, pluseId));
+  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+  const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  return rowToPluse(updated[0]);
+}
+
+export async function resumePluseTimer(pluseId: string): Promise<Pluse> {
+  const nodeId = await getOrCreateDeviceId();
+  const rows = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  const existing = rows[0] ? rowToPluse(rows[0]) : undefined;
+  if (!existing) throw new Error('Pluse not found');
+  const mergedUpdatedAt = existing.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.update(pluses).set({
+    timer_status: 'running',
+    started_at: new Date(),
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(pluses.id, pluseId));
+  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+  const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  return rowToPluse(updated[0]);
+}
+
+export async function stopPluseTimer(pluseId: string): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
+  const rows = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  const existing = rows[0] ? rowToPluse(rows[0]) : undefined;
+  if (!existing) throw new Error('Pluse not found');
+  const mergedUpdatedAt = existing.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.update(pluses).set({
+    timer_status: 'idle',
+    started_at: null,
+    accumulated_seconds: 0,
+    current_interval_index: 0,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(pluses.id, pluseId));
+  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+}
+
+export async function advancePluseTimer(pluseId: string, currentIntervalIndex: number): Promise<Pluse> {
+  const nodeId = await getOrCreateDeviceId();
+  const rows = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  const existing = rows[0] ? rowToPluse(rows[0]) : undefined;
+  if (!existing) throw new Error('Pluse not found');
+  const mergedUpdatedAt = existing.updatedAt
+    ? mergeHLC(existing.updatedAt, newHLC(nodeId))
+    : newHLC(nodeId);
+  await db.update(pluses).set({
+    current_interval_index: currentIntervalIndex,
+    accumulated_seconds: 0,
+    started_at: new Date(),
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(pluses.id, pluseId));
+  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+  const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
+  return rowToPluse(updated[0]);
+}
+
+export function getElapsedSeconds(pluse: Pluse): number {
+  if (pluse.timerStatus === 'running' && pluse.startedAt) {
+    const now = Date.now();
+    const started = pluse.startedAt instanceof Date ? pluse.startedAt.getTime() : new Date(pluse.startedAt).getTime();
+    return pluse.accumulatedSeconds + Math.floor((now - started) / 1000);
+  }
+  return pluse.accumulatedSeconds;
 }

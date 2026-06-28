@@ -19,7 +19,10 @@ import { useBigMapViewport } from '../hooks/useBigMapViewport';
 import { computeUnifiedGraphLayout, computeGoalRoadLayout, type LayoutResult } from './BigMapLayout';
 import { getAllTodos, getTodo, createGoal, createTask } from '../db/todos';
 import { getAllRelations, createRelation } from '../db/relations';
-import { db } from '../db/database';
+import { db } from '../db/drizzle-adapter';
+import { todoLogs as todoLogsTable } from '../db/schema';
+import { rowToTodoLog } from '../db/schema';
+import { eq, and } from 'drizzle-orm';
 import type { Todo, TodoRelation, TodoRelationType, TodoLog, NodeType } from '../types';
 import { inferRelationBetween } from '../utils/relations';
 
@@ -221,7 +224,9 @@ export function RoadToGoalGraph({
     const taskIds = allTodos.filter((t) => t.nodeType === 'task').map((t) => t.id);
     const logsPerTask = await Promise.all(
       taskIds.map((id) =>
-        db.todoLogs.where('todoId').equals(id).and((l) => l.type === 'exec').toArray()
+        db.select().from(todoLogsTable).where(
+          and(eq(todoLogsTable.todoId, id), eq(todoLogsTable.type, 'exec'))
+        ).then((rows: any[]) => rows.map(rowToTodoLog))
       )
     );
     setExecLogs(logsPerTask.flat());

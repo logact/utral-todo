@@ -16,6 +16,8 @@
     "build:ios:prod": "eas build --platform ios --profile production"
   },
   "dependencies": {
+    "@utral/sync-client": "workspace:*",
+    "@utral/sync-share": "workspace:*",
     "@utral/types": "workspace:*",
     "@expo/metro-runtime": "^6.1.2",
     "@expo/vector-icons": "^15.0.3",

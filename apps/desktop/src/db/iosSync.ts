@@ -1,4 +1,6 @@
-import { db } from './database';
+import { db } from './drizzle-adapter';
+import { hlcState } from './schema';
+import { eq } from 'drizzle-orm';
 
 interface NativeBridge {
   platform?: string;
@@ -29,9 +31,11 @@ export async function initIOSSync(): Promise<void> {
   // Get native deviceId and store it so syncEngine uses the same ID
   try {
     const nativeDeviceId = await bridge.call('sync', 'getDeviceId') as string;
-    const existing = await db.syncState.get('deviceId');
+    const rows = await db.select().from(hlcState).where(eq(hlcState.key, 'deviceId'));
+    const existing = rows[0];
     if (!existing?.value) {
-      await db.syncState.put({ key: 'deviceId', value: nativeDeviceId });
+      await db.insert(hlcState).values({ key: 'deviceId', value: nativeDeviceId })
+        .onConflictDoUpdate({ target: hlcState.key, set: { value: nativeDeviceId } });
     }
   } catch (err) {
     console.error('[iosSync] Failed to get native deviceId:', err);

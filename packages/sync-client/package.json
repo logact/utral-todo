@@ -1,0 +1,25 @@
+{
+  "name": "@utral/sync-client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@utral/sync-share": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2"
+  }
+}

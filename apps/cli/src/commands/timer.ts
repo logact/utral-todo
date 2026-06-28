@@ -2,109 +2,92 @@ import { type Command } from "commander";
 import { api, handleResponse } from "../client.js";
 import { out } from "../output.js";
 
-interface TimerSession {
+interface Pluse {
   id: string;
-  type: string;
   name: string;
-  pluseId: string | null;
-  todoId: string | null;
-  intervals: number[] | null;
+  description: string;
+  intervals: number[];
   repeatCount: number;
-  startedAt: string;
-  pausedAt: string | null;
-  completedAt: string | null;
-  currentIndex: number;
-  elapsedSeconds: number;
-  status: string;
+  autoAdvance: boolean;
+  timerStatus: 'idle' | 'running' | 'paused';
+  currentIntervalIndex: number;
+  startedAt: string | null;
+  accumulatedSeconds: number;
   createdAt: string;
 }
 
 export function registerTimerCommand(program: Command) {
-  const timer = program.command("timer").description("manage timer sessions");
+  const timer = program.command("timer").description("manage pluse timers");
 
   timer
-    .command("list")
-    .description("list timer sessions")
-    .option("--status <s>", "filter by status")
-    .option("--type <t>", "filter by type")
-    .action(async (opts) => {
-      let path = "/api/timer-sessions";
-      const params = new URLSearchParams();
-      if (opts.status) params.append("status", opts.status);
-      if (opts.type) params.append("type", opts.type);
-      if (params.toString()) path += `?${params.toString()}`;
-
-      const res = await api.get<TimerSession[]>(path);
+    .command("active")
+    .description("get active pluse timer")
+    .action(async () => {
+      const res = await api.get<Pluse>("/api/pluse-timers/active");
       const data = handleResponse(res);
-      if (data) out({ success: true, count: data.length, sessions: data });
+      if (data) out({ success: true, timer: data });
     });
 
   timer
-    .command("get")
-    .description("get a timer session by ID")
-    .argument("<id>", "session ID")
+    .command("start")
+    .description("start a pluse timer")
+    .argument("<id>", "pluse ID")
     .action(async (id: string) => {
-      const res = await api.get<TimerSession>(`/api/timer-sessions/${id}`);
+      const res = await api.post<Pluse>(`/api/pluse-timers/${id}/start`);
       const data = handleResponse(res);
-      if (data) out({ success: true, session: data });
+      if (data) out({ success: true, timer: data });
     });
 
   timer
-    .command("create")
-    .description("create a timer session")
-    .option("--type <t>", "timer type", "default")
-    .option("--name <name>", "session name", "Timer Session")
-    .option("--pluse <id>", "pluse ID")
-    .option("--todo <id>", "todo ID")
-    .option("--intervals <seconds>", "comma-separated intervals")
-    .option("--repeat <count>", "repeat count", "1")
-    .option("--status <s>", "status", "running")
-    .action(async (opts) => {
-      const body: Record<string, unknown> = {
-        type: opts.type,
-        name: opts.name,
-        status: opts.status,
-        repeatCount: parseInt(opts.repeat, 10),
-      };
-      if (opts.pluse) body.pluseId = opts.pluse;
-      if (opts.todo) body.todoId = opts.todo;
-      if (opts.intervals) body.intervals = opts.intervals.split(",").map((s: string) => parseInt(s.trim(), 10));
-
-      const res = await api.post<TimerSession>("/api/timer-sessions", body);
-      const data = handleResponse(res);
-      if (data) out({ success: true, session: data });
-    });
-
-  timer
-    .command("update")
-    .description("update a timer session")
-    .argument("<id>", "session ID")
-    .option("--name <name>", "new name")
-    .option("--status <s>", "new status")
-    .option("--elapsed <seconds>", "elapsed seconds")
-    .option("--current-index <n>", "current interval index")
+    .command("pause")
+    .description("pause a pluse timer")
+    .argument("<id>", "pluse ID")
+    .option("--accumulated <seconds>", "accumulated seconds", "0")
+    .option("--index <n>", "current interval index", "0")
     .action(async (id: string, opts) => {
-      const body: Record<string, unknown> = {};
-      if (opts.name !== undefined) body.name = opts.name;
-      if (opts.status !== undefined) body.status = opts.status;
-      if (opts.elapsed !== undefined) body.elapsedSeconds = parseInt(opts.elapsed, 10);
-      if (opts.currentIndex !== undefined) body.currentIndex = parseInt(opts.currentIndex, 10);
-
-      const res = await api.patch<TimerSession>(`/api/timer-sessions/${id}`, body);
+      const body: Record<string, unknown> = {
+        accumulatedSeconds: parseInt(opts.accumulated, 10),
+        currentIntervalIndex: parseInt(opts.index, 10),
+      };
+      const res = await api.post<Pluse>(`/api/pluse-timers/${id}/pause`, body);
       const data = handleResponse(res);
-      if (data) out({ success: true, session: data });
+      if (data) out({ success: true, timer: data });
     });
 
   timer
-    .command("delete")
-    .description("delete a timer session")
-    .argument("<id>", "session ID")
+    .command("resume")
+    .description("resume a pluse timer")
+    .argument("<id>", "pluse ID")
     .action(async (id: string) => {
-      const res = await api.delete(`/api/timer-sessions/${id}`);
+      const res = await api.post<Pluse>(`/api/pluse-timers/${id}/resume`);
+      const data = handleResponse(res);
+      if (data) out({ success: true, timer: data });
+    });
+
+  timer
+    .command("stop")
+    .description("stop a pluse timer")
+    .argument("<id>", "pluse ID")
+    .action(async (id: string) => {
+      const res = await api.post(`/api/pluse-timers/${id}/stop`);
       if (res.success) {
-        out({ success: true, deleted: id });
+        out({ success: true, stopped: id });
       } else {
         handleResponse(res);
       }
+    });
+
+  timer
+    .command("advance")
+    .description("advance to next interval")
+    .argument("<id>", "pluse ID")
+    .option("--index <n>", "next interval index", "0")
+    .action(async (id: string, opts) => {
+      const body: Record<string, unknown> = {
+        currentIntervalIndex: parseInt(opts.index, 10),
+      };
+      const res = await api.post<Pluse>(`/api/pluse-timers/${id}/advance`, body);
+      const data = handleResponse(res);
+      if (data) out({ success: true, timer: data });
     });
 }

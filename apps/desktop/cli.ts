@@ -355,66 +355,47 @@ async function deletePluse(id: string) {
   if (!quietMode) console.log('Deleted pluse:', id);
 }
 
-// ─── Timer Sessions ─────────────────────────────────────────────────────────
+// ─── Pluse Timers ──────────────────────────────────────────────────────────
 
-async function listTimerSessions(args: Record<string, string | boolean>) {
-  const res = await callCli('timer-sessions', 'list', args);
-  if (res.error) { console.error(res.error); return; }
-  printOutput((res.data as Record<string, unknown>[])?.map((r) => pick(r, ['id', 'name', 'type', 'status', 'elapsedSeconds', 'todoId', 'createdAt'])));
-}
-
-async function getTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'get', { id });
+async function getActivePluseTimer() {
+  const res = await callCli('pluse-timers', 'active', {});
   if (res.error) { console.error(res.error); return; }
   printOutput(res.data);
 }
 
-async function createTimerSession(args: Record<string, string | boolean>) {
-  const res = await callCli('timer-sessions', 'create', args);
+async function startPluseTimer(id: string) {
+  const res = await callCli('pluse-timers', 'start', { id });
   if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Created timer session:', (res.data as Record<string, unknown>)?.id);
+  if (!quietMode) console.log('Started pluse timer:', id);
   printOutput(res.data);
 }
 
-async function updateTimerSession(id: string, args: Record<string, string | boolean>) {
-  const res = await callCli('timer-sessions', 'update', { ...args, id });
+async function pausePluseTimer(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('pluse-timers', 'pause', { id, accumulatedSeconds: args.accumulatedSeconds, currentIntervalIndex: args.currentIntervalIndex });
   if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Updated timer session:', id);
+  if (!quietMode) console.log('Paused pluse timer:', id);
   printOutput(res.data);
 }
 
-async function startTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'start', { id });
+async function resumePluseTimer(id: string) {
+  const res = await callCli('pluse-timers', 'resume', { id });
   if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Started timer session:', id);
+  if (!quietMode) console.log('Resumed pluse timer:', id);
   printOutput(res.data);
 }
 
-async function pauseTimerSession(id: string, args: Record<string, string | boolean>) {
-  const res = await callCli('timer-sessions', 'pause', { id, elapsedSeconds: args.elapsedSeconds });
+async function stopPluseTimer(id: string) {
+  const res = await callCli('pluse-timers', 'stop', { id });
   if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Paused timer session:', id);
+  if (!quietMode) console.log('Stopped pluse timer:', id);
   printOutput(res.data);
 }
 
-async function resumeTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'resume', { id });
+async function advancePluseTimer(id: string, args: Record<string, string | boolean>) {
+  const res = await callCli('pluse-timers', 'advance', { id, currentIntervalIndex: args.currentIntervalIndex });
   if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Resumed timer session:', id);
+  if (!quietMode) console.log('Advanced pluse timer:', id);
   printOutput(res.data);
-}
-
-async function stopTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'stop', { id });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Stopped timer session:', id);
-  printOutput(res.data);
-}
-
-async function deleteTimerSession(id: string) {
-  const res = await callCli('timer-sessions', 'delete', { id });
-  if (res.error) { console.error(res.error); return; }
-  if (!quietMode) console.log('Deleted timer session:', id);
 }
 
 // ─── All Data ───────────────────────────────────────────────────────────────
@@ -490,16 +471,13 @@ Entities & Actions:
     update <id> [--name=...] [--intervals=...]
     delete <id>
 
-  timer-sessions
-    list [--status=...] [--type=...]
-    get <id>
-    create --type=stopwatch|pluse [--name=...] [--pluseId=...]
-    update <id> [--name=...] [--status=...]
-    start <id>
-    pause <id> [--elapsedSeconds=N]
-    resume <id>
-    stop <id>
-    delete <id>
+  pluse-timers
+    active                    Get active pluse timer
+    start <id>                Start pluse timer
+    pause <id> [--accumulatedSeconds=N] [--currentIntervalIndex=N]
+    resume <id>               Resume pluse timer
+    stop <id>                 Stop pluse timer
+    advance <id> [--currentIntervalIndex=N]
 
   stats
     Show overview statistics
@@ -593,17 +571,14 @@ async function main() {
         }
         break;
 
-      case 'timer-sessions':
+      case 'pluse-timers':
         switch (action) {
-          case 'list': await listTimerSessions(args); break;
-          case 'get': if (!id) fail('ID required'); await getTimerSession(id); break;
-          case 'create': await createTimerSession(args); break;
-          case 'update': if (!id) fail('ID required'); await updateTimerSession(id, args); break;
-          case 'start': if (!id) fail('ID required'); await startTimerSession(id); break;
-          case 'pause': if (!id) fail('ID required'); await pauseTimerSession(id, args); break;
-          case 'resume': if (!id) fail('ID required'); await resumeTimerSession(id); break;
-          case 'stop': if (!id) fail('ID required'); await stopTimerSession(id); break;
-          case 'delete': if (!id) fail('ID required'); await deleteTimerSession(id); break;
+          case 'active': await getActivePluseTimer(); break;
+          case 'start': if (!id) fail('ID required'); await startPluseTimer(id); break;
+          case 'pause': if (!id) fail('ID required'); await pausePluseTimer(id, args); break;
+          case 'resume': if (!id) fail('ID required'); await resumePluseTimer(id); break;
+          case 'stop': if (!id) fail('ID required'); await stopPluseTimer(id); break;
+          case 'advance': if (!id) fail('ID required'); await advancePluseTimer(id, args); break;
           default: console.log(usage); process.exit(2);
         }
         break;

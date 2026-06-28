@@ -1,7 +1,10 @@
-import { db } from './database';
+import { db } from './drizzle-adapter';
+import { actionEdges } from './schema';
+import { eq } from 'drizzle-orm';
 import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { ActionEdge, ActionEdgeType } from '../types';
+import { actionEdgeToRow, rowToActionEdge } from './schema';
 
 export async function createActionEdge(
   fromTodoId: string,
@@ -18,20 +21,21 @@ export async function createActionEdge(
     createdAt: hlc,
     updatedAt: hlc,
   };
-  await db.actionEdges.add(edge);
+  await db.insert(actionEdges).values(actionEdgeToRow(edge) as any);
   onLocalChange('actionEdges', 'create', edge.id).catch(() => {});
   return edge;
 }
 
 export async function getAllActionEdges(): Promise<ActionEdge[]> {
-  return db.actionEdges.toArray();
+  const rows = await db.select().from(actionEdges) as any[];
+  return rows.map(rowToActionEdge);
 }
 
 export async function getActionEdgesForTodo(todoId: string): Promise<{
   outgoing: ActionEdge[];
   incoming: ActionEdge[];
 }> {
-  const all = await db.actionEdges.toArray();
+  const all = await getAllActionEdges();
   return {
     outgoing: all.filter((e) => e.fromTodoId === todoId),
     incoming: all.filter((e) => e.toTodoId === todoId),
@@ -39,7 +43,7 @@ export async function getActionEdgesForTodo(todoId: string): Promise<{
 }
 
 export async function getAllActionEdgesForTodo(todoId: string): Promise<ActionEdge[]> {
-  const all = await db.actionEdges.toArray();
+  const all = await getAllActionEdges();
 
   const connected = new Set<string>([todoId]);
   let changed = true;
@@ -64,34 +68,52 @@ export async function updateActionEdge(
   updates: Partial<Pick<ActionEdge, 'type'>>
 ): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
-  const existing = await db.actionEdges.get(id);
+  const rows = await db.select().from(actionEdges).where(eq(actionEdges.id, id)) as any[];
+  const existing = rows[0] ? rowToActionEdge(rows[0]) : undefined;
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  await db.actionEdges.update(id, { ...updates, updatedAt: mergedUpdatedAt });
+  await db.update(actionEdges).set({
+    ...actionEdgeToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<ActionEdge>),
+  } as any).where(eq(actionEdges.id, id));
   onLocalChange('actionEdges', 'update', id).catch(() => {});
 }
 
 export async function deleteActionEdge(id: string): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
   const hlc = newHLC(nodeId);
-  const existing = await db.actionEdges.get(id);
+  const rows = await db.select().from(actionEdges).where(eq(actionEdges.id, id)) as any[];
+  const existing = rows[0] ? rowToActionEdge(rows[0]) : undefined;
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
-  await db.actionEdges.update(id, { deletedAt: hlc, updatedAt: mergedUpdatedAt });
+  await db.update(actionEdges).set({
+    deleted_at_wall: hlc.wall,
+    deleted_at_counter: hlc.counter,
+    deleted_at_node: hlc.node,
+    updated_at_wall: mergedUpdatedAt.wall,
+    updated_at_counter: mergedUpdatedAt.counter,
+    updated_at_node: mergedUpdatedAt.node,
+  } as any).where(eq(actionEdges.id, id));
   onLocalChange('actionEdges', 'delete', id).catch(() => {});
 }
 
 export async function deleteActionEdgesForTodo(todoId: string): Promise<void> {
   const nodeId = await getOrCreateDeviceId();
   const hlc = newHLC(nodeId);
-  const all = await db.actionEdges.toArray();
+  const all = await getAllActionEdges();
   const toDelete = all.filter((e) => e.fromTodoId === todoId || e.toTodoId === todoId);
   for (const edge of toDelete) {
     const mergedUpdatedAt = edge.updatedAt
       ? mergeHLC(edge.updatedAt, hlc)
       : hlc;
-    await db.actionEdges.update(edge.id, { deletedAt: hlc, updatedAt: mergedUpdatedAt }).catch(() => {});
+    await db.update(actionEdges).set({
+      deleted_at_wall: hlc.wall,
+      deleted_at_counter: hlc.counter,
+      deleted_at_node: hlc.node,
+      updated_at_wall: mergedUpdatedAt.wall,
+      updated_at_counter: mergedUpdatedAt.counter,
+      updated_at_node: mergedUpdatedAt.node,
+    } as any).where(eq(actionEdges.id, edge.id)).catch(() => {});
   }
 }

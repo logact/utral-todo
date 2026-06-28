@@ -17,7 +17,9 @@ import {
   getTodaysGoals,
 } from '../db/todos';
 import { setOccurrenceStatus } from '../db/repeatOccurrences';
-import { db } from '../db/database';
+import { db } from '../db/drizzle-adapter';
+import { todos as todosTable, repeatOccurrences } from '../db/schema';
+import { gte } from 'drizzle-orm';
 import {
   isVirtualTodoId,
   parseVirtualTodoId,
@@ -316,10 +318,18 @@ export function useScheduleTodos() {
   const refresh = useCallback(async () => {
     setIsLoading(true);
     const [allScheduled, unscheduled, allTemplates, allOccurrences] = await Promise.all([
-      db.todos.where('scheduledDate').above(new Date(0)).and((t) => t.status !== 'done').toArray(),
+      (async () => {
+        const rows = await db.select().from(todosTable).where(
+          gte(todosTable.scheduledDate, new Date(0))
+        ) as any[];
+        return rows.filter((t: any) => t.status !== 'done');
+      })(),
       getUnscheduledTodos(),
       getRepeatTemplates(),
-      db.repeatOccurrences.toArray(),
+      (async () => {
+        const rows = await db.select().from(repeatOccurrences) as any[];
+        return rows;
+      })(),
     ]);
     setRealTodos([...allScheduled, ...unscheduled]);
     setTemplates(allTemplates);

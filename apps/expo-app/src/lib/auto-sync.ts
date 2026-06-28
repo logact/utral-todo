@@ -9,11 +9,6 @@ const MAX_RETRIES = 3;
 const DEBOUNCE_MS = 2000;
 const RETRY_DELAY_MS = 10000;
 
-function toHLC(isoString: string | null | undefined, deviceId: string) {
-  const wall = isoString ? new Date(isoString).getTime() : Date.now();
-  return { wall, counter: 0, node: deviceId };
-}
-
 // Pending changes queue — only dirty records are pushed
 const pendingChanges: Map<string, any> = new Map();
 
@@ -54,7 +49,7 @@ async function pushToServer(): Promise<void> {
         recordId,
         payload: entry.payload ?? {},
         deviceId,
-        createdAt: toHLC(new Date().toISOString(), deviceId),
+        createdAt: { wall: Date.now(), counter: 0, node: deviceId },
       });
       continue;
     }
@@ -73,11 +68,6 @@ async function pushToServer(): Promise<void> {
           record = rows[0] as Record<string, unknown> | undefined;
           break;
         }
-        case 'timerSession': {
-          const rows = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, recordId)).limit(1);
-          record = rows[0] as Record<string, unknown> | undefined;
-          break;
-        }
       }
     } catch {
       // Record may have been hard-deleted, skip
@@ -86,14 +76,14 @@ async function pushToServer(): Promise<void> {
 
     if (!record) continue;
 
-    const isDeleted = !!record.deletedAt;
+    const isDeleted = !!record.deletedAtWall;
 
     let payload: Record<string, unknown>;
     if (isDeleted) {
       payload = {
-        deletedAtWall: toHLC(record.deletedAt as string, deviceId).wall,
-        deletedAtCounter: 0,
-        deletedAtNode: deviceId,
+        deletedAtWall: record.deletedAtWall ?? Date.now(),
+        deletedAtCounter: record.deletedAtCounter ?? 0,
+        deletedAtNode: record.deletedAtNode ?? deviceId,
       };
     } else {
       switch (table) {
@@ -123,11 +113,12 @@ async function pushToServer(): Promise<void> {
             repeatRule: record.repeatRule,
             tags: record.tags,
             order: record.order,
-            createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
-            versionWall: record.versionWall ?? toHLC(record.updatedAt as string, deviceId).wall,
-            versionCounter: record.versionCounter ?? 0,
-            versionNode: record.versionNode ?? deviceId,
+            createdAtWall: record.createdAtWall ?? Date.now(),
+            createdAtCounter: record.createdAtCounter ?? 0,
+            createdAtNode: record.createdAtNode ?? deviceId,
+            updatedAtWall: record.updatedAtWall ?? Date.now(),
+            updatedAtCounter: record.updatedAtCounter ?? 0,
+            updatedAtNode: record.updatedAtNode ?? deviceId,
           };
           break;
         case 'pluse':
@@ -138,33 +129,16 @@ async function pushToServer(): Promise<void> {
             intervals: record.intervals,
             repeatCount: record.repeatCount,
             autoAdvance: record.autoAdvance,
-            createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
-            versionWall: record.versionWall ?? toHLC(record.updatedAt as string, deviceId).wall,
-            versionCounter: record.versionCounter ?? 0,
-            versionNode: record.versionNode ?? deviceId,
-          };
-          break;
-        case 'timerSession':
-          payload = {
-            id: record.id,
-            type: record.type || 'pluse',
-            pluseId: record.pluseId,
-            todoId: record.todoId,
-            name: record.name,
-            intervals: record.intervals,
-            repeatCount: record.repeatCount,
-            currentIndex: record.currentIndex,
-            elapsedSeconds: record.elapsedSeconds,
-            status: record.status,
+            timerStatus: record.timerStatus,
+            currentIntervalIndex: record.currentIntervalIndex,
             startedAt: record.startedAt,
-            pausedAt: record.pausedAt,
-            completedAt: record.completedAt,
-            createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
-            versionWall: record.versionWall ?? toHLC(record.updatedAt as string, deviceId).wall,
-            versionCounter: record.versionCounter ?? 0,
-            versionNode: record.versionNode ?? deviceId,
+            accumulatedSeconds: record.accumulatedSeconds,
+            createdAtWall: record.createdAtWall ?? Date.now(),
+            createdAtCounter: record.createdAtCounter ?? 0,
+            createdAtNode: record.createdAtNode ?? deviceId,
+            updatedAtWall: record.updatedAtWall ?? Date.now(),
+            updatedAtCounter: record.updatedAtCounter ?? 0,
+            updatedAtNode: record.updatedAtNode ?? deviceId,
           };
           break;
         default:
@@ -178,7 +152,7 @@ async function pushToServer(): Promise<void> {
       recordId,
       payload,
       deviceId,
-      createdAt: toHLC((record.updatedAt as string) ?? new Date().toISOString(), deviceId),
+      createdAt: { wall: (record.updatedAtWall as number) ?? Date.now(), counter: 0, node: deviceId },
     });
   }
 

@@ -11,11 +11,12 @@
     "dev:all": "concurrently \"pnpm dev:server\" \"pnpm dev:desktop\" --names server,vite --prefix-colors cyan,green",
     "dev:expo": "pnpm --filter expo-app start",
     "dev:expo:ios": "pnpm --filter expo-app start --ios",
+    
     "build:expo": "pnpm --filter expo-app typecheck",
     "tauri:dev": "pnpm --filter desktop tauri:dev",
     "tauri:build": "pnpm --filter desktop tauri:build",
     "build": "pnpm -r build",
-    "build:sync": "pnpm --filter @utral/sync build",
+
     "build:desktop": "pnpm --filter desktop build",
     "build:server": "pnpm --filter server build",
     "build:cli": "pnpm --filter cli build",

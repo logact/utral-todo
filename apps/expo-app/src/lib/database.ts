@@ -1,7 +1,9 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db, expoDb, schema } from '../db';
-import type { todos, pluses, timerSessions } from '../db/schema';
 import { queryClient } from './query-client';
+import type { Todo, Pluse, SyncConfig, TodoStatus, PluseTimerStatus } from '@utral/types';
+
+export type { Todo, Pluse, SyncConfig, TodoStatus };
 
 function scheduleSyncPush() {
   import('./auto-sync').then((m) => m.scheduleSyncPush()).catch(() => {});
@@ -11,12 +13,10 @@ function addPendingChange(table: string, operation: 'create' | 'update' | 'delet
   import('./auto-sync').then((m) => m.addPendingChange(table, operation, recordId, payload)).catch(() => {});
 }
 
-export type TodoStatus = 'pending' | 'in_progress' | 'done';
-
 export interface ActiveTimerState {
   pluseId: string;
-  currentIndex: number;
-  elapsedSeconds: number;
+  currentIntervalIndex: number;
+  accumulatedSeconds: number;
   isRunning: boolean;
 }
 
@@ -24,20 +24,10 @@ let activeTimerState: ActiveTimerState | null = null;
 
 export async function setActiveTimerState(state: ActiveTimerState | null) {
   activeTimerState = state;
-  // Store in memory only - no persistent storage needed for ephemeral state
 }
 
 export async function getActiveTimerState(): Promise<ActiveTimerState | null> {
   return activeTimerState;
-}
-
-export type Todo = typeof todos.$inferSelect;
-export type Pluse = typeof pluses.$inferSelect;
-export type TimerSession = typeof timerSessions.$inferSelect;
-
-export interface SyncConfig {
-  serverUrl: string;
-  apiToken?: string;
 }
 
 export interface HLCState {
@@ -69,7 +59,6 @@ export async function getHLCState(): Promise<HLCState> {
   }
   const defaultState = { counter: 0, node: Math.random().toString(36).slice(2, 10), lastSeen: Date.now() };
   await db.insert(schema.hlcState).values({ id: 'default', ...defaultState }).onConflictDoNothing();
-  // Re-read in case another call inserted first
   const rows2 = await db.select().from(schema.hlcState).limit(1);
   if (rows2.length > 0) {
     return { counter: rows2[0].counter, node: rows2[0].node, lastSeen: rows2[0].lastSeen };
@@ -103,100 +92,141 @@ export async function setLastSyncAt(date: Date): Promise<void> {
   await setHLCState({ ...state, lastSeen: date.getTime() });
 }
 
-export async function createTimerSession(data: Partial<TimerSession>): Promise<TimerSession> {
-  const now = new Date().toISOString();
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const session = {
-    id,
-    type: data.type || 'pluse',
-    pluseId: data.pluseId || null,
-    todoId: data.todoId || null,
-    name: data.name || '',
-    intervals: data.intervals || [],
-    repeatCount: data.repeatCount || 1,
-    currentIndex: data.currentIndex || 0,
-    elapsedSeconds: data.elapsedSeconds || 0,
-    status: data.status || 'running' as const,
-    startedAt: data.startedAt || now,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await db.insert(schema.timerSessions).values(session);
-  queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
-  addPendingChange('timerSession', 'create', session.id);
+export async function startPluseTimer(pluseId: string): Promise<Pluse> {
+  const now = Date.now();
+  const deviceId = await getDeviceId();
+  const existing = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
+  if (existing.length === 0) throw new Error('Pluse not found');
+  await db
+    .update(schema.pluses)
+    .set({
+      timerStatus: 'running',
+      startedAt: new Date(),
+      accumulatedSeconds: 0,
+      currentIntervalIndex: 0,
+      updatedAtWall: now,
+      updatedAtNode: deviceId,
+    })
+    .where(eq(schema.pluses.id, pluseId));
+  addPendingChange('pluse', 'update', pluseId);
   scheduleSyncPush();
-  return session as TimerSession;
+  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
+  return updated[0] as unknown as Pluse;
 }
 
-export async function updateTimerSession(
-  id: string,
-  updates: Partial<TimerSession>,
-  skipSync = false
-): Promise<TimerSession | null> {
-  const existing = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
-  if (existing.length === 0) return null;
-  const { id: _, createdAt: _c, ...updateFields } = updates as any;
-  const now = new Date().toISOString();
+export async function pausePluseTimer(pluseId: string, accumulatedSeconds: number, currentIntervalIndex: number): Promise<Pluse> {
+  const now = Date.now();
   const deviceId = await getDeviceId();
   await db
-    .update(schema.timerSessions)
+    .update(schema.pluses)
     .set({
-      ...updateFields,
-      updatedAt: now,
-      versionWall: Date.now(),
-      versionNode: deviceId,
+      timerStatus: 'paused',
+      startedAt: null,
+      accumulatedSeconds,
+      currentIntervalIndex,
+      updatedAtWall: now,
+      updatedAtNode: deviceId,
     })
-    .where(eq(schema.timerSessions.id, id));
-  if (!skipSync) {
-    queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
-    addPendingChange('timerSession', 'update', id);
-    scheduleSyncPush();
-  }
-  const updated = await db.select().from(schema.timerSessions).where(eq(schema.timerSessions.id, id)).limit(1);
-  return updated[0] as TimerSession;
+    .where(eq(schema.pluses.id, pluseId));
+  addPendingChange('pluse', 'update', pluseId);
+  scheduleSyncPush();
+  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
+  return updated[0] as unknown as Pluse;
 }
 
-export async function getActiveTimerSession(): Promise<TimerSession | null> {
+export async function resumePluseTimer(pluseId: string): Promise<Pluse> {
+  const now = Date.now();
+  const deviceId = await getDeviceId();
+  await db
+    .update(schema.pluses)
+    .set({
+      timerStatus: 'running',
+      startedAt: new Date(),
+      updatedAtWall: now,
+      updatedAtNode: deviceId,
+    })
+    .where(eq(schema.pluses.id, pluseId));
+  addPendingChange('pluse', 'update', pluseId);
+  scheduleSyncPush();
+  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
+  return updated[0] as unknown as Pluse;
+}
+
+export async function stopPluseTimer(pluseId: string): Promise<void> {
+  const now = Date.now();
+  const deviceId = await getDeviceId();
+  await db
+    .update(schema.pluses)
+    .set({
+      timerStatus: 'idle',
+      startedAt: null,
+      accumulatedSeconds: 0,
+      currentIntervalIndex: 0,
+      updatedAtWall: now,
+      updatedAtNode: deviceId,
+    })
+    .where(eq(schema.pluses.id, pluseId));
+  addPendingChange('pluse', 'update', pluseId);
+  scheduleSyncPush();
+}
+
+export async function advancePluseTimer(pluseId: string, currentIntervalIndex: number): Promise<Pluse> {
+  const now = Date.now();
+  const deviceId = await getDeviceId();
+  await db
+    .update(schema.pluses)
+    .set({
+      currentIntervalIndex,
+      accumulatedSeconds: 0,
+      startedAt: new Date(),
+      updatedAtWall: now,
+      updatedAtNode: deviceId,
+    })
+    .where(eq(schema.pluses.id, pluseId));
+  addPendingChange('pluse', 'update', pluseId);
+  scheduleSyncPush();
+  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
+  return updated[0] as unknown as Pluse;
+}
+
+export function getElapsedSeconds(pluse: Pluse): number {
+  if (pluse.timerStatus === 'running' && pluse.startedAt) {
+    const now = Date.now();
+    const started = pluse.startedAt instanceof Date ? pluse.startedAt.getTime() : new Date(pluse.startedAt).getTime();
+    return pluse.accumulatedSeconds + Math.floor((now - started) / 1000);
+  }
+  return pluse.accumulatedSeconds;
+}
+
+export async function getActivePluseTimer(): Promise<Pluse | null> {
   const rows = await db
     .select()
-    .from(schema.timerSessions)
+    .from(schema.pluses)
     .where(
       and(
-        isNull(schema.timerSessions.deletedAt),
-        eq(schema.timerSessions.status, 'running')
+        isNull(schema.pluses.deletedAtWall),
+        eq(schema.pluses.timerStatus, 'running')
       )
     )
     .limit(1);
-  if (rows.length > 0) return rows[0] as TimerSession;
+  if (rows.length > 0) return rows[0] as unknown as Pluse;
 
   const paused = await db
     .select()
-    .from(schema.timerSessions)
+    .from(schema.pluses)
     .where(
       and(
-        isNull(schema.timerSessions.deletedAt),
-        eq(schema.timerSessions.status, 'paused')
+        isNull(schema.pluses.deletedAtWall),
+        eq(schema.pluses.timerStatus, 'paused')
       )
     )
     .limit(1);
-  return paused.length > 0 ? (paused[0] as TimerSession) : null;
-}
-
-export async function deleteTimerSession(id: string): Promise<void> {
-  addPendingChange('timerSession', 'delete', id, {
-    deletedAtWall: Date.now(),
-    deletedAtCounter: 0,
-    deletedAtNode: await getDeviceId(),
-  });
-  await db.delete(schema.timerSessions).where(eq(schema.timerSessions.id, id));
-  queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
-  scheduleSyncPush();
+  return paused.length > 0 ? (paused[0] as unknown as Pluse) : null;
 }
 
 export async function clearAllData(): Promise<void> {
   expoDb.execSync('DELETE FROM todos');
   expoDb.execSync('DELETE FROM pluses');
-  expoDb.execSync('DELETE FROM timer_sessions');
   expoDb.execSync('DELETE FROM sync_config');
   expoDb.execSync('DELETE FROM hlc_state');
 }

@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSyncConfig } from '../db/sync';
 import { start, stop, getSyncStatus, processQueue } from '../db/syncEngine';
-import { db } from '../db/database';
 
 export function useSync() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'offline' | 'error'>('idle');
@@ -20,17 +19,19 @@ export function useSync() {
       setSyncStatus('error');
     });
 
-    // Poll pending count
+    // Poll pending count from sync engine
     const interval = setInterval(() => {
-      db.syncQueue.count().then((count) => {
-        setPendingCount(count);
+      try {
         const status = getSyncStatus();
-        if (count > 0) {
-          setSyncStatus(status.connected ? 'syncing' : 'offline');
+        setPendingCount(status.pendingCount);
+        if (status.connected) {
+          setSyncStatus(status.pendingCount > 0 ? 'syncing' : 'idle');
         } else {
-          setSyncStatus(status.connected ? 'idle' : 'offline');
+          setSyncStatus('offline');
         }
-      }).catch(() => {});
+      } catch {
+        setSyncStatus('offline');
+      }
     }, 2000);
 
     return () => {

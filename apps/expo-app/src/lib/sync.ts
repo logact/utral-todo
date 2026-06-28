@@ -1,8 +1,6 @@
-import EventSource from 'react-native-sse';
-import { eq } from 'drizzle-orm';
+import { ExpoSyncHandler } from './sync/sync-handler.js';
+import * as SQLite from 'expo-sqlite';
 import { db, expoDb, schema } from '../db';
-import { getAllTodos } from './todos';
-import { getAllPluses } from './pluse';
 import { queryClient } from './query-client';
 import {
   getSyncConfigData,
@@ -21,278 +19,89 @@ export async function setSyncConfig(config: SyncConfig): Promise<void> {
   return setSyncConfigData(config);
 }
 
-async function syncFetch(path: string, options: RequestInit = {}): Promise<any> {
-  const config = await getSyncConfig();
-  if (!config?.serverUrl) throw new Error('Sync server not configured');
+// --- Sync Engine ---
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
-  };
-
-  if (config.apiToken) {
-    headers['Authorization'] = `Bearer ${config.apiToken}`;
-  }
-
-  const url = `${config.serverUrl}${path}`;
-  console.log(`[sync] ${options.method || 'GET'} ${url}`);
-
-  let response: Response;
-  try {
-    response = await fetch(url, { ...options, headers });
-  } catch (e: any) {
-    console.log('[sync] Network error:', e?.message);
-    throw new Error(`Network error: ${e?.message || 'cannot reach server'}`);
-  }
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      const body = await response.text();
-      detail = body.slice(0, 200);
-      console.log(`[sync] Error response ${response.status}:`, detail);
-    } catch {}
-    throw new Error(`Sync failed: ${response.status}${detail ? ` — ${detail}` : ''}`);
-  }
-
-  return response.json();
-}
-
-// Map camelCase server fields to snake_case local fields
-const camelToSnakeMap: Record<string, string> = {
-  nodeType: 'node_type',
-  goalStatus: 'goal_status',
-  estimatedMinutes: 'estimated_minutes',
-  scheduledDate: 'scheduled_date',
-  scheduledEndDate: 'scheduled_end_date',
-  dueDate: 'due_date',
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  deletedAt: 'deleted_at',
-  versionWall: 'version_wall',
-  versionCounter: 'version_counter',
-  versionNode: 'version_node',
-  autoAdvance: 'auto_advance',
-  repeatCount: 'repeat_count',
-  pluseId: 'pluse_id',
-  todoId: 'todo_id',
-  currentIndex: 'current_index',
-  elapsedSeconds: 'elapsed_seconds',
-  startedAt: 'started_at',
-  pausedAt: 'paused_at',
-  completedAt: 'completed_at',
-  parentId: 'parent_id',
-  activePlanId: 'active_plan_id',
-  isRootGoal: 'is_root_goal',
-  isSystemTask: 'is_system_task',
-  repeatRule: 'repeat_rule',
-  successCriteria: 'success_criteria',
-  targetDate: 'target_date',
+const TABLE_NAME_MAP: Record<string, string> = {
+  todos: 'todo',
+  relations: 'todoRelation',
+  todoLogs: 'todoLog',
+  actionEdges: 'actionEdge',
+  plans: 'plan',
+  pluses: 'pluse',
+  repeatOccurrences: 'repeatOccurrence',
 };
 
-function mapServerRecord(record: Record<string, unknown>): Record<string, unknown> {
-  const mapped: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    const mappedKey = camelToSnakeMap[key] || key;
-    mapped[mappedKey] = value;
+const TABLE_ORDER: Record<string, number> = {
+  todos: 0, todo: 0,
+  relations: 1, todoRelation: 1,
+  todoLogs: 2, todoLog: 2,
+  actionEdges: 3, actionEdge: 3,
+  pluses: 4, pluse: 4,
+  repeatOccurrences: 5, repeatOccurrence: 5,
+  plans: 6, plan: 6,
+};
+
+function normalizeServerUrl(url: string): string {
+  let normalized = url.trim();
+  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+    normalized = 'http://' + normalized;
   }
-  return mapped;
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
 }
 
-// Local SQLite column names per table (must match actual CREATE TABLE)
-const todoColumns = new Set([
-  'id', 'title', 'description', 'node_type', 'pattern', 'status', 'priority', 'goal_status',
-  'estimated_minutes', 'scheduled_date', 'scheduled_end_date', 'due_date',
-  'started_at', 'completed_at', 'parent_id', 'active_plan_id',
-  'is_root_goal', 'is_system_task', 'motivation', 'success_criteria', 'target_date',
-  'repeat_rule', 'tags', 'order',
-  'created_at', 'updated_at', 'deleted_at', 'version_wall', 'version_counter', 'version_node',
-]);
-const pluseColumns = new Set([
-  'id', 'name', 'description', 'intervals', 'repeat_count', 'auto_advance',
-  'created_at', 'updated_at', 'deleted_at', 'version_wall', 'version_counter', 'version_node',
-]);
-const timerSessionColumns = new Set([
-  'id', 'type', 'pluse_id', 'todo_id', 'name', 'intervals', 'repeat_count',
-  'current_index', 'elapsed_seconds', 'status', 'started_at', 'paused_at', 'completed_at',
-  'created_at', 'updated_at', 'deleted_at', 'version_wall', 'version_counter', 'version_node',
-]);
+function getWsUrl(httpUrl: string): string {
+  return httpUrl.replace(/^http/, 'ws');
+}
 
-function pickColumns(record: Record<string, unknown>, allowed: Set<string>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (allowed.has(key)) {
-      result[key] = value;
+// --- Singleton Engine ---
+
+let engine: ExpoSyncHandler | null = null;
+
+async function getEngine(): Promise<ExpoSyncHandler> {
+  if (!engine) {
+    const config = await getSyncConfig();
+    if (!config?.serverUrl) {
+      throw new Error('Sync not configured');
     }
+
+    const serverUrl = getWsUrl(normalizeServerUrl(config.serverUrl));
+    const deviceId = await getDeviceId();
+
+    engine = new ExpoSyncHandler({
+      serverUrl,
+      tables: Object.values(TABLE_NAME_MAP),
+      tableOrder: TABLE_ORDER,
+      db: expoDb,
+      deviceId,
+      userId: (config as any).userId || 'default',
+      channel: (config as any).channel || 'default',
+      emitter: {
+        emitRemoteApplied: (table: string, operation: string, recordId: string) => {
+          // Invalidate react-query caches so the UI refreshes
+          if (table === 'todo') {
+            queryClient.invalidateQueries({ queryKey: ['todos'] });
+          } else if (table === 'pluse') {
+            queryClient.invalidateQueries({ queryKey: ['pluses'] });
+          }
+        },
+        emitLocalChanged: () => {},
+      },
+    });
+
+    await engine.init();
   }
-  return result;
+  return engine;
 }
 
-function ensureDates(record: Record<string, unknown>): void {
-  const now = new Date().toISOString();
-  if (typeof record.created_at !== 'string' || !record.created_at) record.created_at = now;
-  if (typeof record.updated_at !== 'string' || !record.updated_at) record.updated_at = now;
-}
-
-function safeJson(value: unknown): string {
-  if (value === null || value === undefined) return '[]';
-  if (typeof value === 'string') return value;
-  return JSON.stringify(value);
-}
+// --- Public API ---
 
 export async function syncAll(): Promise<void> {
-  console.log('[sync] syncAll v5');
-  const config = await getSyncConfig();
-  if (!config?.serverUrl) throw new Error('Sync server not configured');
-
-  // Pull all remote data via legacy GET /api/sync
-  const remote = await syncFetch('/api/sync');
-  console.log('[sync] Pulled from server:', {
-    todos: remote.todos?.length ?? 0,
-    pluses: remote.pluses?.length ?? 0,
-    timerSessions: remote.timerSessions?.length ?? 0,
-  });
-
-  if (remote.todos?.length) {
-    console.log('[sync] First server todo keys:', Object.keys(remote.todos[0]).join(', '));
-    for (const item of remote.todos) {
-      const record = pickColumns(mapServerRecord(item), todoColumns);
-      ensureDates(record);
-      const now = new Date().toISOString();
-      const createdAt = (typeof record.created_at === 'string' && record.created_at) ? record.created_at : now;
-      const updatedAt = (typeof record.updated_at === 'string' && record.updated_at) ? record.updated_at : now;
-      console.log(`[sync] Upserting todo ${record.id}, createdAt=${createdAt}`);
-      const todoValues: Record<string, unknown> = {
-        id: record.id as string,
-        title: (record.title as string) ?? 'Untitled',
-        description: (record.description as string) ?? '',
-        nodeType: (record.node_type as string) ?? 'task',
-        pattern: (record.pattern as string) ?? null,
-        status: (record.status as string) ?? 'pending',
-        priority: (record.priority as string) ?? 'medium',
-        goalStatus: (record.goal_status as string) ?? null,
-        estimatedMinutes: (record.estimated_minutes as number) ?? 0,
-        scheduledDate: (record.scheduled_date as string) ?? null,
-        scheduledEndDate: (record.scheduled_end_date as string) ?? null,
-        dueDate: (record.due_date as string) ?? null,
-        startedAt: (record.started_at as string) ?? null,
-        completedAt: (record.completed_at as string) ?? null,
-        parentId: (record.parent_id as string) ?? null,
-        activePlanId: (record.active_plan_id as string) ?? null,
-        isRootGoal: (record.is_root_goal as boolean) ?? null,
-        isSystemTask: (record.is_system_task as boolean) ?? null,
-        motivation: (record.motivation as string) ?? null,
-        successCriteria: (record.success_criteria as string) ?? null,
-        targetDate: (record.target_date as string) ?? null,
-        repeatRule: record.repeat_rule ?? null,
-        tags: Array.isArray(record.tags) ? record.tags : [],
-        order: (record.order as number) ?? 0,
-        createdAt,
-        updatedAt,
-        deletedAt: (record.deleted_at as string) ?? null,
-        versionWall: (record.version_wall as number) ?? null,
-        versionCounter: (record.version_counter as number) ?? 0,
-        versionNode: (record.version_node as string) ?? null,
-      };
-      await db.insert(schema.todos).values(todoValues as any).onConflictDoUpdate({
-        target: schema.todos.id,
-        set: todoValues as any,
-      });
-    }
-  }
-
-  if (remote.pluses?.length) {
-    for (const item of remote.pluses) {
-      const record = pickColumns(mapServerRecord(item), pluseColumns);
-      ensureDates(record);
-      const now = new Date().toISOString();
-      const createdAt = (typeof record.created_at === 'string' && record.created_at) ? record.created_at : now;
-      const updatedAt = (typeof record.updated_at === 'string' && record.updated_at) ? record.updated_at : now;
-      const pluseValues: Record<string, unknown> = {
-        id: record.id as string,
-        name: (record.name as string) ?? 'Untitled Pluse',
-        description: (record.description as string) ?? '',
-        intervals: Array.isArray(record.intervals) ? record.intervals : [1500],
-        repeatCount: (record.repeat_count as number) ?? 1,
-        autoAdvance: record.auto_advance ? true : false,
-        createdAt,
-        updatedAt,
-        deletedAt: (record.deleted_at as string) ?? null,
-        versionWall: (record.version_wall as number) ?? null,
-        versionCounter: (record.version_counter as number) ?? 0,
-        versionNode: (record.version_node as string) ?? null,
-      };
-      await db.insert(schema.pluses).values(pluseValues as any).onConflictDoUpdate({
-        target: schema.pluses.id,
-        set: pluseValues as any,
-      });
-    }
-  }
-
-  if (remote.timerSessions?.length) {
-    for (const item of remote.timerSessions) {
-      const record = pickColumns(mapServerRecord(item), timerSessionColumns);
-      ensureDates(record);
-      const now = new Date().toISOString();
-      const createdAt = (typeof record.created_at === 'string' && record.created_at) ? record.created_at : now;
-      const updatedAt = (typeof record.updated_at === 'string' && record.updated_at) ? record.updated_at : now;
-      const sessionValues: Record<string, unknown> = {
-        id: record.id as string,
-        type: (record.type as string) ?? 'pluse',
-        pluseId: (record.pluse_id as string) ?? null,
-        todoId: (record.todo_id as string) ?? null,
-        name: (record.name as string) ?? '',
-        intervals: Array.isArray(record.intervals) ? record.intervals : [],
-        repeatCount: (record.repeat_count as number) ?? 1,
-        currentIndex: (record.current_index as number) ?? 0,
-        elapsedSeconds: (record.elapsed_seconds as number) ?? 0,
-        status: (record.status as string) ?? 'running',
-        startedAt: (record.started_at as string) ?? new Date().toISOString(),
-        pausedAt: (record.paused_at as string) ?? null,
-        completedAt: (record.completed_at as string) ?? null,
-        createdAt,
-        updatedAt,
-        deletedAt: (record.deleted_at as string) ?? null,
-        versionWall: (record.version_wall as number) ?? null,
-        versionCounter: (record.version_counter as number) ?? 0,
-        versionNode: (record.version_node as string) ?? null,
-      };
-      await db.insert(schema.timerSessions).values(sessionValues as any).onConflictDoUpdate({
-        target: schema.timerSessions.id,
-        set: sessionValues as any,
-      });
-    }
-  }
-
-  await setLastSyncAt(new Date());
-  queryClient.invalidateQueries({ queryKey: ['todos'] });
-  queryClient.invalidateQueries({ queryKey: ['pluses'] });
-  queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
+  console.log('[sync] syncAll');
+  const engine = await getEngine();
+  await engine.connect();
 }
 
-// --- SSE Real-time Sync ---
-
-interface SyncEvent {
-  id: string;
-  table: string;
-  operation: 'create' | 'update' | 'delete';
-  recordId: string;
-  payload?: Record<string, unknown>;
-  deviceId: string;
-  createdAt: { wall: number; counter: number; node: string };
-}
-
-function compareHLC(
-  a: { wall: number; counter: number; node: string },
-  b: { wall: number; counter: number; node: string },
-): -1 | 0 | 1 {
-  if (a.wall !== b.wall) return a.wall < b.wall ? -1 : 1;
-  if (a.counter !== b.counter) return a.counter < b.counter ? -1 : 1;
-  if (a.node !== b.node) return a.node < b.node ? -1 : 1;
-  return 0;
-}
-
-let sseSource: EventSource | null = null;
+let sseSource: any = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -328,18 +137,17 @@ function scheduleReconnect(): void {
   reconnectDelay = Math.min(reconnectDelay * 2, 30000);
 }
 
-async function applyRemoteEvent(event: SyncEvent): Promise<void> {
+async function applyRemoteEvent(event: any): Promise<void> {
   const { table, operation, recordId, payload } = event;
 
   // Only handle tables that exist in the expo-app
-  if (table !== 'todo' && table !== 'pluse' && table !== 'timerSession') {
+  if (table !== 'todo' && table !== 'pluse') {
     return;
   }
 
   const tableMap = {
     todo: schema.todos,
     pluse: schema.pluses,
-    timerSession: schema.timerSessions,
   } as const;
 
   const drizzleTable = tableMap[table as keyof typeof tableMap];
@@ -347,11 +155,10 @@ async function applyRemoteEvent(event: SyncEvent): Promise<void> {
 
   try {
     if (operation === 'delete') {
-      await db.delete(drizzleTable).where(eq(drizzleTable.id, recordId));
+      await db.delete(drizzleTable).where((drizzleTable as any).id.eq(recordId));
       console.log(`[sync] Applied delete: ${table}/${recordId}`);
       if (table === 'todo') queryClient.invalidateQueries({ queryKey: ['todos'] });
       else if (table === 'pluse') queryClient.invalidateQueries({ queryKey: ['pluses'] });
-      else if (table === 'timerSession') queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
       return;
     }
 
@@ -373,36 +180,16 @@ async function applyRemoteEvent(event: SyncEvent): Promise<void> {
     record['createdAt'] = (typeof createdAt === 'string' && createdAt) ? createdAt : new Date().toISOString();
     const updatedAt = record['updatedAt'];
     record['updatedAt'] = (typeof updatedAt === 'string' && updatedAt) ? updatedAt : new Date().toISOString();
-    if (table === 'timerSession' && !record['type']) {
-      record['type'] = 'pluse';
-    }
 
     console.log(`[sync] Applying ${operation} on ${table}/${recordId}, fields:`, Object.keys(record).join(', '));
 
     // Check if record exists locally
-    const existing = await db.select().from(drizzleTable).where(eq(drizzleTable.id, recordId)).limit(1);
+    const existing = await db.select().from(drizzleTable).where((drizzleTable as any).id.eq(recordId)).limit(1);
 
     if (existing.length > 0) {
-      // HLC conflict resolution: only adopt if remote is newer
-      const remoteHLC = {
-        wall: (data.versionWall as number) ?? 0,
-        counter: (data.versionCounter as number) ?? 0,
-        node: (data.versionNode as string) ?? event.deviceId,
-      };
-      const localHLC = {
-        wall: (existing[0] as any).versionWall ?? 0,
-        counter: (existing[0] as any).versionCounter ?? 0,
-        node: (existing[0] as any).versionNode ?? '',
-      };
-
-      if (compareHLC(remoteHLC, localHLC) <= 0) {
-        // Local is newer or same — skip
-        return;
-      }
-
       // Remove id from update data (can't update primary key)
       const { id: _, ...updateData } = record;
-      await db.update(drizzleTable).set(updateData).where(eq(drizzleTable.id, recordId));
+      await db.update(drizzleTable).set(updateData).where((drizzleTable as any).id.eq(recordId));
       console.log(`[sync] Applied update: ${table}/${recordId}`);
     } else {
       await db.insert(drizzleTable).values(record as any);
@@ -414,8 +201,6 @@ async function applyRemoteEvent(event: SyncEvent): Promise<void> {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     } else if (table === 'pluse') {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
-    } else if (table === 'timerSession') {
-      queryClient.invalidateQueries({ queryKey: ['timerSessions'] });
     }
   } catch (err) {
     console.error(`[sync] Failed to apply ${operation} on ${table}/${recordId}:`, err);
@@ -429,13 +214,26 @@ async function pollEvents(): Promise<void> {
     : new Date(Date.now() - 86400000).toISOString();
 
   try {
-    const result = await syncFetch('/api/sync/events', {
+    const config = await getSyncConfig();
+    if (!config?.serverUrl) return;
+
+    const response = await fetch(`${config.serverUrl}/api/sync/events`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.apiToken ? { 'Authorization': `Bearer ${config.apiToken}` } : {}),
+      },
       body: JSON.stringify({ since }),
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
     if (result.events?.length) {
       for (const event of result.events) {
-        await applyRemoteEvent(event as SyncEvent);
+        await applyRemoteEvent(event);
       }
     }
     await setLastSyncAt(new Date());
@@ -465,6 +263,8 @@ function connectSSE(): void {
     console.log('[sync] Connecting SSE:', sseUrl);
 
     try {
+      // Use EventSource from react-native-sse
+      const EventSource = require('react-native-sse').default;
       sseSource = new EventSource(sseUrl);
     } catch (err) {
       console.error('[sync] Failed to create EventSource:', err);
@@ -477,7 +277,7 @@ function connectSSE(): void {
         const data = JSON.parse(e.data);
         if (data.type === 'delta' && Array.isArray(data.events)) {
           for (const event of data.events) {
-            applyRemoteEvent(event as SyncEvent).catch((err) => {
+            applyRemoteEvent(event).catch((err) => {
               console.error('[sync] Failed to apply delta event:', err);
             });
           }
@@ -485,7 +285,7 @@ function connectSSE(): void {
             setLastSyncAt(new Date()).catch(() => {});
           }
         } else if (data.type === 'event' && data.event) {
-          applyRemoteEvent(data.event as SyncEvent).catch((err) => {
+          applyRemoteEvent(data.event).catch((err) => {
             console.error('[sync] Failed to apply event:', err);
           });
           setLastSyncAt(new Date()).catch(() => {});
