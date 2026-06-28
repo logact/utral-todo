@@ -54,21 +54,24 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 
 export default function App() {
-  useCliBridge();
-  useSync();
+  const [dbReady, setDbReady] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
-    initDatabase().then(() => {
-      ensureRootGoal().catch((err) => {
-        console.error('[App] Failed to ensure root goal:', err);
+    initDatabase()
+      .then(() => {
+        ensureRootGoal().catch((err) => {
+          console.error('[App] Failed to ensure root goal:', err);
+        });
+        setDbReady(true);
+      })
+      .catch((err) => {
+        console.error('[App] Failed to init database:', err);
+        setDbError(String(err));
       });
-    }).catch((err) => {
-      console.error('[App] Failed to init database:', err);
-    });
   }, []);
 
   useEffect(() => {
-    // Initialize iOS-specific sync when running inside the native shell
     initIOSSync().catch((err) => {
       console.error('[App] iOS sync init failed:', err);
     });
@@ -86,6 +89,21 @@ export default function App() {
     }
     initNotifications();
   }, []);
+
+  if (dbError) {
+    return <div className="p-8 text-red-600">Database init failed: {dbError}</div>;
+  }
+
+  if (!dbReady) {
+    return <div className="p-8 text-slate-500">Initializing database...</div>;
+  }
+
+  return <AppInner />;
+}
+
+function AppInner() {
+  useCliBridge();
+  useSync();
 
   return (
     <BrowserRouter basename={isTauri ? '/' : '/desktop'}>

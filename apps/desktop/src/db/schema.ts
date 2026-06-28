@@ -6,6 +6,7 @@ import type {
   ActionEdge,
   Plan,
   Pluse,
+  TimerSession,
   RepeatOccurrence,
   RepeatRule,
   NodeType,
@@ -26,6 +27,7 @@ export type {
   ActionEdge,
   Plan,
   Pluse,
+  TimerSession,
   RepeatOccurrence,
 };
 
@@ -82,9 +84,7 @@ export const todos = sqliteTable('todos', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('todos_node_type_idx').on(table.nodeType),
   index('todos_pattern_idx').on(table.pattern),
@@ -110,9 +110,7 @@ export const todoRelations = sqliteTable('todo_relations', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('todo_relations_from_idx').on(table.fromTodoId),
   index('todo_relations_to_idx').on(table.toTodoId),
@@ -134,9 +132,7 @@ export const todoLogs = sqliteTable('todo_logs', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('todo_logs_todo_id_idx').on(table.todoId),
   index('todo_logs_type_idx').on(table.type),
@@ -155,9 +151,7 @@ export const actionEdges = sqliteTable('action_edges', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('action_edges_from_idx').on(table.fromTodoId),
   index('action_edges_to_idx').on(table.toTodoId),
@@ -179,9 +173,7 @@ export const plans = sqliteTable('plans', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('plans_goal_todo_id_idx').on(table.goalTodoId),
   index('plans_updated_at_idx').on(table.updatedAtWall),
@@ -205,13 +197,38 @@ export const pluses = sqliteTable('pluses', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('pluses_created_at_idx').on(table.createdAtWall),
   index('pluses_updated_at_idx').on(table.updatedAtWall),
   index('pluses_timer_status_idx').on(table.timerStatus),
+]);
+
+export const timerSessions = sqliteTable('timer_sessions', {
+  id: text('id').primaryKey(),
+  type: text('type', { enum: ['stopwatch', 'pluse'] }).notNull(),
+  name: text('name').notNull().default(''),
+  pluseId: text('pluse_id'),
+  todoId: text('todo_id'),
+  intervals: text('intervals', { mode: 'json' }).$type<number[]>(),
+  repeatCount: integer('repeat_count'),
+  currentIndex: integer('current_index').notNull().default(0),
+  elapsedSeconds: integer('elapsed_seconds').notNull().default(0),
+  status: text('status', { enum: ['running', 'paused', 'completed'] }).notNull().default('running'),
+  startedAt: integer('started_at', { mode: 'timestamp' }),
+  pausedAt: integer('paused_at', { mode: 'timestamp' }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('timer_sessions_type_idx').on(table.type),
+  index('timer_sessions_status_idx').on(table.status),
+  index('timer_sessions_pluse_id_idx').on(table.pluseId),
 ]);
 
 export const repeatOccurrences = sqliteTable('repeat_occurrences', {
@@ -227,9 +244,7 @@ export const repeatOccurrences = sqliteTable('repeat_occurrences', {
   updatedAtWall: integer('updated_at_wall'),
   updatedAtCounter: integer('updated_at_counter').notNull().default(0),
   updatedAtNode: text('updated_at_node'),
-  deletedAtWall: integer('deleted_at_wall'),
-  deletedAtCounter: integer('deleted_at_counter'),
-  deletedAtNode: text('deleted_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => [
   index('repeat_occurrences_template_id_idx').on(table.templateId),
   index('repeat_occurrences_date_idx').on(table.date),
@@ -275,7 +290,7 @@ export function rowToTodo(row: Record<string, unknown>): Todo {
     order: (row.order as number) ?? 0,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -307,7 +322,7 @@ export function todoToRow(todo: Partial<Todo>) {
   if (todo.order !== undefined) row.order = todo.order;
   Object.assign(row, objToHlcColumns(todo.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(todo.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(todo.deletedAt, 'deleted_at'));
+  if (todo.isDeleted !== undefined) row.is_deleted = todo.isDeleted;
   return row;
 }
 
@@ -319,7 +334,7 @@ export function rowToRelation(row: Record<string, unknown>): TodoRelation {
     type: row.type as TodoRelationType,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -331,7 +346,7 @@ export function relationToRow(relation: Partial<TodoRelation>) {
   if (relation.type !== undefined) row.type = relation.type;
   Object.assign(row, objToHlcColumns(relation.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(relation.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(relation.deletedAt, 'deleted_at'));
+  if (relation.isDeleted !== undefined) row.is_deleted = relation.isDeleted;
   return row;
 }
 
@@ -345,7 +360,7 @@ export function rowToTodoLog(row: Record<string, unknown>): TodoLog {
     metadata: row.metadata as Record<string, unknown> | undefined,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -359,7 +374,7 @@ export function todoLogToRow(log: Partial<TodoLog>) {
   if (log.metadata !== undefined) row.metadata = log.metadata;
   Object.assign(row, objToHlcColumns(log.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(log.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(log.deletedAt, 'deleted_at'));
+  if (log.isDeleted !== undefined) row.is_deleted = log.isDeleted;
   return row;
 }
 
@@ -371,7 +386,7 @@ export function rowToActionEdge(row: Record<string, unknown>): ActionEdge {
     type: row.type as ActionEdgeType,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -383,7 +398,7 @@ export function actionEdgeToRow(edge: Partial<ActionEdge>) {
   if (edge.type !== undefined) row.type = edge.type;
   Object.assign(row, objToHlcColumns(edge.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(edge.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(edge.deletedAt, 'deleted_at'));
+  if (edge.isDeleted !== undefined) row.is_deleted = edge.isDeleted;
   return row;
 }
 
@@ -397,7 +412,7 @@ export function rowToPlan(row: Record<string, unknown>): Plan {
     isSystemPlan: row.is_system_plan as boolean | undefined,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -411,7 +426,7 @@ export function planToRow(plan: Partial<Plan>) {
   if (plan.isSystemPlan !== undefined) row.is_system_plan = plan.isSystemPlan;
   Object.assign(row, objToHlcColumns(plan.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(plan.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(plan.deletedAt, 'deleted_at'));
+  if (plan.isDeleted !== undefined) row.is_deleted = plan.isDeleted;
   return row;
 }
 
@@ -430,7 +445,7 @@ export function rowToPluse(row: Record<string, unknown>): Pluse {
     accumulatedSeconds: (row.accumulated_seconds as number) ?? 0,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -449,7 +464,7 @@ export function pluseToRow(pluse: Partial<Pluse>) {
   if (pluse.accumulatedSeconds !== undefined) row.accumulated_seconds = pluse.accumulatedSeconds;
   Object.assign(row, objToHlcColumns(pluse.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(pluse.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(pluse.deletedAt, 'deleted_at'));
+  if (pluse.isDeleted !== undefined) row.is_deleted = pluse.isDeleted;
   return row;
 }
 
@@ -463,7 +478,7 @@ export function rowToRepeatOccurrence(row: Record<string, unknown>): RepeatOccur
     materializedTodoId: row.materialized_todo_id as string | undefined,
     createdAt: hlcDateToObj(row, 'created_at')!,
     updatedAt: hlcDateToObj(row, 'updated_at')!,
-    deletedAt: hlcDateToObj(row, 'deleted_at'),
+    isDeleted: (row.is_deleted as boolean) ?? false,
   };
 }
 
@@ -477,6 +492,48 @@ export function repeatOccurrenceToRow(occ: Partial<RepeatOccurrence>) {
   if (occ.materializedTodoId !== undefined) row.materialized_todo_id = occ.materializedTodoId;
   Object.assign(row, objToHlcColumns(occ.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(occ.updatedAt, 'updated_at'));
-  Object.assign(row, objToHlcColumns(occ.deletedAt, 'deleted_at'));
+  if (occ.isDeleted !== undefined) row.is_deleted = occ.isDeleted;
+  return row;
+}
+
+export function rowToTimerSession(row: Record<string, unknown>): TimerSession {
+  return {
+    id: row.id as string,
+    type: row.type as 'stopwatch' | 'pluse',
+    name: row.name as string,
+    pluseId: row.pluse_id as string | undefined,
+    todoId: row.todo_id as string | undefined,
+    intervals: row.intervals as number[] | undefined,
+    repeatCount: row.repeat_count as number | undefined,
+    currentIndex: (row.current_index as number) ?? 0,
+    elapsedSeconds: (row.elapsed_seconds as number) ?? 0,
+    status: row.status as 'running' | 'paused' | 'completed',
+    startedAt: row.started_at as Date | undefined,
+    pausedAt: row.paused_at as Date | undefined,
+    completedAt: row.completed_at as Date | undefined,
+    createdAt: hlcDateToObj(row, 'created_at')!,
+    updatedAt: hlcDateToObj(row, 'updated_at')!,
+    isDeleted: (row.is_deleted as boolean) ?? false,
+  };
+}
+
+export function timerSessionToRow(session: Partial<TimerSession>) {
+  const row: Record<string, unknown> = {};
+  if (session.id !== undefined) row.id = session.id;
+  if (session.type !== undefined) row.type = session.type;
+  if (session.name !== undefined) row.name = session.name;
+  if (session.pluseId !== undefined) row.pluse_id = session.pluseId;
+  if (session.todoId !== undefined) row.todo_id = session.todoId;
+  if (session.intervals !== undefined) row.intervals = session.intervals;
+  if (session.repeatCount !== undefined) row.repeat_count = session.repeatCount;
+  if (session.currentIndex !== undefined) row.current_index = session.currentIndex;
+  if (session.elapsedSeconds !== undefined) row.elapsed_seconds = session.elapsedSeconds;
+  if (session.status !== undefined) row.status = session.status;
+  if (session.startedAt !== undefined) row.started_at = session.startedAt;
+  if (session.pausedAt !== undefined) row.paused_at = session.pausedAt;
+  if (session.completedAt !== undefined) row.completed_at = session.completedAt;
+  Object.assign(row, objToHlcColumns(session.createdAt, 'created_at'));
+  Object.assign(row, objToHlcColumns(session.updatedAt, 'updated_at'));
+  if (session.isDeleted !== undefined) row.is_deleted = session.isDeleted;
   return row;
 }

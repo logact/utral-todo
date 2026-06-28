@@ -17,6 +17,10 @@
     "notification:default",
     "notification:allow-request-permission",
     "notification:allow-is-permission-granted",
-    "notification:allow-notify"
+    "notification:allow-notify",
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select"
   ]
 }

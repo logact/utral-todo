@@ -13,7 +13,7 @@ export function filterTodayScheduled(todos: Todo[]): Todo[] {
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   return todos.filter((t) => {
-    if (t.nodeType !== 'task' || t.deletedAt) return false;
+    if (t.nodeType !== 'task' || t.isDeleted) return false;
     if (!t.scheduledDate) return false;
     const d = new Date(t.scheduledDate);
     return d >= today && d < tomorrow;
@@ -22,7 +22,7 @@ export function filterTodayScheduled(todos: Todo[]): Todo[] {
 
 export function filterInProgress(todos: Todo[]): Todo[] {
   return todos.filter(
-    (t) => t.status === 'in_progress' && t.nodeType === 'task' && !t.deletedAt
+    (t) => t.status === 'in_progress' && t.nodeType === 'task' && !t.isDeleted
   );
 }
 
@@ -33,7 +33,7 @@ export function filterOverdue(todos: Todo[]): Todo[] {
   return todos.filter(
     (t) =>
       t.nodeType === 'task' &&
-      !t.deletedAt &&
+      !t.isDeleted &&
       t.dueDate &&
       new Date(t.dueDate) < today &&
       t.status !== 'done'
@@ -44,7 +44,7 @@ export function filterUnscheduledHighPriority(todos: Todo[]): Todo[] {
   return todos.filter(
     (t) =>
       t.nodeType === 'task' &&
-      !t.deletedAt &&
+      !t.isDeleted &&
       !t.scheduledDate &&
       t.status !== 'done' &&
       t.priority === 'high'
@@ -60,7 +60,7 @@ export function filterTodayGoals(todos: Todo[]): Todo[] {
   return todos.filter(
     (t) =>
       t.nodeType === 'goal' &&
-      !t.deletedAt &&
+      !t.isDeleted &&
       t.targetDate != null &&
       new Date(t.targetDate) >= today &&
       new Date(t.targetDate) < tomorrow

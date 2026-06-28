@@ -1,6 +1,6 @@
 import { db } from './drizzle-adapter';
 import { todos, todoRelations, plans as plansTable } from './schema';
-import { eq, and, isNotNull, lt, gte } from 'drizzle-orm';
+import { eq, and, lt, gte, isNotNull } from 'drizzle-orm';
 import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
@@ -118,13 +118,13 @@ export async function createTask(
 }
 
 export async function getAllTodos(): Promise<Todo[]> {
-  const rows = await db.select().from(todos).where(isNotNull(todos.deletedAtWall)) as any[];
+  const rows = await db.select().from(todos).where(eq(todos.isDeleted, false)) as any[];
   return rows.map(rowToTodo);
 }
 
 export async function getRootTodos(): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
-    and(isNotNull(todos.deletedAtWall), eq(todos.parentId, null as any))
+    and(eq(todos.isDeleted, false), eq(todos.parentId, null as any))
   ) as any[];
   return rows.map(rowToTodo);
 }
@@ -172,10 +172,10 @@ export async function ensureRootGoal(): Promise<Todo> {
     onLocalChange('plans', 'create', plan.id).catch(() => {});
 
     await tx.update(todos).set({
-      active_plan_id: plan.id,
-      updated_at_wall: hlc.wall,
-      updated_at_counter: hlc.counter,
-      updated_at_node: hlc.node,
+      activePlanId: plan.id,
+      updatedAtWall: hlc.wall,
+      updatedAtCounter: hlc.counter,
+      updatedAtNode: hlc.node,
     } as any).where(eq(todos.id, rootGoal.id));
     onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
 
@@ -185,7 +185,7 @@ export async function ensureRootGoal(): Promise<Todo> {
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
-    and(eq(todos.parentId, parentId), isNotNull(todos.deletedAtWall))
+    and(eq(todos.parentId, parentId), eq(todos.isDeleted, false))
   ) as any[];
   const items = rows.map(rowToTodo);
   return items.sort((a, b) => {
@@ -199,7 +199,7 @@ export async function getSubGoals(parentId: string): Promise<Todo[]> {
     and(
       eq(todos.parentId, parentId),
       eq(todos.nodeType, 'goal'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   const items = rows.map(rowToTodo);
@@ -229,7 +229,7 @@ export async function traceParentChain(todoId: string): Promise<Todo[]> {
       and(
         eq(todoRelations.toTodoId, currentId),
         eq(todoRelations.type, 'source_from'),
-        isNotNull(todoRelations.deletedAtWall)
+        eq(todoRelations.isDeleted, false)
       )
     ) as any[];
     const relations = relRows.map(rowToRelation);
@@ -275,9 +275,9 @@ export async function reorderSubTodos(_parentId: string, orderedIds: string[]): 
       : newHLC(nodeId);
     await db.update(todos).set({
       order: i,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
     } as any).where(eq(todos.id, orderedIds[i]));
     onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
@@ -293,9 +293,9 @@ export async function reorderTodos(orderedIds: string[]): Promise<void> {
       : newHLC(nodeId);
     await db.update(todos).set({
       order: i,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
     } as any).where(eq(todos.id, orderedIds[i]));
     onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
@@ -347,12 +347,10 @@ export async function deleteTodo(id: string): Promise<void> {
         ? mergeHLC(plan.updatedAt, tombstoneHLC)
         : tombstoneHLC;
       await db.update(plansTable).set({
-        deleted_at_wall: tombstoneHLC.wall,
-        deleted_at_counter: tombstoneHLC.counter,
-        deleted_at_node: tombstoneHLC.node,
-        updated_at_wall: mergedPlanUpdatedAt.wall,
-        updated_at_counter: mergedPlanUpdatedAt.counter,
-        updated_at_node: mergedPlanUpdatedAt.node,
+        isDeleted: true,
+        updatedAtWall: mergedPlanUpdatedAt.wall,
+        updatedAtCounter: mergedPlanUpdatedAt.counter,
+        updatedAtNode: mergedPlanUpdatedAt.node,
       } as any).where(eq(plansTable.id, plan.id));
       onLocalChange('plans', 'delete', plan.id).catch(() => {});
     }
@@ -377,11 +375,11 @@ export async function deleteTodo(id: string): Promise<void> {
           ? mergeHLC(plan.updatedAt, tombstoneHLC)
           : tombstoneHLC;
         await db.update(plansTable).set({
-          node_ids: JSON.stringify(newNodeIds),
-          edge_ids: JSON.stringify(newEdgeIds),
-          updated_at_wall: mergedPlanUpdatedAt.wall,
-          updated_at_counter: mergedPlanUpdatedAt.counter,
-          updated_at_node: mergedPlanUpdatedAt.node,
+          nodeIds: JSON.stringify(newNodeIds),
+          edgeIds: JSON.stringify(newEdgeIds),
+          updatedAtWall: mergedPlanUpdatedAt.wall,
+          updatedAtCounter: mergedPlanUpdatedAt.counter,
+          updatedAtNode: mergedPlanUpdatedAt.node,
         } as any).where(eq(plansTable.id, plan.id));
         onLocalChange('plans', 'update', plan.id).catch(() => {});
       }
@@ -392,12 +390,10 @@ export async function deleteTodo(id: string): Promise<void> {
     ? mergeHLC(todo.updatedAt, tombstoneHLC)
     : tombstoneHLC;
   await db.update(todos).set({
-    deleted_at_wall: tombstoneHLC.wall,
-    deleted_at_counter: tombstoneHLC.counter,
-    deleted_at_node: tombstoneHLC.node,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
   } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'delete', id).catch(() => {});
 }
@@ -410,13 +406,13 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
     : newHLC(nodeId);
   const setValues: Record<string, unknown> = {
     status,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
   };
-  if (status === 'in_progress') setValues.started_at = new Date();
-  if (status === 'pending') setValues.started_at = null;
-  if (status === 'done') setValues.completed_at = new Date();
+  if (status === 'in_progress') setValues.startedAt = new Date();
+  if (status === 'pending') setValues.startedAt = null;
+  if (status === 'done') setValues.completedAt = new Date();
   await db.update(todos).set(setValues as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }
@@ -431,10 +427,10 @@ export async function updateTodoSchedule(
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(todos).set({
-    scheduled_date: scheduledDate,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
+    scheduledDate: scheduledDate,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
   } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }
@@ -548,7 +544,7 @@ export async function getTodaysTodos(): Promise<Todo[]> {
       gte(todos.scheduledDate, today),
       lt(todos.scheduledDate, tomorrow),
       eq(todos.nodeType, 'task'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   const realTodos = rows.map(rowToTodo);
@@ -584,7 +580,7 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
     and(
       gte(todos.scheduledDate, start),
       lt(todos.scheduledDate, end),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   const realTodos = rows.map(rowToTodo);
@@ -599,7 +595,7 @@ export async function getUnscheduledTodos(): Promise<Todo[]> {
       isNotNull(todos.scheduledDate),
       eq(todos.status, 'done'),
       eq(todos.nodeType, 'task'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
@@ -613,7 +609,7 @@ export async function getOverdueTodos(): Promise<Todo[]> {
       lt(todos.dueDate, now),
       eq(todos.status, 'done'),
       eq(todos.nodeType, 'task'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   return rows.map(rowToTodo).filter((t) => t.status !== 'done');
@@ -624,7 +620,7 @@ export async function getInProgressTodos(): Promise<Todo[]> {
     and(
       eq(todos.status, 'in_progress'),
       eq(todos.nodeType, 'task'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   return rows.map(rowToTodo);
@@ -637,7 +633,7 @@ export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
       eq(todos.status, 'done'),
       eq(todos.priority, 'high'),
       eq(todos.nodeType, 'task'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
@@ -652,7 +648,7 @@ export async function getTodaysGoals(): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
     and(
       eq(todos.nodeType, 'goal'),
-      isNotNull(todos.deletedAtWall),
+      eq(todos.isDeleted, false),
       isNotNull(todos.targetDate),
       gte(todos.targetDate, today),
       lt(todos.targetDate, tomorrow)
@@ -662,7 +658,7 @@ export async function getTodaysGoals(): Promise<Todo[]> {
 }
 
 export async function getTodosByTag(tag: string): Promise<Todo[]> {
-  const rows = await db.select().from(todos).where(isNotNull(todos.deletedAtWall)) as any[];
+  const rows = await db.select().from(todos).where(eq(todos.isDeleted, false)) as any[];
   return rows.map(rowToTodo).filter((t) => t.tags.includes(tag));
 }
 
@@ -671,7 +667,7 @@ export async function getRepeatTemplates(): Promise<Todo[]> {
     and(
       isNotNull(todos.repeatRule),
       eq(todos.nodeType, 'task'),
-      isNotNull(todos.deletedAtWall)
+      eq(todos.isDeleted, false)
     )
   ) as any[];
   return rows.map(rowToTodo);
@@ -687,10 +683,10 @@ export async function updateRepeatRule(
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(todos).set({
-    repeat_rule: rule,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
+    repeatRule: rule,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
   } as any).where(eq(todos.id, id));
   onLocalChange('todos', 'update', id).catch(() => {});
 }

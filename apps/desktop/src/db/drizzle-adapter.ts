@@ -71,9 +71,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS todo_relations (
@@ -87,9 +85,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS todo_logs (
@@ -105,9 +101,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS action_edges (
@@ -121,9 +115,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS plans (
@@ -139,9 +131,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS pluses (
@@ -162,9 +152,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS repeat_occurrences (
@@ -180,9 +168,7 @@ export async function initDatabase() {
       updated_at_wall INTEGER,
       updated_at_counter INTEGER NOT NULL DEFAULT 0,
       updated_at_node TEXT,
-      deleted_at_wall INTEGER,
-      deleted_at_counter INTEGER,
-      deleted_at_node TEXT
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS hlc_state (
@@ -193,6 +179,29 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS sync_config (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS timer_sessions (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      pluse_id TEXT,
+      todo_id TEXT,
+      intervals TEXT,
+      repeat_count INTEGER,
+      current_index INTEGER NOT NULL DEFAULT 0,
+      elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'running',
+      started_at INTEGER,
+      paused_at INTEGER,
+      completed_at INTEGER,
+      created_at_wall INTEGER,
+      created_at_counter INTEGER NOT NULL DEFAULT 0,
+      created_at_node TEXT,
+      updated_at_wall INTEGER,
+      updated_at_counter INTEGER NOT NULL DEFAULT 0,
+      updated_at_node TEXT,
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -235,5 +244,9 @@ export async function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS repeat_occurrences_template_id_idx ON repeat_occurrences(template_id);
     CREATE INDEX IF NOT EXISTS repeat_occurrences_date_idx ON repeat_occurrences(date);
+
+    CREATE INDEX IF NOT EXISTS timer_sessions_type_idx ON timer_sessions(type);
+    CREATE INDEX IF NOT EXISTS timer_sessions_status_idx ON timer_sessions(status);
+    CREATE INDEX IF NOT EXISTS timer_sessions_pluse_id_idx ON timer_sessions(pluse_id);
   `);
 }

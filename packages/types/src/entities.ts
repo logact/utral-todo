@@ -121,6 +121,25 @@ export interface Pluse {
   isDeleted: boolean;
 }
 
+export interface TimerSession {
+  id: string;
+  type: 'stopwatch' | 'pluse';
+  name: string;
+  pluseId?: string;
+  todoId?: string;
+  intervals?: number[];
+  repeatCount?: number;
+  currentIndex: number;
+  elapsedSeconds: number;
+  status: 'running' | 'paused' | 'completed';
+  startedAt?: Date;
+  pausedAt?: Date;
+  completedAt?: Date;
+  createdAt: HLC;
+  updatedAt: HLC;
+  isDeleted: boolean;
+}
+
 export interface Label {
   name: string;
   count: number;

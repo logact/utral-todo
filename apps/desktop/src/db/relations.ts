@@ -1,6 +1,6 @@
 import { db } from './drizzle-adapter';
 import { todoRelations, todos } from './schema';
-import { eq, and, isNotNull } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Todo, TodoRelation, TodoRelationType } from '../types';
@@ -76,7 +76,7 @@ export async function getChildGoals(goalId: string): Promise<Todo[]> {
   const rows = await db.select().from(todoRelations).where(
     and(
       eq(todoRelations.fromTodoId, goalId),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation).filter(
@@ -95,7 +95,7 @@ export async function getParentGoal(goalId: string): Promise<Todo | undefined> {
   const rows = await db.select().from(todoRelations).where(
     and(
       eq(todoRelations.toTodoId, goalId),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation).filter(
@@ -113,7 +113,7 @@ export async function getPreAchieveGoals(goalId: string): Promise<Todo[]> {
     and(
       eq(todoRelations.toTodoId, goalId),
       eq(todoRelations.type, 'ordered_before'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -131,7 +131,7 @@ export async function getTasksForGoal(goalId: string): Promise<Todo[]> {
     and(
       eq(todoRelations.toTodoId, goalId),
       eq(todoRelations.type, 'achieves'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -149,7 +149,7 @@ export async function getGoalsForTask(taskId: string): Promise<Todo[]> {
     and(
       eq(todoRelations.fromTodoId, taskId),
       eq(todoRelations.type, 'achieves'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -167,7 +167,7 @@ export async function getOrderedSuccessors(todoId: string): Promise<Todo[]> {
     and(
       eq(todoRelations.fromTodoId, todoId),
       eq(todoRelations.type, 'ordered_before'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -185,7 +185,7 @@ export async function getOrderedPredecessors(todoId: string): Promise<Todo[]> {
     and(
       eq(todoRelations.toTodoId, todoId),
       eq(todoRelations.type, 'ordered_before'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -223,9 +223,7 @@ export async function deleteRelation(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(todoRelations).set({
-    deleted_at_wall: hlc.wall,
-    deleted_at_counter: hlc.counter,
-    deleted_at_node: hlc.node,
+    is_deleted: true,
     updated_at_wall: mergedUpdatedAt.wall,
     updated_at_counter: mergedUpdatedAt.counter,
     updated_at_node: mergedUpdatedAt.node,
@@ -244,9 +242,7 @@ export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void
       ? mergeHLC(rel.updatedAt, hlc)
       : hlc;
     await db.update(todoRelations).set({
-      deleted_at_wall: hlc.wall,
-      deleted_at_counter: hlc.counter,
-      deleted_at_node: hlc.node,
+      is_deleted: true,
       updated_at_wall: mergedUpdatedAt.wall,
       updated_at_counter: mergedUpdatedAt.counter,
       updated_at_node: mergedUpdatedAt.node,
@@ -271,7 +267,7 @@ export async function traceSourceChain(todoId: string): Promise<Todo[]> {
       const relRows = await db.select().from(todoRelations).where(
         and(
           eq(todoRelations.toTodoId, currentId),
-          isNotNull(todoRelations.deletedAtWall)
+          eq(todoRelations.isDeleted, false)
         )
       ) as any[];
       const relations = relRows.map(rowToRelation).filter(
@@ -284,7 +280,7 @@ export async function traceSourceChain(todoId: string): Promise<Todo[]> {
         and(
           eq(todoRelations.toTodoId, currentId),
           eq(todoRelations.type, 'achieves'),
-          isNotNull(todoRelations.deletedAtWall)
+          eq(todoRelations.isDeleted, false)
         )
       ) as any[];
       const relations = relRows.map(rowToRelation);
@@ -301,7 +297,7 @@ export async function getSpawnedTodos(todoId: string): Promise<Todo[]> {
     and(
       eq(todoRelations.fromTodoId, todoId),
       eq(todoRelations.type, 'source_from'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -319,7 +315,7 @@ export async function getAssignedInstances(templateId: string): Promise<Todo[]> 
     and(
       eq(todoRelations.fromTodoId, templateId),
       eq(todoRelations.type, 'assign_from'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -337,7 +333,7 @@ export async function getTemplateForInstance(instanceId: string): Promise<Todo |
     and(
       eq(todoRelations.toTodoId, instanceId),
       eq(todoRelations.type, 'assign_from'),
-      isNotNull(todoRelations.deletedAtWall)
+      eq(todoRelations.isDeleted, false)
     )
   ) as any[];
   const relations = rows.map(rowToRelation);
@@ -358,9 +354,7 @@ export async function deleteAssignedInstances(templateId: string): Promise<void>
       ? mergeHLC(inst.updatedAt, hlc)
       : hlc;
     await db.update(todos).set({
-      deleted_at_wall: hlc.wall,
-      deleted_at_counter: hlc.counter,
-      deleted_at_node: hlc.node,
+      is_deleted: true,
       updated_at_wall: mergedUpdatedAt.wall,
       updated_at_counter: mergedUpdatedAt.counter,
       updated_at_node: mergedUpdatedAt.node,

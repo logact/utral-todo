@@ -45,9 +45,7 @@ export const todo = pgTable('Todo', {
   versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
   versionCounter: integer('versionCounter').notNull().default(0),
   versionNode: text('versionNode').notNull().default(''),
-  deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-  deletedAtCounter: integer('deletedAtCounter'),
-  deletedAtNode: text('deletedAtNode'),
+  isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
 export const todoRelations = relations(todo, ({ one, many }) => ({
@@ -75,9 +73,7 @@ export const todoRelation = pgTable('TodoRelation', {
   versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
   versionCounter: integer('versionCounter').notNull().default(0),
   versionNode: text('versionNode').notNull().default(''),
-  deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-  deletedAtCounter: integer('deletedAtCounter'),
-  deletedAtNode: text('deletedAtNode'),
+  isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
 export const todoRelationRelations = relations(todoRelation, ({ one }) => ({
@@ -108,9 +104,7 @@ export const todoLog = pgTable('TodoLog', {
   versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
   versionCounter: integer('versionCounter').notNull().default(0),
   versionNode: text('versionNode').notNull().default(''),
-  deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-  deletedAtCounter: integer('deletedAtCounter'),
-  deletedAtNode: text('deletedAtNode'),
+  isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
 export const todoLogRelations = relations(todoLog, ({ one }) => ({
@@ -137,9 +131,7 @@ export const plan = pgTable(
     versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
     versionCounter: integer('versionCounter').notNull().default(0),
     versionNode: text('versionNode').notNull().default(''),
-    deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-    deletedAtCounter: integer('deletedAtCounter'),
-    deletedAtNode: text('deletedAtNode'),
+    isDeleted: boolean('isDeleted').notNull().default(false),
   },
   (t) => [index('Plan_goalTodoId_idx').on(t.goalTodoId)],
 );
@@ -157,9 +149,7 @@ export const actionEdge = pgTable('ActionEdge', {
   versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
   versionCounter: integer('versionCounter').notNull().default(0),
   versionNode: text('versionNode').notNull().default(''),
-  deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-  deletedAtCounter: integer('deletedAtCounter'),
-  deletedAtNode: text('deletedAtNode'),
+  isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
 // ── Pluse ───────────────────────────────────────────────────────────────────
@@ -182,9 +172,7 @@ export const pluse = pgTable('Pluse', {
   versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
   versionCounter: integer('versionCounter').notNull().default(0),
   versionNode: text('versionNode').notNull().default(''),
-  deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-  deletedAtCounter: integer('deletedAtCounter'),
-  deletedAtNode: text('deletedAtNode'),
+  isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
 // ── RepeatOccurrence ────────────────────────────────────────────────────────
@@ -204,9 +192,7 @@ export const repeatOccurrence = pgTable(
     versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
     versionCounter: integer('versionCounter').notNull().default(0),
     versionNode: text('versionNode').notNull().default(''),
-    deletedAtWall: bigint('deletedAtWall', { mode: 'number' }),
-    deletedAtCounter: integer('deletedAtCounter'),
-    deletedAtNode: text('deletedAtNode'),
+    isDeleted: boolean('isDeleted').notNull().default(false),
   },
   (t) => [
     index('RepeatOccurrence_templateId_idx').on(t.templateId),

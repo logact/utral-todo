@@ -45,9 +45,7 @@ export async function deleteTodoLog(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(todoLogs).set({
-    deleted_at_wall: hlc.wall,
-    deleted_at_counter: hlc.counter,
-    deleted_at_node: hlc.node,
+    is_deleted: true,
     updated_at_wall: mergedUpdatedAt.wall,
     updated_at_counter: mergedUpdatedAt.counter,
     updated_at_node: mergedUpdatedAt.node,
@@ -67,9 +65,7 @@ export async function deleteTodoLogsForTodo(todoId: string): Promise<void> {
       ? mergeHLC(log.updatedAt, hlc)
       : hlc;
     await db.update(todoLogs).set({
-      deleted_at_wall: hlc.wall,
-      deleted_at_counter: hlc.counter,
-      deleted_at_node: hlc.node,
+      is_deleted: true,
       updated_at_wall: mergedUpdatedAt.wall,
       updated_at_counter: mergedUpdatedAt.counter,
       updated_at_node: mergedUpdatedAt.node,

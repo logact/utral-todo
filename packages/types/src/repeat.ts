@@ -134,5 +134,6 @@ export function computeVirtualTodo(
     completedAt: occurrence?.completedAt,
     repeatRule: undefined,
     order: template.order,
+    isDeleted: false,
   };
 }

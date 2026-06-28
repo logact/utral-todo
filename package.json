@@ -5,25 +5,25 @@
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "dev:desktop": "pnpm --filter desktop dev",
-    "dev:server": "pnpm --filter server dev",
-    "dev:cli": "pnpm --filter cli dev",
-    "dev:all": "concurrently \"pnpm dev:server\" \"pnpm dev:desktop\" --names server,vite --prefix-colors cyan,green",
-    "dev:expo": "pnpm --filter expo-app start",
-    "dev:expo:ios": "pnpm --filter expo-app start --ios",
-    
-    "build:expo": "pnpm --filter expo-app typecheck",
-    "tauri:dev": "pnpm --filter desktop tauri:dev",
-    "tauri:build": "pnpm --filter desktop tauri:build",
-    "build": "pnpm -r build",
+    "dev:all": "concurrently \"pnpm server:dev\" \"pnpm desktop:dev\" --names server,vite --prefix-colors cyan,green",
 
-    "build:desktop": "pnpm --filter desktop build",
-    "build:server": "pnpm --filter server build",
-    "build:cli": "pnpm --filter cli build",
+    "server:dev": "pnpm --filter server dev",
+    "server:build": "pnpm --filter server build",
+
+    "cli:build": "pnpm --filter cli build",
+
+    "desktop:dev": "pnpm --filter desktop tauri:dev",
+    "desktop:build": "pnpm --filter desktop tauri:build",
+
+    "expo:dev": "pnpm --filter expo-app start",
+    "expo:dev:ios": "pnpm --filter expo-app start --ios",
+    "expo:build": "pnpm --filter expo-app typecheck",
+
     "db:generate": "pnpm --filter server db:generate",
     "db:migrate": "pnpm --filter server db:migrate",
     "db:push": "pnpm --filter server db:push",
     "db:studio": "pnpm --filter server db:studio",
+
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r exec rm -rf dist node_modules/.cache",
