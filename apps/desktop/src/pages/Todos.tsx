@@ -349,7 +349,7 @@ export function Todos() {
     return { all, inProgress, pending, done };
   }, [todos, nodeTypeFilter]);
 
-  async function toggleTodo(todoId: string, _currentStatus: TodoStatus) {
+  async function toggleTodo(todoId: string) {
     const todo = todos.find((t) => t.id === todoId);
     if (!todo) return;
 

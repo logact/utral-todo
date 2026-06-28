@@ -37,12 +37,16 @@ export class ReorderBuffer<T extends ReorderEvent> {
 
   private timeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private pulling = false;
+  private config: ReorderBufferConfig;
+  private callbacks: ReorderBufferCallbacks<T>;
 
   constructor(
-    private config: ReorderBufferConfig,
-    private callbacks: ReorderBufferCallbacks<T>,
+    config: ReorderBufferConfig,
+    callbacks: ReorderBufferCallbacks<T>,
     startSeq = 0
   ) {
+    this.config = config;
+    this.callbacks = callbacks;
     this.nextSeq = startSeq;
     this.window = new Array<T | null>(config.maxSize).fill(null);
   }

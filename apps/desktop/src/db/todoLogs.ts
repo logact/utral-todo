@@ -23,6 +23,7 @@ export async function createTodoLog(
     metadata: options?.metadata,
     createdAt: hlc,
     updatedAt: hlc,
+    isDeleted: false,
   };
   await db.insert(todoLogs).values(todoLogToRow(log) as any);
   onLocalChange('todoLogs', 'create', log.id).catch(() => {});

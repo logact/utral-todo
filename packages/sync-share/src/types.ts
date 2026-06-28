@@ -1,4 +1,3 @@
-import { isDeleted } from './crdt.js';
 import type { HLCTimestamp, SyncEvent } from './hlc.js';
 
 export type { HLCTimestamp, SyncEvent } from './hlc.js';

@@ -81,6 +81,7 @@ export async function setOccurrenceStatus(
       completedAt: status === 'done' ? now : undefined,
       createdAt: hlc,
       updatedAt: hlc,
+      isDeleted: false,
     };
     await db.insert(repeatOccurrences).values(repeatOccurrenceToRow(occurrence) as any);
     onLocalChange('repeatOccurrences', 'create', id).catch(() => {});

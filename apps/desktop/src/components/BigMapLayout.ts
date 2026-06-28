@@ -980,13 +980,12 @@ export function computeUnifiedGraphLayout(
       }
     }
 
-    let maxDepth = Math.max(0, ...Array.from(depth.values()));
+    const maxDepth = Math.max(0, ...Array.from(depth.values()));
     for (const id of component) {
       if (!depth.has(id)) {
         depth.set(id, maxDepth + 1);
       }
     }
-    maxDepth = Math.max(0, ...Array.from(depth.values()));
 
     const depthGroups = new Map<number, string[]>();
     for (const [id, d] of depth) {

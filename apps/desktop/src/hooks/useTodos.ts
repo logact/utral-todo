@@ -410,7 +410,7 @@ export function useScheduleTodos() {
               : o
           );
         }
-        return [...prev, { id, templateId: parsed.templateId, date: new Date(parsed.dateKey), status, completedAt: status === 'done' ? new Date() : undefined, createdAt: hlc, updatedAt: hlc }];
+        return [...prev, { id, templateId: parsed.templateId, date: new Date(parsed.dateKey), status, completedAt: status === 'done' ? new Date() : undefined, createdAt: hlc, updatedAt: hlc, isDeleted: false }];
       });
       return;
     }

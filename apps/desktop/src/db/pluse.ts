@@ -24,8 +24,12 @@ export async function createPluse(
     repeatCount,
     intervalTodos,
     autoAdvance: autoAdvance ?? true,
+    timerStatus: 'idle',
+    currentIntervalIndex: 0,
+    accumulatedSeconds: 0,
     createdAt: hlc,
     updatedAt: hlc,
+    isDeleted: false,
   };
   await db.insert(pluses).values(pluseToRow(pluse) as any);
   onLocalChange('pluses', 'create', pluse.id).catch(() => {});

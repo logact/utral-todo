@@ -7,26 +7,26 @@ export interface CRDTRecord {
   [key: string]: unknown;
 }
 
-export function hlcFromParts(wall: number, counter: number, node: string): HLCTimestamp {
+export function hlcFromParts(_wall: number, _counter: number, _node: string): HLCTimestamp {
   throw new Error('Not implemented');
 }
 
-export function hlcToParts(hlc: HLCTimestamp): { wall: number; counter: number; node: string } {
+export function hlcToParts(_hlc: HLCTimestamp): { wall: number; counter: number; node: string } {
   throw new Error('Not implemented');
 }
 
-export function maxVersion(...records: CRDTRecord[]): HLCTimestamp {
+export function maxVersion(..._records: CRDTRecord[]): HLCTimestamp {
   throw new Error('Not implemented');
 }
 
-export function isDeleted(record: CRDTRecord): boolean {
+export function isDeleted(_record: CRDTRecord): boolean {
   throw new Error('Not implemented');
 }
 
-export function shouldAdoptRemote(local: CRDTRecord | null, remote: CRDTRecord): 'adopt' | 'skip' | 'delete' {
+export function shouldAdoptRemote(_local: CRDTRecord | null, _remote: CRDTRecord): 'adopt' | 'skip' | 'delete' {
   throw new Error('Not implemented');
 }
 
-export function mergeRecords<T extends CRDTRecord>(local: T | null, remote: T): { merged: T; changed: boolean } {
+export function mergeRecords<T extends CRDTRecord>(_local: T | null, _remote: T): { merged: T; changed: boolean } {
   throw new Error('Not implemented');
 }

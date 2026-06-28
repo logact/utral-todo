@@ -2,7 +2,7 @@ import type { SyncSocket } from '@utral/sync-client';
 
 export class TauriWebSocketTransport {
   connect(url: string): SyncSocket {
-    const handlers = new Map<string, Set<Function>>();
+    const handlers = new Map<string, Set<(...args: unknown[]) => void>>();
     const ws = new WebSocket(url);
 
     const socket: SyncSocket = {

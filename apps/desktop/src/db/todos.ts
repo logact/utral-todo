@@ -65,6 +65,7 @@ export async function createTodo(
     successCriteria: nodeType === 'goal' ? options?.successCriteria : undefined,
     targetDate: options?.targetDate,
     goalStatus: nodeType === 'goal' ? (options?.goalStatus ?? 'active') : undefined,
+    isDeleted: false,
   };
   await db.insert(todos).values(todoToRow(todo) as any);
   onLocalChange('todos', 'create', todo.id).catch(() => {});
@@ -154,6 +155,7 @@ export async function ensureRootGoal(): Promise<Todo> {
       order: 0,
       createdAt: hlc,
       updatedAt: hlc,
+      isDeleted: false,
     };
     await tx.insert(todos).values(todoToRow(rootGoal) as any);
     onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
@@ -167,6 +169,7 @@ export async function ensureRootGoal(): Promise<Todo> {
       isSystemPlan: true,
       createdAt: hlc,
       updatedAt: hlc,
+      isDeleted: false,
     };
     await tx.insert(plansTable).values(planToRow(plan) as any);
     onLocalChange('plans', 'create', plan.id).catch(() => {});

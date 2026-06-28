@@ -114,7 +114,7 @@ function extractGlobalFlags(args: Record<string, string | boolean>) {
 }
 
 function removeGlobalFlags(args: Record<string, string | boolean>) {
-  const { format, quiet, ...rest } = args;
+  const { format: _format, quiet: _quiet, ...rest } = args;
   return rest;
 }
 

@@ -68,6 +68,7 @@ export function parseTodo(data: unknown): Todo {
     targetDate: parseDate(t.targetDate),
     goalStatus: t.goalStatus as Todo['goalStatus'],
     pattern: (t.pattern as Todo['pattern']) ?? 'task',
+    isDeleted: (t.isDeleted as boolean) ?? false,
   };
 }
 
@@ -81,6 +82,7 @@ export function parseRelation(data: unknown): TodoRelation {
     type: r.type as TodoRelation['type'],
     createdAt,
     updatedAt: r.updatedAt ? parseHLC(r.updatedAt) : createdAt,
+    isDeleted: (r.isDeleted as boolean) ?? false,
   };
 }
 
@@ -96,6 +98,7 @@ export function parseLog(data: unknown): TodoLog {
     metadata: (l.metadata as Record<string, unknown> | undefined) ?? undefined,
     createdAt,
     updatedAt: l.updatedAt ? parseHLC(l.updatedAt) : createdAt,
+    isDeleted: (l.isDeleted as boolean) ?? false,
   };
 }
 
@@ -109,6 +112,7 @@ export function parseActionEdge(data: unknown): ActionEdge {
     type: e.type as ActionEdge['type'],
     createdAt,
     updatedAt: e.updatedAt ? parseHLC(e.updatedAt) : createdAt,
+    isDeleted: (e.isDeleted as boolean) ?? false,
   };
 }
 
@@ -140,6 +144,7 @@ export function parsePluse(data: unknown): Pluse {
     accumulatedSeconds: (p.accumulatedSeconds as number) ?? 0,
     createdAt,
     updatedAt: p.updatedAt ? parseHLC(p.updatedAt) : createdAt,
+    isDeleted: (p.isDeleted as boolean) ?? false,
   };
 }
 
@@ -155,6 +160,7 @@ export function parsePlan(data: unknown): Plan {
     edgeIds: (p.edgeIds as string[]) ?? [],
     createdAt,
     updatedAt: p.updatedAt ? parseHLC(p.updatedAt) : createdAt,
+    isDeleted: (p.isDeleted as boolean) ?? false,
   };
 }
 

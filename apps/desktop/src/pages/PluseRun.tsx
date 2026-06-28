@@ -242,7 +242,7 @@ function TodoSelector({
 
 
 /* ---------- Browser Notification helpers ---------- */
-let browserNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const browserNotificationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function isTauriApp(): boolean {
   return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
@@ -251,7 +251,7 @@ function isTauriApp(): boolean {
 async function requestBrowserNotificationPermission(): Promise<boolean> {
   if (isTauriApp()) {
     const { requestPermission, isPermissionGranted } = await import('@tauri-apps/plugin-notification');
-    let granted = await isPermissionGranted();
+    const granted = await isPermissionGranted();
     if (granted) return true;
     const result = await requestPermission();
     return result === 'granted';

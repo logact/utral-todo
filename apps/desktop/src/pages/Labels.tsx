@@ -98,6 +98,7 @@ export function Labels() {
                 <>
                   <input
                     type="text"
+                    placeholder="Label name"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     onKeyDown={(e) => {

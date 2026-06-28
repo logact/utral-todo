@@ -49,8 +49,6 @@ function NodeTypeBadge({ nodeType }: { nodeType: string }) {
 }
 
 export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
-  if (chain.length === 0) return null;
-
   const [subTodosMap, setSubTodosMap] = useState<Map<string, Todo[]>>(new Map());
   const [orderedGoalsMap, setOrderedGoalsMap] = useState<Map<string, Todo[]>>(new Map());
   const [achievingTasksMap, setAchievingTasksMap] = useState<Map<string, Todo[]>>(new Map());
@@ -88,6 +86,8 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
   useEffect(() => {
     loadExtras();
   }, [loadExtras]);
+
+  if (chain.length === 0) return null;
 
   const allVisibleTodos = [
     ...chain,

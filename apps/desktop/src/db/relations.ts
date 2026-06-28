@@ -20,6 +20,7 @@ export async function createRelation(
     type,
     createdAt: hlc,
     updatedAt: hlc,
+    isDeleted: false,
   };
   await db.insert(todoRelations).values(relationToRow(relation) as any);
   onLocalChange('relations', 'create', relation.id).catch(() => {});

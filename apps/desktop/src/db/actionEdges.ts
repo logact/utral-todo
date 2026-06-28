@@ -20,6 +20,7 @@ export async function createActionEdge(
     type,
     createdAt: hlc,
     updatedAt: hlc,
+    isDeleted: false,
   };
   await db.insert(actionEdges).values(actionEdgeToRow(edge) as any);
   onLocalChange('actionEdges', 'create', edge.id).catch(() => {});

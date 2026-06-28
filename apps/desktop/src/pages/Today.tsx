@@ -24,15 +24,10 @@ import { createTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
 import {
   getActivePluseTimer,
-  startPluseTimer,
-  pausePluseTimer,
-  resumePluseTimer,
-  stopPluseTimer,
-  advancePluseTimer,
-  getElapsedSeconds,
   createTimerSession,
   updateTimerSession,
   getTimerSessions,
+  deleteTimerSession,
 } from '../db/timerSessions';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import {
@@ -350,7 +345,7 @@ function PluseMiniTimer({
         const runningElapsed = Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
         const totalElapsed = active.accumulatedSeconds + runningElapsed;
         // Catch up through completed intervals
-        let idx = active.currentIndex;
+        let idx = active.currentIntervalIndex;
         let e = totalElapsed;
         while (idx < totalItems) {
           const dur = expandedIntervals[idx];
@@ -367,8 +362,8 @@ function PluseMiniTimer({
           updateTimerSession(active.id, { status: 'completed', completedAt: new Date() });
         } else {
           setCurrentIndex(idx);
-          if (idx === active.currentIndex) {
-            setElapsedSeconds(active.elapsedSeconds);
+          if (idx === active.currentIntervalIndex) {
+            setElapsedSeconds(active.accumulatedSeconds);
             setStartTime(active.startedAt.getTime());
           } else {
             setElapsedSeconds(0);
@@ -376,7 +371,7 @@ function PluseMiniTimer({
           }
         }
       } else {
-        setElapsedSeconds(active.elapsedSeconds);
+        setElapsedSeconds(active.accumulatedSeconds);
         setStartTime(null);
       }
     });

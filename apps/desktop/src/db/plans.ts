@@ -34,6 +34,7 @@ export async function createPlan(
     edgeIds: [],
     createdAt: hlc,
     updatedAt: hlc,
+    isDeleted: false,
   };
   await db.insert(plansTable).values(planToRow(plan) as any);
   onLocalChange('plans', 'create', plan.id).catch(() => {});

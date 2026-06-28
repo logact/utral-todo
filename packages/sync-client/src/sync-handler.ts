@@ -1,6 +1,5 @@
 import type {
   SyncEngineConfig,
-  SyncStatus,
   SyncWireMessage,
   SyncEvent,
   SyncableRecord,
@@ -401,7 +400,7 @@ export class SyncClientHandler {
 
   // ─── Pull missing events ───────────────────────────────────────────
 
-  protected async pullMissingEvents(from: number, to: number): Promise<SyncEvent[]> {
+  protected async pullMissingEvents(_from: number, _to: number): Promise<SyncEvent[]> {
     this.send({
       type: 'pull_request',
       deviceId: this.opts.deviceId,

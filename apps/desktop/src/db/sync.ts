@@ -72,7 +72,7 @@ async function syncFetch(path: string, config: SyncConfig, options?: RequestInit
     });
   } catch (fetchErr) {
     console.error('[sync] fetch failed:', fetchErr);
-    throw new Error(`Network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`);
+    throw new Error(`Network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`, { cause: fetchErr });
   }
 
   if (!res.ok) {

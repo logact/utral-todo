@@ -1,11 +1,11 @@
 import type {
   SyncableRecord,
-  SyncQueueItem,
 } from '@utral/sync-share';
 import type {
   SyncQueueStorage,
   SyncRecordStorage,
   SyncStateStorage,
+  SyncQueueItem,
 } from '@utral/sync-client';
 import Database from '@tauri-apps/plugin-sql';
 
@@ -50,18 +50,19 @@ export class TauriSqliteStorage implements SyncQueueStorage, SyncRecordStorage, 
   }
 
   async addToQueue(item: SyncQueueItem): Promise<void> {
+    const i = item as Record<string, unknown>;
     await this.db.execute(
       `INSERT OR REPLACE INTO sync_queue (id, table_name, operation, record_id, payload, created_at, retry_count, last_error)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         item.id,
-        item.table,
-        item.operation,
-        item.recordId,
-        JSON.stringify(item.payload),
-        item.createdAt.toISOString(),
-        item.retryCount,
-        item.lastError ?? null,
+        i.table as string,
+        i.operation as string,
+        i.recordId as string,
+        JSON.stringify(i.payload),
+        (i.createdAt as Date).toISOString(),
+        i.retryCount as number,
+        (i.lastError as string) ?? null,
       ]
     );
   }
@@ -72,13 +73,13 @@ export class TauriSqliteStorage implements SyncQueueStorage, SyncRecordStorage, 
     return rows.map((row) => ({
       id: row.id as string,
       table: row.table_name as string,
-      operation: row.operation as SyncQueueItem['operation'],
+      operation: row.operation as string,
       recordId: row.record_id as string,
       payload: JSON.parse(row.payload as string),
       createdAt: new Date(row.created_at as string),
       retryCount: row.retry_count as number,
       lastError: (row.last_error as string) ?? undefined,
-    }));
+    } as SyncQueueItem));
   }
 
   async deleteQueueItem(id: string): Promise<void> {
@@ -134,7 +135,8 @@ export class TauriSqliteStorage implements SyncQueueStorage, SyncRecordStorage, 
   }
 
   async addRecord(table: string, record: SyncableRecord): Promise<void> {
-    const { updatedAt, deletedAt, ...data } = record;
+    const { version, isDeleted: _isDeleted, ...data } = record;
+    const deletedAt = (record as Record<string, unknown>).deletedAt as { wall: number; counter: number; node: string } | undefined;
     await this.db.execute(
       `INSERT OR REPLACE INTO sync_records (id, table_name, record, updated_at_wall, updated_at_counter, updated_at_node, deleted_at_wall, deleted_at_counter, deleted_at_node)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
@@ -142,9 +144,9 @@ export class TauriSqliteStorage implements SyncQueueStorage, SyncRecordStorage, 
         record.id,
         table,
         JSON.stringify(data),
-        updatedAt.wall,
-        updatedAt.counter,
-        updatedAt.node,
+        version.wall,
+        version.counter,
+        version.node,
         deletedAt?.wall ?? null,
         deletedAt?.counter ?? null,
         deletedAt?.node ?? null,
