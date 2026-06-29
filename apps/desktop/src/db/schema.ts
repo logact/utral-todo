@@ -35,9 +35,9 @@ export type {
 // ─── HLC column helpers ───
 
 function hlcDateToObj(row: Record<string, unknown>, prefix: string) {
-  const wall = row[`${prefix}_wall`] as number | null;
-  const counter = row[`${prefix}_counter`] as number | undefined;
-  const node = row[`${prefix}_node`] as string | null;
+  const wall = row[`${prefix}Wall`] as number | null;
+  const counter = row[`${prefix}Counter`] as number | undefined;
+  const node = row[`${prefix}Node`] as string | null;
   if (wall == null) return undefined;
   return { wall, counter: counter ?? 0, node: node ?? '' };
 }
@@ -46,9 +46,9 @@ function objToHlcColumns(obj: unknown, prefix: string) {
   const hlc = obj as { wall?: number; counter?: number; node?: string } | undefined | null;
   if (!hlc) return {};
   return {
-    [`${prefix}_wall`]: hlc.wall ?? null,
-    [`${prefix}_counter`]: hlc.counter ?? 0,
-    [`${prefix}_node`]: hlc.node ?? null,
+    [`${prefix}Wall`]: hlc.wall ?? null,
+    [`${prefix}Counter`]: hlc.counter ?? 0,
+    [`${prefix}Node`]: hlc.node ?? null,
   };
 }
 
@@ -279,171 +279,178 @@ export const syncState = sqliteTable('sync_state', {
 
 // ─── Helper: convert raw DB row to entity type ───
 
+function timestampToDate(value: unknown): Date | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value * 1000); // SQLite stores seconds
+  return undefined;
+}
+
 export function rowToTodo(row: Record<string, unknown>): Todo {
   return {
     id: row.id as string,
-    nodeType: row.node_type as NodeType,
+    nodeType: row.nodeType as NodeType,
     pattern: row.pattern as TaskPattern | undefined,
     title: row.title as string,
     description: row.description as string,
     status: row.status as TodoStatus | undefined,
     priority: row.priority as Priority | undefined,
-    goalStatus: row.goal_status as GoalStatus | undefined,
-    estimatedMinutes: row.estimated_minutes as number | undefined,
-    scheduledDate: row.scheduled_date as Date | undefined,
-    scheduledEndDate: row.scheduled_end_date as Date | undefined,
-    dueDate: row.due_date as Date | undefined,
-    startedAt: row.started_at as Date | undefined,
-    completedAt: row.completed_at as Date | undefined,
-    parentId: row.parent_id as string | undefined,
-    activePlanId: row.active_plan_id as string | undefined,
-    isRootGoal: row.is_root_goal as boolean | undefined,
-    isSystemTask: row.is_system_task as boolean | undefined,
+    goalStatus: row.goalStatus as GoalStatus | undefined,
+    estimatedMinutes: row.estimatedMinutes as number | undefined,
+    scheduledDate: timestampToDate(row.scheduledDate),
+    scheduledEndDate: timestampToDate(row.scheduledEndDate),
+    dueDate: timestampToDate(row.dueDate),
+    startedAt: timestampToDate(row.startedAt),
+    completedAt: timestampToDate(row.completedAt),
+    parentId: row.parentId as string | undefined,
+    activePlanId: row.activePlanId as string | undefined,
+    isRootGoal: row.isRootGoal as boolean | undefined,
+    isSystemTask: row.isSystemTask as boolean | undefined,
     motivation: row.motivation as string | undefined,
-    successCriteria: row.success_criteria as string | undefined,
-    targetDate: row.target_date as Date | undefined,
-    repeatRule: row.repeat_rule as RepeatRule | undefined,
+    successCriteria: row.successCriteria as string | undefined,
+    targetDate: timestampToDate(row.targetDate),
+    repeatRule: row.repeatRule as RepeatRule | undefined,
     tags: (row.tags as string[]) ?? [],
     order: (row.order as number) ?? 0,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
 export function todoToRow(todo: Partial<Todo>): InferInsertModel<typeof todos> {
-  const row: Record<string, unknown> = {};
+  const row= {} as InferInsertModel<typeof todos>;
   if (todo.id !== undefined) row.id = todo.id;
-  if (todo.nodeType !== undefined) row.node_type = todo.nodeType;
+  if (todo.nodeType !== undefined) row.nodeType = todo.nodeType;
   if (todo.pattern !== undefined) row.pattern = todo.pattern;
   if (todo.title !== undefined) row.title = todo.title;
   if (todo.description !== undefined) row.description = todo.description;
   if (todo.status !== undefined) row.status = todo.status;
   if (todo.priority !== undefined) row.priority = todo.priority;
-  if (todo.goalStatus !== undefined) row.goal_status = todo.goalStatus;
-  if (todo.estimatedMinutes !== undefined) row.estimated_minutes = todo.estimatedMinutes;
-  if (todo.scheduledDate !== undefined) row.scheduled_date = todo.scheduledDate;
-  if (todo.scheduledEndDate !== undefined) row.scheduled_end_date = todo.scheduledEndDate;
-  if (todo.dueDate !== undefined) row.due_date = todo.dueDate;
-  if (todo.startedAt !== undefined) row.started_at = todo.startedAt;
-  if (todo.completedAt !== undefined) row.completed_at = todo.completedAt;
-  if (todo.parentId !== undefined) row.parent_id = todo.parentId;
-  if (todo.activePlanId !== undefined) row.active_plan_id = todo.activePlanId;
-  if (todo.isRootGoal !== undefined) row.is_root_goal = todo.isRootGoal;
-  if (todo.isSystemTask !== undefined) row.is_system_task = todo.isSystemTask;
+  if (todo.goalStatus !== undefined) row.goalStatus = todo.goalStatus;
+  if (todo.estimatedMinutes !== undefined) row.estimatedMinutes = todo.estimatedMinutes;
+  if (todo.scheduledDate !== undefined) row.scheduledDate = todo.scheduledDate ? todo.scheduledDate : null;
+  if (todo.scheduledEndDate !== undefined) row.scheduledEndDate = todo.scheduledEndDate ? todo.scheduledEndDate : null;
+  if (todo.dueDate !== undefined) row.dueDate = todo.dueDate ? todo.dueDate : null;
+  if (todo.startedAt !== undefined) row.startedAt = todo.startedAt ? todo.startedAt : null;
+  if (todo.completedAt !== undefined) row.completedAt = todo.completedAt ? todo.completedAt : null;
+  if (todo.parentId !== undefined) row.parentId = todo.parentId;
+  if (todo.activePlanId !== undefined) row.activePlanId = todo.activePlanId;
+  if (todo.isRootGoal !== undefined) row.isRootGoal = todo.isRootGoal;
+  if (todo.isSystemTask !== undefined) row.isSystemTask = todo.isSystemTask;
   if (todo.motivation !== undefined) row.motivation = todo.motivation;
-  if (todo.successCriteria !== undefined) row.success_criteria = todo.successCriteria;
-  if (todo.targetDate !== undefined) row.target_date = todo.targetDate;
-  if (todo.repeatRule !== undefined) row.repeat_rule = todo.repeatRule;
+  if (todo.successCriteria !== undefined) row.successCriteria = todo.successCriteria;
+  if (todo.targetDate !== undefined) row.targetDate = todo.targetDate ? todo.targetDate: null;
+  if (todo.repeatRule !== undefined) row.repeatRule = todo.repeatRule;
   if (todo.tags !== undefined) row.tags = todo.tags;
   if (todo.order !== undefined) row.order = todo.order;
-  Object.assign(row, objToHlcColumns(todo.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(todo.updatedAt, 'updated_at'));
-  if (todo.isDeleted !== undefined) row.is_deleted = todo.isDeleted;
+  Object.assign(row, objToHlcColumns(todo.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(todo.updatedAt, 'updatedAt'));
+  if (todo.isDeleted !== undefined) row.isDeleted = todo.isDeleted;
   return row as InferInsertModel<typeof todos>;
 }
 
 export function rowToRelation(row: Record<string, unknown>): TodoRelation {
   return {
     id: row.id as string,
-    fromTodoId: row.from_todo_id as string,
-    toTodoId: row.to_todo_id as string,
+    fromTodoId: row.fromTodoId as string,
+    toTodoId: row.toTodoId as string,
     type: row.type as TodoRelationType,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
 export function relationToRow(relation: Partial<TodoRelation>): InferInsertModel<typeof todoRelations> {
   const row: Record<string, unknown> = {};
   if (relation.id !== undefined) row.id = relation.id;
-  if (relation.fromTodoId !== undefined) row.from_todo_id = relation.fromTodoId;
-  if (relation.toTodoId !== undefined) row.to_todo_id = relation.toTodoId;
+  if (relation.fromTodoId !== undefined) row.fromTodoId = relation.fromTodoId;
+  if (relation.toTodoId !== undefined) row.toTodoId = relation.toTodoId;
   if (relation.type !== undefined) row.type = relation.type;
-  Object.assign(row, objToHlcColumns(relation.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(relation.updatedAt, 'updated_at'));
-  if (relation.isDeleted !== undefined) row.is_deleted = relation.isDeleted;
+  Object.assign(row, objToHlcColumns(relation.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(relation.updatedAt, 'updatedAt'));
+  if (relation.isDeleted !== undefined) row.isDeleted = relation.isDeleted;
   return row as InferInsertModel<typeof todoRelations>;
 }
 
 export function rowToTodoLog(row: Record<string, unknown>): TodoLog {
   return {
     id: row.id as string,
-    todoId: row.todo_id as string,
+    todoId: row.todoId as string,
     type: row.type as TodoLogType,
     content: row.content as string,
-    minutesSpent: row.minutes_spent as number | undefined,
+    minutesSpent: row.minutesSpent as number | undefined,
     metadata: row.metadata as Record<string, unknown> | undefined,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
 export function todoLogToRow(log: Partial<TodoLog>): InferInsertModel<typeof todoLogs> {
   const row: Record<string, unknown> = {};
   if (log.id !== undefined) row.id = log.id;
-  if (log.todoId !== undefined) row.todo_id = log.todoId;
+  if (log.todoId !== undefined) row.todoId = log.todoId;
   if (log.type !== undefined) row.type = log.type;
   if (log.content !== undefined) row.content = log.content;
-  if (log.minutesSpent !== undefined) row.minutes_spent = log.minutesSpent;
+  if (log.minutesSpent !== undefined) row.minutesSpent = log.minutesSpent;
   if (log.metadata !== undefined) row.metadata = log.metadata;
-  Object.assign(row, objToHlcColumns(log.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(log.updatedAt, 'updated_at'));
-  if (log.isDeleted !== undefined) row.is_deleted = log.isDeleted;
+  Object.assign(row, objToHlcColumns(log.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(log.updatedAt, 'updatedAt'));
+  if (log.isDeleted !== undefined) row.isDeleted = log.isDeleted;
   return row as InferInsertModel<typeof todoLogs>;
 }
 
 export function rowToActionEdge(row: Record<string, unknown>): ActionEdge {
   return {
     id: row.id as string,
-    fromTodoId: row.from_todo_id as string,
-    toTodoId: row.to_todo_id as string,
+    fromTodoId: row.fromTodoId as string,
+    toTodoId: row.toTodoId as string,
     type: row.type as ActionEdgeType,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
 export function actionEdgeToRow(edge: Partial<ActionEdge>): InferInsertModel<typeof actionEdges> {
   const row: Record<string, unknown> = {};
   if (edge.id !== undefined) row.id = edge.id;
-  if (edge.fromTodoId !== undefined) row.from_todo_id = edge.fromTodoId;
-  if (edge.toTodoId !== undefined) row.to_todo_id = edge.toTodoId;
+  if (edge.fromTodoId !== undefined) row.fromTodoId = edge.fromTodoId;
+  if (edge.toTodoId !== undefined) row.toTodoId = edge.toTodoId;
   if (edge.type !== undefined) row.type = edge.type;
-  Object.assign(row, objToHlcColumns(edge.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(edge.updatedAt, 'updated_at'));
-  if (edge.isDeleted !== undefined) row.is_deleted = edge.isDeleted;
+  Object.assign(row, objToHlcColumns(edge.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(edge.updatedAt, 'updatedAt'));
+  if (edge.isDeleted !== undefined) row.isDeleted = edge.isDeleted;
   return row as InferInsertModel<typeof actionEdges>;
 }
 
 export function rowToPlan(row: Record<string, unknown>): Plan {
   return {
     id: row.id as string,
-    goalTodoId: row.goal_todo_id as string,
+    goalTodoId: row.goalTodoId as string,
     title: row.title as string,
-    nodeIds: (row.node_ids as string[]) ?? [],
-    edgeIds: (row.edge_ids as string[]) ?? [],
-    isSystemPlan: row.is_system_plan as boolean | undefined,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    nodeIds: (row.nodeIds as string[]) ?? [],
+    edgeIds: (row.edgeIds as string[]) ?? [],
+    isSystemPlan: row.isSystemPlan as boolean | undefined,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
 export function planToRow(plan: Partial<Plan>): InferInsertModel<typeof plans> {
   const row: Record<string, unknown> = {};
   if (plan.id !== undefined) row.id = plan.id;
-  if (plan.goalTodoId !== undefined) row.goal_todo_id = plan.goalTodoId;
+  if (plan.goalTodoId !== undefined) row.goalTodoId = plan.goalTodoId;
   if (plan.title !== undefined) row.title = plan.title;
-  if (plan.nodeIds !== undefined) row.node_ids = plan.nodeIds;
-  if (plan.edgeIds !== undefined) row.edge_ids = plan.edgeIds;
-  if (plan.isSystemPlan !== undefined) row.is_system_plan = plan.isSystemPlan;
-  Object.assign(row, objToHlcColumns(plan.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(plan.updatedAt, 'updated_at'));
-  if (plan.isDeleted !== undefined) row.is_deleted = plan.isDeleted;
+  if (plan.nodeIds !== undefined) row.nodeIds = plan.nodeIds;
+  if (plan.edgeIds !== undefined) row.edgeIds = plan.edgeIds;
+  if (plan.isSystemPlan !== undefined) row.isSystemPlan = plan.isSystemPlan;
+  Object.assign(row, objToHlcColumns(plan.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(plan.updatedAt, 'updatedAt'));
+  if (plan.isDeleted !== undefined) row.isDeleted = plan.isDeleted;
   return row as InferInsertModel<typeof plans>;
 }
 
@@ -453,16 +460,16 @@ export function rowToPluse(row: Record<string, unknown>): Pluse {
     name: row.name as string,
     description: row.description as string,
     intervals: (row.intervals as number[]) ?? [1500],
-    repeatCount: (row.repeat_count as number) ?? 1,
-    intervalTodos: row.interval_todos as Record<number, string> | undefined,
-    autoAdvance: (row.auto_advance as boolean) ?? true,
-    timerStatus: (row.timer_status as Pluse['timerStatus']) ?? 'idle',
-    currentIntervalIndex: (row.current_interval_index as number) ?? 0,
-    startedAt: row.started_at as Date | undefined,
-    accumulatedSeconds: (row.accumulated_seconds as number) ?? 0,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    repeatCount: (row.repeatCount as number) ?? 1,
+    intervalTodos: row.intervalTodos as Record<number, string> | undefined,
+    autoAdvance: (row.autoAdvance as boolean) ?? true,
+    timerStatus: (row.timerStatus as Pluse['timerStatus']) ?? 'idle',
+    currentIntervalIndex: (row.currentIntervalIndex as number) ?? 0,
+    startedAt: timestampToDate(row.startedAt),
+    accumulatedSeconds: (row.accumulatedSeconds as number) ?? 0,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
@@ -472,44 +479,44 @@ export function pluseToRow(pluse: Partial<Pluse>): InferInsertModel<typeof pluse
   if (pluse.name !== undefined) row.name = pluse.name;
   if (pluse.description !== undefined) row.description = pluse.description;
   if (pluse.intervals !== undefined) row.intervals = pluse.intervals;
-  if (pluse.repeatCount !== undefined) row.repeat_count = pluse.repeatCount;
-  if (pluse.intervalTodos !== undefined) row.interval_todos = pluse.intervalTodos;
-  if (pluse.autoAdvance !== undefined) row.auto_advance = pluse.autoAdvance;
-  if (pluse.timerStatus !== undefined) row.timer_status = pluse.timerStatus;
-  if (pluse.currentIntervalIndex !== undefined) row.current_interval_index = pluse.currentIntervalIndex;
-  if (pluse.startedAt !== undefined) row.started_at = pluse.startedAt;
-  if (pluse.accumulatedSeconds !== undefined) row.accumulated_seconds = pluse.accumulatedSeconds;
-  Object.assign(row, objToHlcColumns(pluse.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(pluse.updatedAt, 'updated_at'));
-  if (pluse.isDeleted !== undefined) row.is_deleted = pluse.isDeleted;
+  if (pluse.repeatCount !== undefined) row.repeatCount = pluse.repeatCount;
+  if (pluse.intervalTodos !== undefined) row.intervalTodos = pluse.intervalTodos;
+  if (pluse.autoAdvance !== undefined) row.autoAdvance = pluse.autoAdvance;
+  if (pluse.timerStatus !== undefined) row.timerStatus = pluse.timerStatus;
+  if (pluse.currentIntervalIndex !== undefined) row.currentIntervalIndex = pluse.currentIntervalIndex;
+  if (pluse.startedAt !== undefined) row.startedAt = pluse.startedAt ? pluse.startedAt.getTime() : null;
+  if (pluse.accumulatedSeconds !== undefined) row.accumulatedSeconds = pluse.accumulatedSeconds;
+  Object.assign(row, objToHlcColumns(pluse.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(pluse.updatedAt, 'updatedAt'));
+  if (pluse.isDeleted !== undefined) row.isDeleted = pluse.isDeleted;
   return row as InferInsertModel<typeof pluses>;
 }
 
 export function rowToRepeatOccurrence(row: Record<string, unknown>): RepeatOccurrence {
   return {
     id: row.id as string,
-    templateId: row.template_id as string,
-    date: row.date as Date,
+    templateId: row.templateId as string,
+    date: timestampToDate(row.date)!,
     status: row.status as TodoStatus | undefined,
-    completedAt: row.completed_at as Date | undefined,
-    materializedTodoId: row.materialized_todo_id as string | undefined,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    completedAt: timestampToDate(row.completedAt),
+    materializedTodoId: row.materializedTodoId as string | undefined,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
 export function repeatOccurrenceToRow(occ: Partial<RepeatOccurrence>): InferInsertModel<typeof repeatOccurrences> {
   const row: Record<string, unknown> = {};
   if (occ.id !== undefined) row.id = occ.id;
-  if (occ.templateId !== undefined) row.template_id = occ.templateId;
-  if (occ.date !== undefined) row.date = occ.date;
+  if (occ.templateId !== undefined) row.templateId = occ.templateId;
+  if (occ.date !== undefined) row.date = occ.date ? occ.date.getTime() : null;
   if (occ.status !== undefined) row.status = occ.status;
-  if (occ.completedAt !== undefined) row.completed_at = occ.completedAt;
-  if (occ.materializedTodoId !== undefined) row.materialized_todo_id = occ.materializedTodoId;
-  Object.assign(row, objToHlcColumns(occ.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(occ.updatedAt, 'updated_at'));
-  if (occ.isDeleted !== undefined) row.is_deleted = occ.isDeleted;
+  if (occ.completedAt !== undefined) row.completedAt = occ.completedAt ? occ.completedAt.getTime() : null;
+  if (occ.materializedTodoId !== undefined) row.materializedTodoId = occ.materializedTodoId;
+  Object.assign(row, objToHlcColumns(occ.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(occ.updatedAt, 'updatedAt'));
+  if (occ.isDeleted !== undefined) row.isDeleted = occ.isDeleted;
   return row as InferInsertModel<typeof repeatOccurrences>;
 }
 
@@ -518,19 +525,19 @@ export function rowToTimerSession(row: Record<string, unknown>): TimerSession {
     id: row.id as string,
     type: row.type as 'stopwatch' | 'pluse',
     name: row.name as string,
-    pluseId: row.pluse_id as string | undefined,
-    todoId: row.todo_id as string | undefined,
+    pluseId: row.pluseId as string | undefined,
+    todoId: row.todoId as string | undefined,
     intervals: row.intervals as number[] | undefined,
-    repeatCount: row.repeat_count as number | undefined,
-    currentIndex: (row.current_index as number) ?? 0,
-    elapsedSeconds: (row.elapsed_seconds as number) ?? 0,
+    repeatCount: row.repeatCount as number | undefined,
+    currentIndex: (row.currentIndex as number) ?? 0,
+    elapsedSeconds: (row.elapsedSeconds as number) ?? 0,
     status: row.status as 'running' | 'paused' | 'completed',
-    startedAt: row.started_at as Date | undefined,
-    pausedAt: row.paused_at as Date | undefined,
-    completedAt: row.completed_at as Date | undefined,
-    createdAt: hlcDateToObj(row, 'created_at')!,
-    updatedAt: hlcDateToObj(row, 'updated_at')!,
-    isDeleted: (row.is_deleted as boolean) ?? false,
+    startedAt: timestampToDate(row.startedAt),
+    pausedAt: timestampToDate(row.pausedAt),
+    completedAt: timestampToDate(row.completedAt),
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
   };
 }
 
@@ -546,9 +553,9 @@ export function timerSessionToRow(session: Partial<TimerSession>): InferInsertMo
   if (session.currentIndex !== undefined) row.current_index = session.currentIndex;
   if (session.elapsedSeconds !== undefined) row.elapsed_seconds = session.elapsedSeconds;
   if (session.status !== undefined) row.status = session.status;
-  if (session.startedAt !== undefined) row.started_at = session.startedAt;
-  if (session.pausedAt !== undefined) row.paused_at = session.pausedAt;
-  if (session.completedAt !== undefined) row.completed_at = session.completedAt;
+  if (session.startedAt !== undefined) row.started_at = session.startedAt ? session.startedAt.getTime() : null;
+  if (session.pausedAt !== undefined) row.paused_at = session.pausedAt ? session.pausedAt.getTime() : null;
+  if (session.completedAt !== undefined) row.completed_at = session.completedAt ? session.completedAt.getTime() : null;
   Object.assign(row, objToHlcColumns(session.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(session.updatedAt, 'updated_at'));
   if (session.isDeleted !== undefined) row.is_deleted = session.isDeleted;

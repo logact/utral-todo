@@ -68,7 +68,9 @@ export async function createTodo(
     goalStatus: nodeType === 'goal' ? (options?.goalStatus ?? 'active') : undefined,
     isDeleted: false,
   };
-  await db.insert(todos).values(todoToRow(todo));
+  const newRow = todoToRow(todo);
+  debugger
+  await db.insert(todos).values(newRow);
   syncLocalChange('todos', 'create', todo.id).catch(() => {});
 
   return todo;

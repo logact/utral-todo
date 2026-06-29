@@ -54,6 +54,7 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
 
     setIsSubmitting(true);
 
+    debugger
     await createTodo(title, {
       nodeType,
       ...(isTask

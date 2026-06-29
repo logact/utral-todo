@@ -11,19 +11,32 @@ async function getTauriDb(): Promise<Database> {
   return tauriDb;
 }
 
+function convertParams(params: unknown[]): unknown[] {
+  return params.map(p => {
+    if (p instanceof Date) {
+      return p.getTime();
+    }
+    if (p === null || p === undefined) {
+      return null;
+    }
+    return p;
+  });
+}
+
 async function proxyCallback(
   sql: string,
   params: unknown[],
   method: 'run' | 'all' | 'get' | 'values'
 ): Promise<{ rows: unknown[][] }> {
   const database = await getTauriDb();
+  const convertedParams = convertParams(params);
 
   if (method === 'run') {
-    const result = await database.execute(sql, params as string[]);
+    const result = await database.execute(sql, convertedParams as string[]);
     return { rows: [[result.rowsAffected]] };
   }
 
-  const rows = await database.select(sql, params as string[]);
+  const rows = await database.select(sql, convertedParams as string[]);
 
   if (method === 'get') {
     const rowArr = rows as Record<string, unknown>[];
