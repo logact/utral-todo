@@ -147,9 +147,9 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           const row = todoToRow(todo);
           const existing = await tx.select().from(todos).where(eq(todos.id, todo.id));
           if (existing.length > 0) {
-            await tx.update(todos).set(row as any).where(eq(todos.id, todo.id));
+            await tx.update(todos).set(row).where(eq(todos.id, todo.id));
           } else {
-            await tx.insert(todos).values(row as any);
+            await tx.insert(todos).values(row);
           }
         }
         result.pulled.todos = remoteData.todos.length;
@@ -161,9 +161,9 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           const row = relationToRow(relation);
           const existing = await tx.select().from(todoRelations).where(eq(todoRelations.id, relation.id));
           if (existing.length > 0) {
-            await tx.update(todoRelations).set(row as any).where(eq(todoRelations.id, relation.id));
+            await tx.update(todoRelations).set(row).where(eq(todoRelations.id, relation.id));
           } else {
-            await tx.insert(todoRelations).values(row as any);
+            await tx.insert(todoRelations).values(row);
           }
         }
         result.pulled.relations = remoteData.relations.length;
@@ -175,9 +175,9 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           const row = todoLogToRow(log);
           const existing = await tx.select().from(todoLogs).where(eq(todoLogs.id, log.id));
           if (existing.length > 0) {
-            await tx.update(todoLogs).set(row as any).where(eq(todoLogs.id, log.id));
+            await tx.update(todoLogs).set(row).where(eq(todoLogs.id, log.id));
           } else {
-            await tx.insert(todoLogs).values(row as any);
+            await tx.insert(todoLogs).values(row);
           }
         }
         result.pulled.todoLogs = remoteData.todoLogs.length;
@@ -189,9 +189,9 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           const row = actionEdgeToRow(edge);
           const existing = await tx.select().from(actionEdges).where(eq(actionEdges.id, edge.id));
           if (existing.length > 0) {
-            await tx.update(actionEdges).set(row as any).where(eq(actionEdges.id, edge.id));
+            await tx.update(actionEdges).set(row).where(eq(actionEdges.id, edge.id));
           } else {
-            await tx.insert(actionEdges).values(row as any);
+            await tx.insert(actionEdges).values(row);
           }
         }
         result.pulled.actionEdges = remoteData.actionEdges.length;
@@ -203,9 +203,9 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           const row = planToRow(plan);
           const existing = await tx.select().from(plans).where(eq(plans.id, plan.id));
           if (existing.length > 0) {
-            await tx.update(plans).set(row as any).where(eq(plans.id, plan.id));
+            await tx.update(plans).set(row).where(eq(plans.id, plan.id));
           } else {
-            await tx.insert(plans).values(row as any);
+            await tx.insert(plans).values(row);
           }
         }
         result.pulled.plans = remoteData.plans.length;
@@ -217,9 +217,9 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
           const row = pluseToRow(pluse);
           const existing = await tx.select().from(pluses).where(eq(pluses.id, pluse.id));
           if (existing.length > 0) {
-            await tx.update(pluses).set(row as any).where(eq(pluses.id, pluse.id));
+            await tx.update(pluses).set(row).where(eq(pluses.id, pluse.id));
           } else {
-            await tx.insert(pluses).values(row as any);
+            await tx.insert(pluses).values(row);
           }
         }
         result.pulled.pluses = remoteData.pluses.length;

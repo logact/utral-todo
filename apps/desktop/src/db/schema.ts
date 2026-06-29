@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import type { InferInsertModel } from 'drizzle-orm';
 import type {
   Todo,
   TodoRelation,
@@ -260,6 +261,22 @@ export const syncConfig = sqliteTable('sync_config', {
   value: text('value').notNull().default(''),
 });
 
+export const syncQueue = sqliteTable('sync_queue', {
+  id: text('id').primaryKey(),
+  tableName: text('table_name').notNull(),
+  operation: text('operation').notNull(),
+  recordId: text('record_id').notNull(),
+  payload: text('payload'),
+  createdAt: text('created_at').notNull(),
+  retryCount: integer('retry_count').default(0),
+  lastError: text('last_error'),
+});
+
+export const syncState = sqliteTable('sync_state', {
+  key: text('key').primaryKey(),
+  value: text('value'),
+});
+
 // ─── Helper: convert raw DB row to entity type ───
 
 export function rowToTodo(row: Record<string, unknown>): Todo {
@@ -294,7 +311,7 @@ export function rowToTodo(row: Record<string, unknown>): Todo {
   };
 }
 
-export function todoToRow(todo: Partial<Todo>) {
+export function todoToRow(todo: Partial<Todo>): InferInsertModel<typeof todos> {
   const row: Record<string, unknown> = {};
   if (todo.id !== undefined) row.id = todo.id;
   if (todo.nodeType !== undefined) row.node_type = todo.nodeType;
@@ -323,7 +340,7 @@ export function todoToRow(todo: Partial<Todo>) {
   Object.assign(row, objToHlcColumns(todo.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(todo.updatedAt, 'updated_at'));
   if (todo.isDeleted !== undefined) row.is_deleted = todo.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof todos>;
 }
 
 export function rowToRelation(row: Record<string, unknown>): TodoRelation {
@@ -338,7 +355,7 @@ export function rowToRelation(row: Record<string, unknown>): TodoRelation {
   };
 }
 
-export function relationToRow(relation: Partial<TodoRelation>) {
+export function relationToRow(relation: Partial<TodoRelation>): InferInsertModel<typeof todoRelations> {
   const row: Record<string, unknown> = {};
   if (relation.id !== undefined) row.id = relation.id;
   if (relation.fromTodoId !== undefined) row.from_todo_id = relation.fromTodoId;
@@ -347,7 +364,7 @@ export function relationToRow(relation: Partial<TodoRelation>) {
   Object.assign(row, objToHlcColumns(relation.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(relation.updatedAt, 'updated_at'));
   if (relation.isDeleted !== undefined) row.is_deleted = relation.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof todoRelations>;
 }
 
 export function rowToTodoLog(row: Record<string, unknown>): TodoLog {
@@ -364,7 +381,7 @@ export function rowToTodoLog(row: Record<string, unknown>): TodoLog {
   };
 }
 
-export function todoLogToRow(log: Partial<TodoLog>) {
+export function todoLogToRow(log: Partial<TodoLog>): InferInsertModel<typeof todoLogs> {
   const row: Record<string, unknown> = {};
   if (log.id !== undefined) row.id = log.id;
   if (log.todoId !== undefined) row.todo_id = log.todoId;
@@ -375,7 +392,7 @@ export function todoLogToRow(log: Partial<TodoLog>) {
   Object.assign(row, objToHlcColumns(log.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(log.updatedAt, 'updated_at'));
   if (log.isDeleted !== undefined) row.is_deleted = log.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof todoLogs>;
 }
 
 export function rowToActionEdge(row: Record<string, unknown>): ActionEdge {
@@ -390,7 +407,7 @@ export function rowToActionEdge(row: Record<string, unknown>): ActionEdge {
   };
 }
 
-export function actionEdgeToRow(edge: Partial<ActionEdge>) {
+export function actionEdgeToRow(edge: Partial<ActionEdge>): InferInsertModel<typeof actionEdges> {
   const row: Record<string, unknown> = {};
   if (edge.id !== undefined) row.id = edge.id;
   if (edge.fromTodoId !== undefined) row.from_todo_id = edge.fromTodoId;
@@ -399,7 +416,7 @@ export function actionEdgeToRow(edge: Partial<ActionEdge>) {
   Object.assign(row, objToHlcColumns(edge.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(edge.updatedAt, 'updated_at'));
   if (edge.isDeleted !== undefined) row.is_deleted = edge.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof actionEdges>;
 }
 
 export function rowToPlan(row: Record<string, unknown>): Plan {
@@ -416,7 +433,7 @@ export function rowToPlan(row: Record<string, unknown>): Plan {
   };
 }
 
-export function planToRow(plan: Partial<Plan>) {
+export function planToRow(plan: Partial<Plan>): InferInsertModel<typeof plans> {
   const row: Record<string, unknown> = {};
   if (plan.id !== undefined) row.id = plan.id;
   if (plan.goalTodoId !== undefined) row.goal_todo_id = plan.goalTodoId;
@@ -427,7 +444,7 @@ export function planToRow(plan: Partial<Plan>) {
   Object.assign(row, objToHlcColumns(plan.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(plan.updatedAt, 'updated_at'));
   if (plan.isDeleted !== undefined) row.is_deleted = plan.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof plans>;
 }
 
 export function rowToPluse(row: Record<string, unknown>): Pluse {
@@ -449,7 +466,7 @@ export function rowToPluse(row: Record<string, unknown>): Pluse {
   };
 }
 
-export function pluseToRow(pluse: Partial<Pluse>) {
+export function pluseToRow(pluse: Partial<Pluse>): InferInsertModel<typeof pluses> {
   const row: Record<string, unknown> = {};
   if (pluse.id !== undefined) row.id = pluse.id;
   if (pluse.name !== undefined) row.name = pluse.name;
@@ -465,7 +482,7 @@ export function pluseToRow(pluse: Partial<Pluse>) {
   Object.assign(row, objToHlcColumns(pluse.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(pluse.updatedAt, 'updated_at'));
   if (pluse.isDeleted !== undefined) row.is_deleted = pluse.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof pluses>;
 }
 
 export function rowToRepeatOccurrence(row: Record<string, unknown>): RepeatOccurrence {
@@ -482,7 +499,7 @@ export function rowToRepeatOccurrence(row: Record<string, unknown>): RepeatOccur
   };
 }
 
-export function repeatOccurrenceToRow(occ: Partial<RepeatOccurrence>) {
+export function repeatOccurrenceToRow(occ: Partial<RepeatOccurrence>): InferInsertModel<typeof repeatOccurrences> {
   const row: Record<string, unknown> = {};
   if (occ.id !== undefined) row.id = occ.id;
   if (occ.templateId !== undefined) row.template_id = occ.templateId;
@@ -493,7 +510,7 @@ export function repeatOccurrenceToRow(occ: Partial<RepeatOccurrence>) {
   Object.assign(row, objToHlcColumns(occ.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(occ.updatedAt, 'updated_at'));
   if (occ.isDeleted !== undefined) row.is_deleted = occ.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof repeatOccurrences>;
 }
 
 export function rowToTimerSession(row: Record<string, unknown>): TimerSession {
@@ -517,7 +534,7 @@ export function rowToTimerSession(row: Record<string, unknown>): TimerSession {
   };
 }
 
-export function timerSessionToRow(session: Partial<TimerSession>) {
+export function timerSessionToRow(session: Partial<TimerSession>): InferInsertModel<typeof timerSessions> {
   const row: Record<string, unknown> = {};
   if (session.id !== undefined) row.id = session.id;
   if (session.type !== undefined) row.type = session.type;
@@ -535,5 +552,5 @@ export function timerSessionToRow(session: Partial<TimerSession>) {
   Object.assign(row, objToHlcColumns(session.createdAt, 'created_at'));
   Object.assign(row, objToHlcColumns(session.updatedAt, 'updated_at'));
   if (session.isDeleted !== undefined) row.is_deleted = session.isDeleted;
-  return row;
+  return row as InferInsertModel<typeof timerSessions>;
 }

@@ -18,7 +18,7 @@ export class TauriWebSocketTransport {
           h = new Set();
           handlers.set('message', h);
         }
-        h.add(handler);
+        h.add(handler as (...args: unknown[]) => void);
       },
       onOpen(handler) {
         let h = handlers.get('open');
@@ -26,7 +26,7 @@ export class TauriWebSocketTransport {
           h = new Set();
           handlers.set('open', h);
         }
-        h.add(handler);
+        h.add(handler as (...args: unknown[]) => void);
       },
       onClose(handler) {
         let h = handlers.get('close');
@@ -34,7 +34,7 @@ export class TauriWebSocketTransport {
           h = new Set();
           handlers.set('close', h);
         }
-        h.add(handler);
+        h.add(handler as (...args: unknown[]) => void);
       },
       onError(handler) {
         let h = handlers.get('error');
@@ -42,7 +42,7 @@ export class TauriWebSocketTransport {
           h = new Set();
           handlers.set('error', h);
         }
-        h.add(handler);
+        h.add(handler as (...args: unknown[]) => void);
       },
     };
 

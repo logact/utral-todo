@@ -18,7 +18,7 @@ import { clearAllData } from '../db/database';
 import { db } from '../db/drizzle-adapter';
 import { todos, todoRelations, todoLogs, actionEdges, pluses } from '../db/schema';
 import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
-import { processQueue, start, stop, getSyncStatus } from '../db/syncEngine';
+import { processQueue, start, stop, getSyncStatus } from '../lib/sync/syncEngine';
 
 export function Settings() {
   const [saved, setSaved] = useState(false);

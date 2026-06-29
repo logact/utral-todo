@@ -2,7 +2,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, Home, Plus } from 'lucide-react';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
-import { getRootGoal, getTodo, ensureRootGoal } from '../db/todos';
+import { getRootGoal, getTodo } from '../db/todos';
 import { createRelation, deleteRelation, updateRelation } from '../db/relations';
 import { db } from '../db/drizzle-adapter';
 import { todoRelations } from '../db/schema';
@@ -104,7 +104,7 @@ export function BigMap() {
           </p>
           <button
             onClick={async () => {
-              await ensureRootGoal();
+
               const g = await getRootGoal();
               setRootGoalId(g?.id);
             }}

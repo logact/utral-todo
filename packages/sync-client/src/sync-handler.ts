@@ -159,7 +159,7 @@ export class SyncClientHandler {
   }
 
   /** Enqueue a local change and push via WebSocket */
-  async onLocalChange(table: string, operation: 'create' | 'update' | 'delete', recordId: string): Promise<void> {
+  async syncLocalChange(table: string, operation: 'create' | 'update' | 'delete', recordId: string): Promise<void> {
     await this.opts.storage.addToQueue({
       id: crypto.randomUUID(),
       table,
@@ -169,7 +169,6 @@ export class SyncClientHandler {
       createdAt: new Date(),
       retryCount: 0,
     });
-    this.opts.emitter.emitLocalChanged(table, operation, recordId);
     await this.flushQueue();
   }
 

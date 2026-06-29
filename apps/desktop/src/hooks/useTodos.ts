@@ -27,7 +27,7 @@ import {
   computeVirtualTodo,
   newHLC,
 } from '../types';
-import { getOrCreateDeviceId } from '../db/syncEngine';
+import { getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import type { Todo, TodoStatus, Priority, RepeatOccurrence } from '../types';
 
 export function useTodos() {

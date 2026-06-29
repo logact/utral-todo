@@ -38,7 +38,6 @@ export interface SyncStateStorage {
 // --- Event emitter ---
 export interface SyncEventEmitter {
   emitRemoteApplied(table: string, operation: string, recordId: string): void;
-  emitLocalChanged(table: string, operation: string, recordId: string): void;
 }
 
 // --- WebSocket types (client-side) ---

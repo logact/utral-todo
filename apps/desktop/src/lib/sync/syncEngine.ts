@@ -1,6 +1,5 @@
-import { TauriSyncHandler } from '../lib/sync/sync-handler.js';
-import Database from '@tauri-apps/plugin-sql';
-import { getSyncConfig } from './sync';
+import { TauriSyncHandler } from './sync-handler.js';
+import { getSyncConfig } from '../../db/sync.js';
 
 // Table name mapping: Dexie store names → SyncEvent canonical names
 const TABLE_NAME_MAP: Record<string, string> = {
@@ -27,12 +26,6 @@ const TABLE_ORDER: Record<string, number> = {
 
 class WindowEventEmitter {
   emitRemoteApplied(table: string, operation: string, recordId: string): void {
-    window.dispatchEvent(
-      new CustomEvent('sync:remote-applied', { detail: { table, operation, recordId } })
-    );
-  }
-
-  emitLocalChanged(table: string, operation: string, recordId: string): void {
     window.dispatchEvent(
       new CustomEvent('db:changed', { detail: { table, operation, recordId } })
     );
@@ -64,13 +57,11 @@ async function getEngine(): Promise<TauriSyncHandler> {
     }
 
     const serverUrl = getWsUrl(normalizeServerUrl(config.serverUrl));
-    const db = await Database.load('sqlite:sync.db');
 
     engine = new TauriSyncHandler({
       serverUrl,
       tables: Object.values(TABLE_NAME_MAP),
       tableOrder: TABLE_ORDER,
-      db,
       deviceId: crypto.randomUUID(),
       userId: config.userId || 'default',
       channel: config.channel || 'default',
@@ -89,13 +80,16 @@ export async function getOrCreateDeviceId(): Promise<string> {
   return engine.state;
 }
 
-export async function onLocalChange(
+export async function syncLocalChange(
   table: string,
   operation: 'create' | 'update' | 'delete',
   recordId: string
 ): Promise<void> {
   const engine = await getEngine();
-  return engine.onLocalChange(table, operation, recordId);
+   window.dispatchEvent(
+      new CustomEvent('db:changed', { detail: { table, operation, recordId } })
+    );
+  return engine.syncLocalChange(table, operation, recordId);
 }
 
 export async function processQueue(): Promise<void> {

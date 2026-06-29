@@ -1,16 +1,13 @@
 import type { SyncHandlerOptions } from '@utral/sync-client';
 import { SyncClientHandler } from '@utral/sync-client';
-import Database from '@tauri-apps/plugin-sql';
 import { TauriSqliteStorage } from './sqlite-storage.js';
 import { TauriWebSocketTransport } from './websocket-transport.js';
 
-export interface TauriSyncOptions extends Omit<SyncHandlerOptions, 'transport' | 'storage'> {
-  db: Database;
-}
+export interface TauriSyncOptions extends Omit<SyncHandlerOptions, 'transport' | 'storage'> {}
 
 export class TauriSyncHandler extends SyncClientHandler {
   constructor(opts: TauriSyncOptions) {
-    const storage = new TauriSqliteStorage(opts.db);
+    const storage = new TauriSqliteStorage();
     super({
       ...opts,
       storage,

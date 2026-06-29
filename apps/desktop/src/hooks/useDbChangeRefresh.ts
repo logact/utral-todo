@@ -17,14 +17,13 @@ export function useDbChangeRefresh(
       if (tables && detail?.table && !tables.includes(detail.table)) return;
       clearTimeout(timeout);
       timeout = setTimeout(() => refresh(), delay);
-    };
+    };   
+     
 
-    window.addEventListener('sync:remote-applied', handler);
     window.addEventListener('db:changed', handler);
 
     return () => {
       clearTimeout(timeout);
-      window.removeEventListener('sync:remote-applied', handler);
       window.removeEventListener('db:changed', handler);
     };
   }, [refresh, delay, skipInitial]);

@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { todos } from './schema';
 import { eq } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Label } from '../types';
 import { rowToTodo } from './schema';
@@ -37,12 +37,12 @@ export async function renameLabel(oldName: string, newName: string): Promise<num
     const newTags = (todo.tags ?? []).map((t) => (t === oldName ? newName : t));
     const uniqueTags = [...new Set(newTags)];
     await db.update(todos).set({
-      tags: JSON.stringify(uniqueTags),
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(todos.id, todo.id));
-    onLocalChange('todos', 'update', todo.id).catch(() => {});
+      tags: uniqueTags,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(todos.id, todo.id));
+    syncLocalChange('todos', 'update', todo.id).catch(() => {});
     updated++;
   }
 
@@ -62,12 +62,12 @@ export async function deleteLabel(name: string): Promise<number> {
       : hlc;
     const newTags = (todo.tags ?? []).filter((t) => t !== name);
     await db.update(todos).set({
-      tags: JSON.stringify(newTags),
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(todos.id, todo.id));
-    onLocalChange('todos', 'update', todo.id).catch(() => {});
+      tags: newTags,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(todos.id, todo.id));
+    syncLocalChange('todos', 'update', todo.id).catch(() => {});
     updated++;
   }
 

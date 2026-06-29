@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { pluses } from './schema';
 import { eq } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Pluse } from '../types';
 import { pluseToRow, rowToPluse } from './schema';
@@ -31,8 +31,8 @@ export async function createPluse(
     updatedAt: hlc,
     isDeleted: false,
   };
-  await db.insert(pluses).values(pluseToRow(pluse) as any);
-  onLocalChange('pluses', 'create', pluse.id).catch(() => {});
+  await db.insert(pluses).values(pluseToRow(pluse));
+  syncLocalChange('pluses', 'create', pluse.id).catch(() => {});
   return pluse;
 }
 
@@ -58,8 +58,8 @@ export async function updatePluse(
     : newHLC(nodeId);
   await db.update(pluses).set({
     ...pluseToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Pluse>),
-  } as any).where(eq(pluses.id, id));
-  onLocalChange('pluses', 'update', id).catch(() => {});
+  }).where(eq(pluses.id, id));
+  syncLocalChange('pluses', 'update', id).catch(() => {});
 }
 
 export async function deletePluse(id: string): Promise<void> {
@@ -70,10 +70,10 @@ export async function deletePluse(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(pluses).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(pluses.id, id));
-  onLocalChange('pluses', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(pluses.id, id));
+  syncLocalChange('pluses', 'delete', id).catch(() => {});
 }

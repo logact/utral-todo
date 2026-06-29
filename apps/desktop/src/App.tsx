@@ -60,9 +60,9 @@ export default function App() {
   useEffect(() => {
     initDatabase()
       .then(() => {
-        ensureRootGoal().catch((err) => {
-          console.error('[App] Failed to ensure root goal:', err);
-        });
+        // ensureRootGoal().catch((err) => {
+        //   console.error('[App] Failed to ensure root goal:', err);
+        // });
         setDbReady(true);
       })
       .catch((err) => {

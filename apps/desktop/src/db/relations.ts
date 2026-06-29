@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { todoRelations, todos } from './schema';
 import { eq, and } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Todo, TodoRelation, TodoRelationType } from '../types';
 import { rowToTodo, rowToRelation, relationToRow } from './schema';
@@ -22,8 +22,8 @@ export async function createRelation(
     updatedAt: hlc,
     isDeleted: false,
   };
-  await db.insert(todoRelations).values(relationToRow(relation) as any);
-  onLocalChange('relations', 'create', relation.id).catch(() => {});
+  await db.insert(todoRelations).values(relationToRow(relation));
+  syncLocalChange('relations', 'create', relation.id).catch(() => {});
   return relation;
 }
 
@@ -211,8 +211,8 @@ export async function updateRelation(
     : newHLC(nodeId);
   await db.update(todoRelations).set({
     ...relationToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<TodoRelation>),
-  } as any).where(eq(todoRelations.id, id));
-  onLocalChange('relations', 'update', id).catch(() => {});
+  }).where(eq(todoRelations.id, id));
+  syncLocalChange('relations', 'update', id).catch(() => {});
 }
 
 export async function deleteRelation(id: string): Promise<void> {
@@ -224,12 +224,12 @@ export async function deleteRelation(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(todoRelations).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(todoRelations.id, id));
-  onLocalChange('relations', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(todoRelations.id, id));
+  syncLocalChange('relations', 'delete', id).catch(() => {});
 }
 
 export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void> {
@@ -243,11 +243,11 @@ export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void
       ? mergeHLC(rel.updatedAt, hlc)
       : hlc;
     await db.update(todoRelations).set({
-      is_deleted: true,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(todoRelations.id, rel.id)).catch(() => {});
+      isDeleted: true,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(todoRelations.id, rel.id)).catch(() => {});
   }
 }
 
@@ -355,10 +355,10 @@ export async function deleteAssignedInstances(templateId: string): Promise<void>
       ? mergeHLC(inst.updatedAt, hlc)
       : hlc;
     await db.update(todos).set({
-      is_deleted: true,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(todos.id, inst.id)).catch(() => {});
+      isDeleted: true,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(todos.id, inst.id)).catch(() => {});
   }
 }

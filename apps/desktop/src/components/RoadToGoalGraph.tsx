@@ -277,11 +277,9 @@ export function RoadToGoalGraph({
       timeout = setTimeout(() => reload(), 100);
     };
     window.addEventListener('sync:remote-applied', handler);
-    window.addEventListener('db:changed', handler);
     return () => {
       clearTimeout(timeout);
       window.removeEventListener('sync:remote-applied', handler);
-      window.removeEventListener('db:changed', handler);
     };
   }, [reload]);
 

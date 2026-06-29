@@ -40,6 +40,7 @@ export function extractAtSchedule(input: string): AtScheduleResult {
         ...tokens.slice(0, atIndex),
         ...tokens.slice(atIndex + consumed),
       ];
+      
       return { title: titleTokens.join(' ').trim(), scheduledDate: parsed };
     }
   }

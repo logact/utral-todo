@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { todoLogs } from './schema';
 import { eq } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { TodoLog, TodoLogType } from '../types';
 import { todoLogToRow, rowToTodoLog } from './schema';
@@ -25,8 +25,8 @@ export async function createTodoLog(
     updatedAt: hlc,
     isDeleted: false,
   };
-  await db.insert(todoLogs).values(todoLogToRow(log) as any);
-  onLocalChange('todoLogs', 'create', log.id).catch(() => {});
+  await db.insert(todoLogs).values(todoLogToRow(log));
+  syncLocalChange('todoLogs', 'create', log.id).catch(() => {});
   return log;
 }
 
@@ -46,12 +46,12 @@ export async function deleteTodoLog(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(todoLogs).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(todoLogs.id, id));
-  onLocalChange('todoLogs', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(todoLogs.id, id));
+  syncLocalChange('todoLogs', 'delete', id).catch(() => {});
 }
 
 export async function deleteTodoLogsForTodo(todoId: string): Promise<void> {
@@ -66,10 +66,10 @@ export async function deleteTodoLogsForTodo(todoId: string): Promise<void> {
       ? mergeHLC(log.updatedAt, hlc)
       : hlc;
     await db.update(todoLogs).set({
-      is_deleted: true,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(todoLogs.id, log.id)).catch(() => {});
+      isDeleted: true,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(todoLogs.id, log.id)).catch(() => {});
   }
 }

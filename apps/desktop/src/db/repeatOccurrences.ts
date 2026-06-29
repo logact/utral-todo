@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { repeatOccurrences, todos } from './schema';
 import { eq } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createTodo } from './todos';
 import { newHLC, mergeHLC, makeVirtualTodoId } from '../types';
 import type { RepeatOccurrence, Todo, TodoStatus } from '../types';
@@ -60,18 +60,17 @@ export async function setOccurrenceStatus(
     const mergedUpdatedAt = existing.updatedAt
       ? mergeHLC(existing.updatedAt, hlc)
       : hlc;
-    const updateData: Record<string, unknown> = {
+    const updateData = {
       status,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+      completedAt: status === 'done' ? now : null,
     };
-    if (status === 'done') updateData.completed_at = now;
-    else updateData.completed_at = null;
-    await db.update(repeatOccurrences).set(updateData as any).where(
+    await db.update(repeatOccurrences).set(updateData).where(
       eq(repeatOccurrences.id, id)
     );
-    onLocalChange('repeatOccurrences', 'update', id).catch(() => {});
+    syncLocalChange('repeatOccurrences', 'update', id).catch(() => {});
   } else {
     const occurrence: RepeatOccurrence = {
       id,
@@ -83,8 +82,8 @@ export async function setOccurrenceStatus(
       updatedAt: hlc,
       isDeleted: false,
     };
-    await db.insert(repeatOccurrences).values(repeatOccurrenceToRow(occurrence) as any);
-    onLocalChange('repeatOccurrences', 'create', id).catch(() => {});
+    await db.insert(repeatOccurrences).values(repeatOccurrenceToRow(occurrence));
+    syncLocalChange('repeatOccurrences', 'create', id).catch(() => {});
   }
 }
 
@@ -120,12 +119,12 @@ export async function materializeInstance(
       ? mergeHLC(occurrence.updatedAt, hlc)
       : hlc;
     await db.update(repeatOccurrences).set({
-      materialized_todo_id: instance.id,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(repeatOccurrences.id, id));
-    onLocalChange('repeatOccurrences', 'update', id).catch(() => {});
+      materializedTodoId: instance.id,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(repeatOccurrences.id, id));
+    syncLocalChange('repeatOccurrences', 'update', id).catch(() => {});
   } else {
     await db.insert(repeatOccurrences).values(repeatOccurrenceToRow({
       id,
@@ -135,8 +134,8 @@ export async function materializeInstance(
       materializedTodoId: instance.id,
       createdAt: hlc,
       updatedAt: hlc,
-    }) as any);
-    onLocalChange('repeatOccurrences', 'create', id).catch(() => {});
+    }));
+    syncLocalChange('repeatOccurrences', 'create', id).catch(() => {});
   }
 
   return instance;
@@ -153,12 +152,12 @@ export async function deleteOccurrence(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(repeatOccurrences).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(repeatOccurrences.id, id));
-  onLocalChange('repeatOccurrences', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(repeatOccurrences.id, id));
+  syncLocalChange('repeatOccurrences', 'delete', id).catch(() => {});
 }
 
 export async function deleteOccurrencesForTemplate(templateId: string): Promise<void> {
@@ -170,11 +169,11 @@ export async function deleteOccurrencesForTemplate(templateId: string): Promise<
       ? mergeHLC(o.updatedAt, hlc)
       : hlc;
     await db.update(repeatOccurrences).set({
-      is_deleted: true,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(repeatOccurrences.id, o.id));
-    onLocalChange('repeatOccurrences', 'delete', o.id).catch(() => {});
+      isDeleted: true,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(repeatOccurrences.id, o.id));
+    syncLocalChange('repeatOccurrences', 'delete', o.id).catch(() => {});
   }
 }

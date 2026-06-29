@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { todos, todoRelations, plans as plansTable } from './schema';
-import { eq, and, lt, gte, isNotNull } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { eq, and, lt, gte, isNotNull, isNull } from 'drizzle-orm';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
 import { newHLC, mergeHLC } from '../types';
@@ -43,6 +43,7 @@ export async function createTodo(
   const nodeType = options?.nodeType || 'task';
   const isTaskNode = nodeType === 'task';
 
+
   const todo: Todo = {
     id: crypto.randomUUID(),
     nodeType,
@@ -67,8 +68,9 @@ export async function createTodo(
     goalStatus: nodeType === 'goal' ? (options?.goalStatus ?? 'active') : undefined,
     isDeleted: false,
   };
-  await db.insert(todos).values(todoToRow(todo) as any);
-  onLocalChange('todos', 'create', todo.id).catch(() => {});
+  await db.insert(todos).values(todoToRow(todo));
+  syncLocalChange('todos', 'create', todo.id).catch(() => {});
+
   return todo;
 }
 
@@ -125,7 +127,7 @@ export async function getAllTodos(): Promise<Todo[]> {
 
 export async function getRootTodos(): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
-    and(eq(todos.isDeleted, false), eq(todos.parentId, null as any))
+    and(eq(todos.isDeleted, false), isNull(todos.parentId))
   ) as any[];
   return rows.map(rowToTodo);
 }
@@ -157,8 +159,8 @@ export async function ensureRootGoal(): Promise<Todo> {
       updatedAt: hlc,
       isDeleted: false,
     };
-    await tx.insert(todos).values(todoToRow(rootGoal) as any);
-    onLocalChange('todos', 'create', rootGoal.id).catch(() => {});
+    await tx.insert(todos).values(todoToRow(rootGoal));
+    syncLocalChange('todos', 'create', rootGoal.id).catch(() => {});
 
     const plan: Plan = {
       id: crypto.randomUUID(),
@@ -171,16 +173,16 @@ export async function ensureRootGoal(): Promise<Todo> {
       updatedAt: hlc,
       isDeleted: false,
     };
-    await tx.insert(plansTable).values(planToRow(plan) as any);
-    onLocalChange('plans', 'create', plan.id).catch(() => {});
+    await tx.insert(plansTable).values(planToRow(plan));
+    syncLocalChange('plans', 'create', plan.id).catch(() => {});
 
     await tx.update(todos).set({
       activePlanId: plan.id,
       updatedAtWall: hlc.wall,
       updatedAtCounter: hlc.counter,
       updatedAtNode: hlc.node,
-    } as any).where(eq(todos.id, rootGoal.id));
-    onLocalChange('todos', 'update', rootGoal.id).catch(() => {});
+    }).where(eq(todos.id, rootGoal.id));
+    syncLocalChange('todos', 'update', rootGoal.id).catch(() => {});
 
     return { ...rootGoal, activePlanId: plan.id };
   });
@@ -281,8 +283,8 @@ export async function reorderSubTodos(_parentId: string, orderedIds: string[]): 
       updatedAtWall: mergedUpdatedAt.wall,
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
-    } as any).where(eq(todos.id, orderedIds[i]));
-    onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
+    }).where(eq(todos.id, orderedIds[i]));
+    syncLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -299,8 +301,8 @@ export async function reorderTodos(orderedIds: string[]): Promise<void> {
       updatedAtWall: mergedUpdatedAt.wall,
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
-    } as any).where(eq(todos.id, orderedIds[i]));
-    onLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
+    }).where(eq(todos.id, orderedIds[i]));
+    syncLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -324,8 +326,8 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
     : newHLC(nodeId);
   await db.update(todos).set({
     ...todoToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Todo>),
-  } as any).where(eq(todos.id, id));
-  onLocalChange('todos', 'update', id).catch(() => {});
+  }).where(eq(todos.id, id));
+  syncLocalChange('todos', 'update', id).catch(() => {});
 }
 
 export async function deleteTodo(id: string): Promise<void> {
@@ -354,8 +356,8 @@ export async function deleteTodo(id: string): Promise<void> {
         updatedAtWall: mergedPlanUpdatedAt.wall,
         updatedAtCounter: mergedPlanUpdatedAt.counter,
         updatedAtNode: mergedPlanUpdatedAt.node,
-      } as any).where(eq(plansTable.id, plan.id));
-      onLocalChange('plans', 'delete', plan.id).catch(() => {});
+      }).where(eq(plansTable.id, plan.id));
+      syncLocalChange('plans', 'delete', plan.id).catch(() => {});
     }
   } else {
     const allPlanRows = await db.select().from(plansTable) as any[];
@@ -378,13 +380,13 @@ export async function deleteTodo(id: string): Promise<void> {
           ? mergeHLC(plan.updatedAt, tombstoneHLC)
           : tombstoneHLC;
         await db.update(plansTable).set({
-          nodeIds: JSON.stringify(newNodeIds),
-          edgeIds: JSON.stringify(newEdgeIds),
+          nodeIds: newNodeIds,
+          edgeIds: newEdgeIds,
           updatedAtWall: mergedPlanUpdatedAt.wall,
           updatedAtCounter: mergedPlanUpdatedAt.counter,
           updatedAtNode: mergedPlanUpdatedAt.node,
-        } as any).where(eq(plansTable.id, plan.id));
-        onLocalChange('plans', 'update', plan.id).catch(() => {});
+        }).where(eq(plansTable.id, plan.id));
+        syncLocalChange('plans', 'update', plan.id).catch(() => {});
       }
     }
   }
@@ -397,8 +399,8 @@ export async function deleteTodo(id: string): Promise<void> {
     updatedAtWall: mergedUpdatedAt.wall,
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
-  } as any).where(eq(todos.id, id));
-  onLocalChange('todos', 'delete', id).catch(() => {});
+  }).where(eq(todos.id, id));
+  syncLocalChange('todos', 'delete', id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
@@ -407,17 +409,15 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
   const mergedUpdatedAt = existing?.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  const setValues: Record<string, unknown> = {
+  await db.update(todos).set({
     status,
+    startedAt: status === 'in_progress' ? new Date() : status === 'pending' ? null : undefined,
+    completedAt: status === 'done' ? new Date() : undefined,
     updatedAtWall: mergedUpdatedAt.wall,
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
-  };
-  if (status === 'in_progress') setValues.startedAt = new Date();
-  if (status === 'pending') setValues.startedAt = null;
-  if (status === 'done') setValues.completedAt = new Date();
-  await db.update(todos).set(setValues as any).where(eq(todos.id, id));
-  onLocalChange('todos', 'update', id).catch(() => {});
+  }).where(eq(todos.id, id));
+  syncLocalChange('todos', 'update', id).catch(() => {});
 }
 
 export async function updateTodoSchedule(
@@ -434,8 +434,8 @@ export async function updateTodoSchedule(
     updatedAtWall: mergedUpdatedAt.wall,
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
-  } as any).where(eq(todos.id, id));
-  onLocalChange('todos', 'update', id).catch(() => {});
+  }).where(eq(todos.id, id));
+  syncLocalChange('todos', 'update', id).catch(() => {});
 }
 
 // ─── Virtual Instance Computation ───
@@ -690,6 +690,6 @@ export async function updateRepeatRule(
     updatedAtWall: mergedUpdatedAt.wall,
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
-  } as any).where(eq(todos.id, id));
-  onLocalChange('todos', 'update', id).catch(() => {});
+  }).where(eq(todos.id, id));
+  syncLocalChange('todos', 'update', id).catch(() => {});
 }

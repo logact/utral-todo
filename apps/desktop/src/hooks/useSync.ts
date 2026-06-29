@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSyncConfig } from '../db/sync';
-import { start, stop, getSyncStatus, processQueue } from '../db/syncEngine';
+import { start, stop, getSyncStatus, processQueue } from '../lib/sync/syncEngine';
 
 export function useSync() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'offline' | 'error'>('idle');

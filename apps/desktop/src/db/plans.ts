@@ -1,10 +1,10 @@
 import { db } from './drizzle-adapter';
 import { plans as plansTable, todos, actionEdges } from './schema';
 import { eq } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Plan } from '../types';
-import { planToRow, rowToPlan, rowToActionEdge } from './schema';
+import { planToRow, rowToPlan, rowToActionEdge, rowToTodo } from './schema';
 
 export async function getPlan(id: string): Promise<Plan | undefined> {
   const rows = await db.select().from(plansTable).where(eq(plansTable.id, id)) as any[];
@@ -36,8 +36,8 @@ export async function createPlan(
     updatedAt: hlc,
     isDeleted: false,
   };
-  await db.insert(plansTable).values(planToRow(plan) as any);
-  onLocalChange('plans', 'create', plan.id).catch(() => {});
+  await db.insert(plansTable).values(planToRow(plan));
+  syncLocalChange('plans', 'create', plan.id).catch(() => {});
   return plan;
 }
 
@@ -55,8 +55,8 @@ export async function updatePlan(
     : newHLC(nodeId);
   await db.update(plansTable).set({
     ...planToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Plan>),
-  } as any).where(eq(plansTable.id, id));
-  onLocalChange('plans', 'update', id).catch(() => {});
+  }).where(eq(plansTable.id, id));
+  syncLocalChange('plans', 'update', id).catch(() => {});
 }
 
 export async function deletePlan(id: string): Promise<void> {
@@ -69,8 +69,8 @@ export async function deletePlan(id: string): Promise<void> {
   const goalRows = await db.select().from(todos).where(
     eq(todos.id, plan.goalTodoId)
   ) as any[];
-  const goal = goalRows[0];
-  const isActive = (goal as any)?.active_plan_id === id;
+  const goal = goalRows[0] ? rowToTodo(goalRows[0]) : undefined;
+  const isActive = goal?.activePlanId === id;
 
   const nodeId = await getOrCreateDeviceId();
   const hlc = newHLC(nodeId);
@@ -78,12 +78,12 @@ export async function deletePlan(id: string): Promise<void> {
     ? mergeHLC(plan.updatedAt, hlc)
     : hlc;
   await db.update(plansTable).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(plansTable.id, id));
-  onLocalChange('plans', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(plansTable.id, id));
+  syncLocalChange('plans', 'delete', id).catch(() => {});
 
   if (isActive) {
     const remaining = await getPlansForGoal(plan.goalTodoId);
@@ -93,16 +93,16 @@ export async function deletePlan(id: string): Promise<void> {
     } else {
       newActive = await createPlan(plan.goalTodoId, 'Default Plan');
     }
-    const goalMergedUpdatedAt = goal?.updated_at_wall != null
-      ? mergeHLC({ wall: goal.updated_at_wall, counter: goal.updated_at_counter, node: goal.updated_at_node }, newHLC(nodeId))
+    const goalMergedUpdatedAt = goal?.updatedAt
+      ? mergeHLC(goal.updatedAt, newHLC(nodeId))
       : newHLC(nodeId);
     await db.update(todos).set({
-      active_plan_id: newActive.id,
-      updated_at_wall: goalMergedUpdatedAt.wall,
-      updated_at_counter: goalMergedUpdatedAt.counter,
-      updated_at_node: goalMergedUpdatedAt.node,
-    } as any).where(eq(todos.id, plan.goalTodoId));
-    onLocalChange('todos', 'update', plan.goalTodoId).catch(() => {});
+      activePlanId: newActive.id,
+      updatedAtWall: goalMergedUpdatedAt.wall,
+      updatedAtCounter: goalMergedUpdatedAt.counter,
+      updatedAtNode: goalMergedUpdatedAt.node,
+    }).where(eq(todos.id, plan.goalTodoId));
+    syncLocalChange('todos', 'update', plan.goalTodoId).catch(() => {});
   }
 }
 
@@ -115,12 +115,12 @@ export async function addNodeToPlan(planId: string, todoId: string): Promise<voi
     ? mergeHLC(plan.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(plansTable).set({
-    node_ids: JSON.stringify([...plan.nodeIds, todoId]),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(plansTable.id, planId));
-  onLocalChange('plans', 'update', planId).catch(() => {});
+    nodeIds: [...plan.nodeIds, todoId],
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(plansTable.id, planId));
+  syncLocalChange('plans', 'update', planId).catch(() => {});
 }
 
 export async function removeNodeFromPlan(planId: string, todoId: string): Promise<void> {
@@ -141,13 +141,13 @@ export async function removeNodeFromPlan(planId: string, todoId: string): Promis
     return edge?.fromTodoId !== todoId && edge?.toTodoId !== todoId;
   });
   await db.update(plansTable).set({
-    node_ids: JSON.stringify(newNodeIds),
-    edge_ids: JSON.stringify(newEdgeIds),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(plansTable.id, planId));
-  onLocalChange('plans', 'update', planId).catch(() => {});
+    nodeIds: newNodeIds,
+    edgeIds: newEdgeIds,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(plansTable.id, planId));
+  syncLocalChange('plans', 'update', planId).catch(() => {});
 }
 
 export async function addEdgeToPlan(planId: string, edgeId: string): Promise<void> {
@@ -159,12 +159,12 @@ export async function addEdgeToPlan(planId: string, edgeId: string): Promise<voi
     ? mergeHLC(plan.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(plansTable).set({
-    edge_ids: JSON.stringify([...plan.edgeIds, edgeId]),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(plansTable.id, planId));
-  onLocalChange('plans', 'update', planId).catch(() => {});
+    edgeIds: [...plan.edgeIds, edgeId],
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(plansTable.id, planId));
+  syncLocalChange('plans', 'update', planId).catch(() => {});
 }
 
 export async function removeEdgeFromPlan(planId: string, edgeId: string): Promise<void> {
@@ -176,12 +176,12 @@ export async function removeEdgeFromPlan(planId: string, edgeId: string): Promis
     : newHLC(nodeId);
   const newEdgeIds = plan.edgeIds.filter((eid) => eid !== edgeId);
   await db.update(plansTable).set({
-    edge_ids: JSON.stringify(newEdgeIds),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(plansTable.id, planId));
-  onLocalChange('plans', 'update', planId).catch(() => {});
+    edgeIds: newEdgeIds,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(plansTable.id, planId));
+  syncLocalChange('plans', 'update', planId).catch(() => {});
 }
 
 export async function setPlanEdges(planId: string, edgeIds: string[]): Promise<void> {
@@ -191,10 +191,10 @@ export async function setPlanEdges(planId: string, edgeIds: string[]): Promise<v
     ? mergeHLC(plan.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(plansTable).set({
-    edge_ids: JSON.stringify([...edgeIds]),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(plansTable.id, planId));
-  onLocalChange('plans', 'update', planId).catch(() => {});
+    edgeIds: [...edgeIds],
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(plansTable.id, planId));
+  syncLocalChange('plans', 'update', planId).catch(() => {});
 }

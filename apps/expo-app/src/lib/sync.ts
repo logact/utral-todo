@@ -84,7 +84,6 @@ async function getEngine(): Promise<ExpoSyncHandler> {
             queryClient.invalidateQueries({ queryKey: ['pluses'] });
           }
         },
-        emitLocalChanged: () => {},
       },
     });
 

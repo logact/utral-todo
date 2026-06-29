@@ -13,14 +13,21 @@ interface QuickTodoModalProps {
 
 export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalProps) {
   const [rawInput, setRawInput] = useState('');
-  const [parsedTitle, setParsedTitle] = useState('');
-  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  
+  // const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
   const [nodeType, setNodeType] = useState<NodeType>('task');
   const [pattern, setPattern] = useState<TaskPattern>('task');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isTask = nodeType === 'task';
+
+  const result = extractAtSchedule(rawInput);
+  const parsedTitle:string = result.title.trim() === '' ? '' : result.title.trim();
+
+  // Derive scheduledDate: use parsed result if no manual override
+  const effectiveScheduledDate = scheduledDate ?? result.scheduledDate;
 
   // Auto-focus input when modal opens
   useEffect(() => {
@@ -33,8 +40,6 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
   useEffect(() => {
     if (!isOpen) {
       setRawInput('');
-      setParsedTitle('');
-      setScheduledDate(undefined);
       setNodeType('task');
       setPattern('task');
       setIsSubmitting(false);
@@ -42,22 +47,18 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
   }, [isOpen]);
 
   // Parse @ schedule hints in real-time
-  useEffect(() => {
-    const result = extractAtSchedule(rawInput);
-    setParsedTitle(result.title);
-    setScheduledDate(result.scheduledDate);
-  }, [rawInput]);
 
   const handleSubmit = useCallback(async () => {
     const title = parsedTitle || rawInput.trim();
     if (!title || isSubmitting) return;
 
     setIsSubmitting(true);
+
     await createTodo(title, {
       nodeType,
       ...(isTask
         ? {
-            scheduledDate,
+            scheduledDate: effectiveScheduledDate,
             priority: 'medium',
             estimatedMinutes: 60,
             pattern,
@@ -97,14 +98,14 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
   }, [isOpen, onClose, handleSubmit]);
 
   function applyTimeOfDay(tod: TimeOfDay) {
-    const base = scheduledDate ? startOfDay(new Date(scheduledDate)) : startOfDay(new Date());
+    const base = effectiveScheduledDate ? startOfDay(new Date(effectiveScheduledDate)) : startOfDay(new Date());
     const updated = setTimeOfDay(base, tod);
     setScheduledDate(updated);
   }
 
   if (!isOpen) return null;
 
-  const hasSchedule = !!scheduledDate;
+  const hasSchedule = !!effectiveScheduledDate;
   const showPreview = hasSchedule && parsedTitle && parsedTitle !== rawInput.trim();
 
   return (
@@ -171,7 +172,10 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
               ref={inputRef}
               type="text"
               value={rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
+              onChange={(e) =>{
+                  setRawInput(e.target.value)
+         
+              } }
               placeholder={isTask ? "What needs to be done? Use @tomorrow, @3pm, etc." : "What do you want to achieve?"}
               className="w-full px-3.5 py-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-base text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
@@ -208,16 +212,16 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
             )}
 
             {/* Schedule preview */}
-            {showPreview && scheduledDate && (
+            {showPreview && effectiveScheduledDate && (
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="w-4 h-4 text-indigo-500 shrink-0" />
                 <span className="text-slate-600 dark:text-slate-400">
                   <span className="font-medium text-slate-800 dark:text-slate-200">{parsedTitle}</span>
                   {' → scheduled '}
                   <span className="font-medium text-slate-800 dark:text-slate-200">
-                    {formatDate(scheduledDate)}
-                    {scheduledDate.getHours() !== 9 && (
-                      <span> at {formatTime(scheduledDate)}</span>
+                    {formatDate(effectiveScheduledDate)}
+                    {effectiveScheduledDate.getHours() !== 9 && (
+                      <span> at {formatTime(effectiveScheduledDate)}</span>
                     )}
                   </span>
                 </span>
@@ -225,15 +229,15 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
             )}
 
             {/* Time of day chips */}
-            {hasSchedule && (
+            {hasSchedule && effectiveScheduledDate && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">Time:</span>
                 {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((tod) => {
                   const todDate = setTimeOfDay(
-                    startOfDay(new Date(scheduledDate)),
+                    startOfDay(new Date(effectiveScheduledDate)),
                     tod
                   );
-                  const isActive = scheduledDate.getHours() === todDate.getHours();
+                  const isActive = effectiveScheduledDate.getHours() === todDate.getHours();
                   return (
                     <button
                       key={tod}

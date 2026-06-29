@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { actionEdges } from './schema';
 import { eq } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { ActionEdge, ActionEdgeType } from '../types';
 import { actionEdgeToRow, rowToActionEdge } from './schema';
@@ -22,8 +22,8 @@ export async function createActionEdge(
     updatedAt: hlc,
     isDeleted: false,
   };
-  await db.insert(actionEdges).values(actionEdgeToRow(edge) as any);
-  onLocalChange('actionEdges', 'create', edge.id).catch(() => {});
+  await db.insert(actionEdges).values(actionEdgeToRow(edge));
+  syncLocalChange('actionEdges', 'create', edge.id).catch(() => {});
   return edge;
 }
 
@@ -76,8 +76,8 @@ export async function updateActionEdge(
     : newHLC(nodeId);
   await db.update(actionEdges).set({
     ...actionEdgeToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<ActionEdge>),
-  } as any).where(eq(actionEdges.id, id));
-  onLocalChange('actionEdges', 'update', id).catch(() => {});
+  }).where(eq(actionEdges.id, id));
+  syncLocalChange('actionEdges', 'update', id).catch(() => {});
 }
 
 export async function deleteActionEdge(id: string): Promise<void> {
@@ -89,12 +89,12 @@ export async function deleteActionEdge(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, hlc)
     : hlc;
   await db.update(actionEdges).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(actionEdges.id, id));
-  onLocalChange('actionEdges', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(actionEdges.id, id));
+  syncLocalChange('actionEdges', 'delete', id).catch(() => {});
 }
 
 export async function deleteActionEdgesForTodo(todoId: string): Promise<void> {
@@ -107,10 +107,10 @@ export async function deleteActionEdgesForTodo(todoId: string): Promise<void> {
       ? mergeHLC(edge.updatedAt, hlc)
       : hlc;
     await db.update(actionEdges).set({
-      is_deleted: true,
-      updated_at_wall: mergedUpdatedAt.wall,
-      updated_at_counter: mergedUpdatedAt.counter,
-      updated_at_node: mergedUpdatedAt.node,
-    } as any).where(eq(actionEdges.id, edge.id)).catch(() => {});
+      isDeleted: true,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(actionEdges.id, edge.id)).catch(() => {});
   }
 }

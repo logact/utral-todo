@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { pluses, timerSessions as timerSessionsTable } from './schema';
 import { eq, and } from 'drizzle-orm';
-import { onLocalChange, getOrCreateDeviceId } from './syncEngine';
+import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Pluse, TimerSession } from '../types';
 import { rowToPluse, rowToTimerSession } from './schema';
@@ -22,15 +22,15 @@ export async function startPluseTimer(pluseId: string): Promise<Pluse> {
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(pluses).set({
-    timer_status: 'running',
-    started_at: new Date(),
-    accumulated_seconds: 0,
-    current_interval_index: 0,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(pluses.id, pluseId));
-  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+    timerStatus: 'running',
+    startedAt: new Date(),
+    accumulatedSeconds: 0,
+    currentIntervalIndex: 0,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(pluses.id, pluseId));
+  syncLocalChange('pluses', 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -44,15 +44,15 @@ export async function pausePluseTimer(pluseId: string, accumulatedSeconds: numbe
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(pluses).set({
-    timer_status: 'paused',
-    started_at: null,
-    accumulated_seconds: accumulatedSeconds,
-    current_interval_index: currentIntervalIndex,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(pluses.id, pluseId));
-  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+    timerStatus: 'paused',
+    startedAt: null,
+    accumulatedSeconds: accumulatedSeconds,
+    currentIntervalIndex: currentIntervalIndex,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(pluses.id, pluseId));
+  syncLocalChange('pluses', 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -66,13 +66,13 @@ export async function resumePluseTimer(pluseId: string): Promise<Pluse> {
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(pluses).set({
-    timer_status: 'running',
-    started_at: new Date(),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(pluses.id, pluseId));
-  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+    timerStatus: 'running',
+    startedAt: new Date(),
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(pluses.id, pluseId));
+  syncLocalChange('pluses', 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -86,15 +86,15 @@ export async function stopPluseTimer(pluseId: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(pluses).set({
-    timer_status: 'idle',
-    started_at: null,
-    accumulated_seconds: 0,
-    current_interval_index: 0,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(pluses.id, pluseId));
-  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+    timerStatus: 'idle',
+    startedAt: null,
+    accumulatedSeconds: 0,
+    currentIntervalIndex: 0,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(pluses.id, pluseId));
+  syncLocalChange('pluses', 'update', pluseId).catch(() => {});
 }
 
 export async function advancePluseTimer(pluseId: string, currentIntervalIndex: number): Promise<Pluse> {
@@ -106,14 +106,14 @@ export async function advancePluseTimer(pluseId: string, currentIntervalIndex: n
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(pluses).set({
-    current_interval_index: currentIntervalIndex,
-    accumulated_seconds: 0,
-    started_at: new Date(),
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(pluses.id, pluseId));
-  onLocalChange('pluses', 'update', pluseId).catch(() => {});
+    currentIntervalIndex: currentIntervalIndex,
+    accumulatedSeconds: 0,
+    startedAt: new Date(),
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(pluses.id, pluseId));
+  syncLocalChange('pluses', 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -146,27 +146,42 @@ export async function createTimerSession(data: {
     id,
     type: data.type,
     name: data.name,
-    pluse_id: data.pluseId ?? null,
-    todo_id: data.todoId ?? null,
+    pluseId: data.pluseId ?? null,
+    todoId: data.todoId ?? null,
     intervals: data.intervals ?? null,
-    repeat_count: data.repeatCount ?? null,
-    current_index: data.currentIndex ?? 0,
-    elapsed_seconds: data.elapsedSeconds ?? 0,
+    repeatCount: data.repeatCount ?? null,
+    currentIndex: data.currentIndex ?? 0,
+    elapsedSeconds: data.elapsedSeconds ?? 0,
     status: data.status ?? 'running',
-    started_at: data.startedAt ?? null,
-    paused_at: null,
-    completed_at: null,
-    created_at_wall: now.wall,
-    created_at_counter: now.counter,
-    created_at_node: now.node,
-    updated_at_wall: now.wall,
-    updated_at_counter: now.counter,
-    updated_at_node: now.node,
-    is_deleted: false,
+    startedAt: data.startedAt ?? null,
+    pausedAt: null,
+    completedAt: null,
+    createdAtWall: now.wall,
+    createdAtCounter: now.counter,
+    createdAtNode: now.node,
+    updatedAtWall: now.wall,
+    updatedAtCounter: now.counter,
+    updatedAtNode: now.node,
+    isDeleted: false,
   };
-  await db.insert(timerSessionsTable).values(row as any);
-  onLocalChange('timerSession', 'create', id).catch(() => {});
-  return rowToTimerSession(row as any);
+  await db.insert(timerSessionsTable).values(row);
+  syncLocalChange('timerSession', 'create', id).catch(() => {});
+  return {
+    id,
+    type: data.type,
+    name: data.name,
+    pluseId: data.pluseId,
+    todoId: data.todoId,
+    intervals: data.intervals,
+    repeatCount: data.repeatCount,
+    currentIndex: data.currentIndex ?? 0,
+    elapsedSeconds: data.elapsedSeconds ?? 0,
+    status: data.status ?? 'running',
+    startedAt: data.startedAt,
+    createdAt: now,
+    updatedAt: now,
+    isDeleted: false,
+  };
 }
 
 export async function updateTimerSession(
@@ -188,20 +203,19 @@ export async function updateTimerSession(
   const mergedUpdatedAt = existing.updatedAt
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
-  const update: Record<string, unknown> = {
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  };
-  if (data.status !== undefined) update.status = data.status;
-  if (data.startedAt !== undefined) update.started_at = data.startedAt;
-  if (data.pausedAt !== undefined) update.paused_at = data.pausedAt;
-  if (data.completedAt !== undefined) update.completed_at = data.completedAt;
-  if (data.elapsedSeconds !== undefined) update.elapsed_seconds = data.elapsedSeconds;
-  if (data.currentIndex !== undefined) update.current_index = data.currentIndex;
-  if (data.todoId !== undefined) update.todo_id = data.todoId;
-  await db.update(timerSessionsTable).set(update as any).where(eq(timerSessionsTable.id, id));
-  onLocalChange('timerSession', 'update', id).catch(() => {});
+  await db.update(timerSessionsTable).set({
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+    ...(data.status !== undefined && { status: data.status }),
+    ...(data.startedAt !== undefined && { startedAt: data.startedAt }),
+    ...(data.pausedAt !== undefined && { pausedAt: data.pausedAt }),
+    ...(data.completedAt !== undefined && { completedAt: data.completedAt }),
+    ...(data.elapsedSeconds !== undefined && { elapsedSeconds: data.elapsedSeconds }),
+    ...(data.currentIndex !== undefined && { currentIndex: data.currentIndex }),
+    ...(data.todoId !== undefined && { todoId: data.todoId }),
+  }).where(eq(timerSessionsTable.id, id));
+  syncLocalChange('timerSession', 'update', id).catch(() => {});
 }
 
 export async function getTimerSessions(filter?: { type?: 'stopwatch' | 'pluse' }): Promise<TimerSession[]> {
@@ -221,10 +235,10 @@ export async function deleteTimerSession(id: string): Promise<void> {
     ? mergeHLC(existing.updatedAt, newHLC(nodeId))
     : newHLC(nodeId);
   await db.update(timerSessionsTable).set({
-    is_deleted: true,
-    updated_at_wall: mergedUpdatedAt.wall,
-    updated_at_counter: mergedUpdatedAt.counter,
-    updated_at_node: mergedUpdatedAt.node,
-  } as any).where(eq(timerSessionsTable.id, id));
-  onLocalChange('timerSession', 'delete', id).catch(() => {});
+    isDeleted: true,
+    updatedAtWall: mergedUpdatedAt.wall,
+    updatedAtCounter: mergedUpdatedAt.counter,
+    updatedAtNode: mergedUpdatedAt.node,
+  }).where(eq(timerSessionsTable.id, id));
+  syncLocalChange('timerSession', 'delete', id).catch(() => {});
 }
