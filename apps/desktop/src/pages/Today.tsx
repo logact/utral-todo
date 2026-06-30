@@ -17,9 +17,9 @@ import {
   CalendarCheck,
   Flag,
 } from 'lucide-react';
-import { useTodayData, useTodaysTodos } from '../hooks/useTodos';
+import { useTodayData } from '../hooks/useTodos';
 import { getInProgressTodos, getAllTodos } from '../db/todos';
-import { getAllPluses } from '../db/pluse';
+import { getAllPluses, getActivePluse, setActivePluse as setActivePluseInDb } from '../db/pluse';
 import { createTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
 import {
@@ -934,11 +934,11 @@ interface TimeSlotConfig extends SharedTimeSlotConfig {
 
 const TIME_SLOT_UI: Record<string, { icon: typeof Flag; color: string; bgColor: string; darkBgColor: string }> = {
   'slot-morning': { icon: Flag, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50', darkBgColor: 'dark:bg-indigo-950/30' },
-  'slot-midday': { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
+  'slot-midday': { icon: Flag, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
   'slot-afternoon': { icon: Flag, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50', darkBgColor: 'dark:bg-indigo-950/30' },
-  'slot-late-afternoon': { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
+  'slot-late-afternoon': { icon: Flag, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
   'slot-evening': { icon: Flag, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-50', darkBgColor: 'dark:bg-indigo-950/30' },
-  'slot-night': { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
+  'slot-night': { icon: Flag, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
 };
 
 const TIME_SLOTS: TimeSlotConfig[] = SHARED_TIME_SLOTS.map((slot) => ({
@@ -1069,15 +1069,14 @@ export function Today() {
   const [collapsedSlots, setCollapsedSlots] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    getAllPluses().then((all) => {
+    (async () => {
+      const [all, active] = await Promise.all([getAllPluses(), getActivePluse()]);
       setPluses(all);
       if (all.length > 0) {
-        const savedId = localStorage.getItem('todayActivePluseId');
-        const saved = savedId ? all.find((p) => p.id === savedId) : null;
-        setActivePluse(saved || all[0]);
+        setActivePluse(active && all.find((p) => p.id === active.id) ? active : all[0]);
       }
       setPlusesLoading(false);
-    });
+    })();
   }, []);
 
   // Auto-select first in-progress todo
@@ -1255,7 +1254,7 @@ export function Today() {
               pluse={activePluse}
               onClose={() => {
                 setActivePluse(null);
-                localStorage.removeItem('todayActivePluseId');
+                setActivePluseInDb(null);
               }}
               onIntervalTodo={(todoId) => {
                 if (todoId) setSelectedTodoId(todoId);
@@ -1300,7 +1299,7 @@ export function Today() {
                 activeId={activePluse.id}
                 onSelect={(pluse) => {
                   setActivePluse(pluse);
-                  localStorage.setItem('todayActivePluseId', pluse.id);
+                  setActivePluseInDb(pluse.id);
                 }}
               />
             </div>

@@ -27,6 +27,7 @@ export async function createPluse(
     timerStatus: 'idle',
     currentIntervalIndex: 0,
     accumulatedSeconds: 0,
+    isActive: false,
     createdAt: hlc,
     updatedAt: hlc,
     isDeleted: false,
@@ -45,6 +46,43 @@ export async function getPluse(id: string): Promise<Pluse | undefined> {
   const rows = await db.select().from(pluses).where(eq(pluses.id, id)) as any[];
   const row = rows[0];
   return row ? rowToPluse(row) : undefined;
+}
+
+export async function getActivePluse(): Promise<Pluse | undefined> {
+  const rows = await db.select().from(pluses).where(eq(pluses.isActive, true)) as any[];
+  const row = rows[0];
+  return row ? rowToPluse(row) : undefined;
+}
+
+export async function setActivePluse(id: string | null): Promise<void> {
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+
+  const currentActive = await getActivePluse();
+  if (currentActive && currentActive.id !== id) {
+    const mergedUpdatedAt = mergeHLC(currentActive.updatedAt, hlc);
+    await db.update(pluses).set({
+      isActive: false,
+      updatedAtWall: mergedUpdatedAt.wall,
+      updatedAtCounter: mergedUpdatedAt.counter,
+      updatedAtNode: mergedUpdatedAt.node,
+    }).where(eq(pluses.id, currentActive.id));
+    syncLocalChange('pluses', 'update', currentActive.id).catch(() => {});
+  }
+
+  if (id) {
+    const target = await getPluse(id);
+    if (target) {
+      const mergedUpdatedAt = target.updatedAt ? mergeHLC(target.updatedAt, hlc) : hlc;
+      await db.update(pluses).set({
+        isActive: true,
+        updatedAtWall: mergedUpdatedAt.wall,
+        updatedAtCounter: mergedUpdatedAt.counter,
+        updatedAtNode: mergedUpdatedAt.node,
+      }).where(eq(pluses.id, id));
+      syncLocalChange('pluses', 'update', id).catch(() => {});
+    }
+  }
 }
 
 export async function updatePluse(

@@ -192,6 +192,7 @@ export const pluses = sqliteTable('pluses', {
   currentIntervalIndex: integer('current_interval_index').notNull().default(0),
   startedAt: integer('started_at', { mode: 'timestamp' }),
   accumulatedSeconds: integer('accumulated_seconds').notNull().default(0),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
   createdAtWall: integer('created_at_wall'),
   createdAtCounter: integer('created_at_counter').notNull().default(0),
   createdAtNode: text('created_at_node'),
@@ -467,6 +468,7 @@ export function rowToPluse(row: Record<string, unknown>): Pluse {
     currentIntervalIndex: (row.currentIntervalIndex as number) ?? 0,
     startedAt: timestampToDate(row.startedAt),
     accumulatedSeconds: (row.accumulatedSeconds as number) ?? 0,
+    isActive: (row.isActive as boolean) ?? false,
     createdAt: hlcDateToObj(row, 'createdAt')!,
     updatedAt: hlcDateToObj(row, 'updatedAt')!,
     isDeleted: (row.isDeleted as boolean) ?? false,
@@ -486,6 +488,7 @@ export function pluseToRow(pluse: Partial<Pluse>): InferInsertModel<typeof pluse
   if (pluse.currentIntervalIndex !== undefined) row.currentIntervalIndex = pluse.currentIntervalIndex;
   if (pluse.startedAt !== undefined) row.startedAt = pluse.startedAt ? pluse.startedAt.getTime() : null;
   if (pluse.accumulatedSeconds !== undefined) row.accumulatedSeconds = pluse.accumulatedSeconds;
+  if (pluse.isActive !== undefined) row.isActive = pluse.isActive;
   Object.assign(row, objToHlcColumns(pluse.createdAt, 'createdAt'));
   Object.assign(row, objToHlcColumns(pluse.updatedAt, 'updatedAt'));
   if (pluse.isDeleted !== undefined) row.isDeleted = pluse.isDeleted;

@@ -142,6 +142,7 @@ export function parsePluse(data: unknown): Pluse {
     currentIntervalIndex: (p.currentIntervalIndex as number) ?? 0,
     startedAt: parseDate(p.startedAt),
     accumulatedSeconds: (p.accumulatedSeconds as number) ?? 0,
+    isActive: (p.isActive as boolean) ?? false,
     createdAt,
     updatedAt: p.updatedAt ? parseHLC(p.updatedAt) : createdAt,
     isDeleted: (p.isDeleted as boolean) ?? false,

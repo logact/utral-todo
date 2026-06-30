@@ -116,6 +116,7 @@ export interface Pluse {
   currentIntervalIndex: number;
   startedAt?: Date;
   accumulatedSeconds: number;
+  isActive: boolean;
   createdAt: HLC;
   updatedAt: HLC;
   isDeleted: boolean;
