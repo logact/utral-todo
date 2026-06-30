@@ -8,9 +8,6 @@ beforeEach(() => {
   vi.setSystemTime(MOCK_NOW);
 });
 
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe('extractAtSchedule', () => {
   describe('empty / no @ token', () => {

@@ -4,7 +4,6 @@ import { useCliBridge } from './hooks/useCliBridge';
 import { useSync } from './hooks/useSync';
 import { initIOSSync } from './db/iosSync';
 import { initDatabase } from './db/database';
-import { ensureRootGoal } from './db/todos';
 import { Sidebar } from './components/layout/Sidebar';
 import { QuickTodoModal } from './components/QuickTodoModal';
 import { TodoNew } from './pages/TodoNew';
