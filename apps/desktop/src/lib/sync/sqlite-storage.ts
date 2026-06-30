@@ -11,7 +11,6 @@ import { db } from '../../db/drizzle-adapter';
 import * as schema from '../../db/schema';
 import { eq } from 'drizzle-orm';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SYNC_TABLE_MAP: Record<string, any> = {
   todo:             schema.todos,
   todoRelation:     schema.todoRelations,

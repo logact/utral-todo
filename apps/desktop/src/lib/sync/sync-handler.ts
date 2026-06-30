@@ -3,7 +3,7 @@ import { SyncClientHandler } from '@utral/sync-client';
 import { TauriSqliteStorage } from './sqlite-storage.js';
 import { TauriWebSocketTransport } from './websocket-transport.js';
 
-export interface TauriSyncOptions extends Omit<SyncHandlerOptions, 'transport' | 'storage'> {}
+export type TauriSyncOptions = Omit<SyncHandlerOptions, 'transport' | 'storage'>;
 
 export class TauriSyncHandler extends SyncClientHandler {
   constructor(opts: TauriSyncOptions) {

@@ -228,7 +228,7 @@ function TimerClock() {
         setSessionId(session.id);
       }
     }
-  }, [running, sessionId, elapsedSeconds, startTime, displayElapsed]);
+  }, [running, sessionId, displayElapsed]);
 
   const reset = useCallback(async () => {
     if (sessionId) {
@@ -515,7 +515,7 @@ function PluseMiniTimer({
         );
       }
     }
-  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse.autoAdvance]);
+  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse.name, pluse.autoAdvance]);
 
   const toggleRunning = useCallback(async () => {
     if (timeoutRef.current) {

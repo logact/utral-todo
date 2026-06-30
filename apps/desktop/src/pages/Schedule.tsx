@@ -243,6 +243,8 @@ const TodoItemRow = memo(function TodoItemRow({
   );
 });
 
+const PERIODS: TimeOfDay[] = ['morning', 'afternoon', 'evening'];
+
 const DayDetailPanel = memo(function DayDetailPanel({
   date,
   dayTodos,
@@ -262,15 +264,14 @@ const DayDetailPanel = memo(function DayDetailPanel({
 }) {
   const totalMinutes = dayTodos.reduce((s, t) => s + (t.estimatedMinutes ?? 60), 0);
 
-  const periods: TimeOfDay[] = ['morning', 'afternoon', 'evening'];
   const grouped = useMemo(() => {
     const map = new Map<TimeOfDay, Todo[]>();
-    for (const p of periods) map.set(p, []);
+    for (const p of PERIODS) map.set(p, []);
     for (const todo of dayTodos) {
       const tod = getTimeOfDay(todo.scheduledDate);
       map.get(tod)!.push(todo);
     }
-    for (const p of periods) {
+    for (const p of PERIODS) {
       const list = map.get(p)!;
       list.sort((a, b) => {
         if (a.scheduledDate && b.scheduledDate) {
@@ -304,7 +305,7 @@ const DayDetailPanel = memo(function DayDetailPanel({
         </p>
       ) : (
         <div className="space-y-5">
-          {periods.map((tod) => {
+          {PERIODS.map((tod) => {
             const list = grouped.get(tod)!;
             if (list.length === 0) return null;
             return (

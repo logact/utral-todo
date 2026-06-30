@@ -69,7 +69,6 @@ export async function createTodo(
     isDeleted: false,
   };
   const newRow = todoToRow(todo);
-  debugger
   await db.insert(todos).values(newRow);
   syncLocalChange('todos', 'create', todo.id).catch(() => {});
 

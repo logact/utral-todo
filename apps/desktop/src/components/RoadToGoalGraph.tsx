@@ -232,7 +232,7 @@ export function RoadToGoalGraph({
     setExecLogs(logsPerTask.flat());
 
     if (!signal?.cancelled) setIsLoading(false);
-  }, [goalId, reloadTick]);
+  }, [goalId]);
 
   useEffect(() => {
     const signal = { cancelled: false };
@@ -240,7 +240,7 @@ export function RoadToGoalGraph({
     return () => {
       signal.cancelled = true;
     };
-  }, [loadData]);
+  }, [loadData, reloadTick]);
 
   // Reload function exposed to editing children
   const reload = useCallback(async () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 function calcTotalMinutes(intervals: number[], repeatCount: number): number {
   const totalSeconds = intervals.reduce((s, d) => s + d, 0) * repeatCount;
@@ -437,7 +437,10 @@ export function PluseRun() {
     return () => window.removeEventListener('sync:remote-applied', handler);
   }, [sessionId, pluse?.id]);
 
-  const expandedIntervals = pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : [];
+  const expandedIntervals = useMemo(
+    () => (pluse ? expandIntervals(pluse.intervals, pluse.repeatCount) : []),
+    [pluse]
+  );
   const currentDuration = expandedIntervals[currentIndex] || 0;
   const anchoredTodo = anchoredTodoId ? todos.find((t) => t.id === anchoredTodoId) : undefined;
 
@@ -481,7 +484,7 @@ export function PluseRun() {
         setAnchoredTodoId(active.todoId);
       }
     });
-  }, [pluse?.id]);
+  }, [pluse, expandedIntervals]);
 
   // Cancel all timer notifications on unmount
   useEffect(() => {
@@ -676,7 +679,7 @@ export function PluseRun() {
         }
       }
     }
-  }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length, soundEnabled, playBeep, playFinish]);
+  }, [elapsedSeconds, pluse, currentIndex, isCompleted, currentDuration, expandedIntervals.length, soundEnabled, playBeep, playFinish, sessionId]);
 
   async function toggleRunning() {
     if (isRunning) {

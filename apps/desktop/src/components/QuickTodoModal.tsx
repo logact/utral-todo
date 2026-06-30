@@ -54,7 +54,6 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
 
     setIsSubmitting(true);
 
-    debugger
     await createTodo(title, {
       nodeType,
       ...(isTask
@@ -71,7 +70,7 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
 
     onCreated?.();
     onClose();
-  }, [parsedTitle, rawInput, scheduledDate, isSubmitting, onCreated, onClose, nodeType, isTask, pattern]);
+  }, [parsedTitle, rawInput, isSubmitting, onCreated, onClose, nodeType, isTask, pattern, effectiveScheduledDate]);
 
   // Keyboard handling
   useEffect(() => {

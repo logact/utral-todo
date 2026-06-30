@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Plus } from 'lucide-react';
 
 interface PromptDialogProps {
@@ -28,6 +28,12 @@ export function PromptDialog({
     }
   }, [isOpen]);
 
+  const handleSubmit = useCallback(() => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onConfirm(trimmed);
+  }, [value, onConfirm]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -44,13 +50,7 @@ export function PromptDialog({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, value]);
-
-  function handleSubmit() {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    onConfirm(trimmed);
-  }
+  }, [isOpen, onClose, handleSubmit]);
 
   if (!isOpen) return null;
 

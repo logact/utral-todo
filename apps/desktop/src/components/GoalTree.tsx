@@ -131,7 +131,7 @@ function GoalNode({ todo, depth, isCurrent, onChange }: GoalNodeProps) {
     if (isCurrent && !isExpanded && children.length === 0) {
       loadChildren().then(() => setIsExpanded(true));
     }
-  }, [isCurrent]);
+  }, [isCurrent, isExpanded, children.length, loadChildren]);
 
   // Focus edit input when entering edit mode
   useEffect(() => {

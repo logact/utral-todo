@@ -25,6 +25,7 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function groupLogsByDayAndSession(logs: TodoLog[]): LogDayGroup[] {
   if (logs.length === 0) return [];
 
@@ -67,6 +68,7 @@ export function groupLogsByDayAndSession(logs: TodoLog[]): LogDayGroup[] {
   return groups;
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function logTypeIcon(type: TodoLogType) {
   switch (type) {
     case 'progress': return Zap;
@@ -80,6 +82,7 @@ export function logTypeIcon(type: TodoLogType) {
   }
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function logTypeColor(type: TodoLogType): string {
   switch (type) {
     case 'progress': return 'text-indigo-500';

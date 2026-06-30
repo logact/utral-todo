@@ -53,9 +53,8 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
   const [orderedGoalsMap, setOrderedGoalsMap] = useState<Map<string, Todo[]>>(new Map());
   const [achievingTasksMap, setAchievingTasksMap] = useState<Map<string, Todo[]>>(new Map());
 
-  const chainIds = new Set(chain.map((t) => t.id));
-
   const loadExtras = useCallback(async () => {
+    const chainIds = new Set(chain.map((t) => t.id));
     const subMap = new Map<string, Todo[]>();
     const orderedMap = new Map<string, Todo[]>();
     const tasksMap = new Map<string, Todo[]>();
@@ -81,7 +80,7 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
     setSubTodosMap(subMap);
     setOrderedGoalsMap(orderedMap);
     setAchievingTasksMap(tasksMap);
-  }, [chain, currentId]);
+  }, [chain]);
 
   useEffect(() => {
     loadExtras();

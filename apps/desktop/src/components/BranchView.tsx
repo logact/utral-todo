@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, GitBranch, Loader2, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { createGoal, deleteTodo, getTodo, getAllTodos } from '../db/todos';
@@ -356,6 +356,43 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const { connections, allNodes, mainPathNodes } = useMemo(() => {
+    const conns: { from: TreeNode; to: TreeNode }[] = [];
+    const nodes: TreeNode[] = [];
+    const mainNodes: TreeNode[] = [];
+
+    function walk(n: TreeNode) {
+      nodes.push(n);
+      if (n.isMainPath) mainNodes.push(n);
+      for (const c of n.children) {
+        conns.push({ from: n, to: c });
+        walk(c);
+      }
+    }
+    if (tree) walk(tree);
+    return { connections: conns, allNodes: nodes, mainPathNodes: mainNodes };
+  }, [tree]);
+
+  const handleFitView = useCallback((containerW: number, containerH: number, isExpandedView: boolean) => {
+    if (!tree) return;
+    const setV = isExpandedView ? setExpandedView : setView;
+    const rootId = tree.todo.id;
+
+    const minX = Math.min(...allNodes.map((n) => n.x - (n.todo.id === rootId ? ROOT_W : NODE_W) / 2));
+    const maxX = Math.max(...allNodes.map((n) => n.x + (n.todo.id === rootId ? ROOT_W : NODE_W) / 2));
+    const minY = TOP_PAD - 10;
+    const maxY = TOP_PAD * 2 + (getMaxDepth(tree) + 1) * LEVEL_H + ROOT_H;
+
+    const contentW = maxX - minX + 80;
+    const contentH = maxY - minY + 40;
+
+    const scale = Math.min(containerW / contentW, containerH / contentH, 1.5);
+    const panX = (containerW - contentW * scale) / 2 - minX * scale + 40;
+    const panY = (containerH - contentH * scale) / 2 - minY * scale + 20;
+
+    setV({ scale: clamp(scale, MIN_ZOOM, MAX_ZOOM), panX, panY });
+  }, [tree, allNodes]);
+
   // Auto-fit view when tree data or container size changes
   useEffect(() => {
     if (!tree || isExpanded) return;
@@ -384,7 +421,7 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
-  }, [tree, isExpanded]);
+  }, [tree, isExpanded, handleFitView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -515,42 +552,6 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
     const setV = isExpandedView ? setExpandedView : setView;
     setV({ scale: 1, panX: 0, panY: 0 });
   }
-
-  function handleFitView(containerW: number, containerH: number, isExpandedView: boolean) {
-    if (!tree) return;
-    const setV = isExpandedView ? setExpandedView : setView;
-
-    const minX = Math.min(...allNodes.map((n) => n.x - (n.todo.id === rootId ? ROOT_W : NODE_W) / 2));
-    const maxX = Math.max(...allNodes.map((n) => n.x + (n.todo.id === rootId ? ROOT_W : NODE_W) / 2));
-    const minY = TOP_PAD - 10;
-    const maxY = TOP_PAD * 2 + (getMaxDepth(tree) + 1) * LEVEL_H + ROOT_H;
-
-    const contentW = maxX - minX + 80;
-    const contentH = maxY - minY + 40;
-
-    const scale = Math.min(containerW / contentW, containerH / contentH, 1.5);
-    const panX = (containerW - contentW * scale) / 2 - minX * scale + 40;
-    const panY = (containerH - contentH * scale) / 2 - minY * scale + 20;
-
-    setV({ scale: clamp(scale, MIN_ZOOM, MAX_ZOOM), panX, panY });
-  }
-
-  const { connections, allNodes, mainPathNodes } = useMemo(() => {
-    const conns: { from: TreeNode; to: TreeNode }[] = [];
-    const nodes: TreeNode[] = [];
-    const mainNodes: TreeNode[] = [];
-
-    function walk(n: TreeNode) {
-      nodes.push(n);
-      if (n.isMainPath) mainNodes.push(n);
-      for (const c of n.children) {
-        conns.push({ from: n, to: c });
-        walk(c);
-      }
-    }
-    if (tree) walk(tree);
-    return { connections: conns, allNodes: nodes, mainPathNodes: mainNodes };
-  }, [tree]);
 
   // Compute connected nodes for hover highlight
   const hoveredConnectedIds = useMemo(() => {

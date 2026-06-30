@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Plus, Link2, Target, ListTodo } from 'lucide-react';
 import type { Todo } from '../types';
 
@@ -37,6 +37,17 @@ export function NeighborPromptDialog({
     }
   }, [isOpen, candidates]);
 
+  const handleSubmit = useCallback(() => {
+    const title = newTitle.trim();
+    if (title) {
+      onCreate(title);
+      return;
+    }
+    if (selectedId) {
+      onLink(selectedId);
+    }
+  }, [newTitle, selectedId, onCreate, onLink]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -53,18 +64,7 @@ export function NeighborPromptDialog({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, selectedId, newTitle]);
-
-  function handleSubmit() {
-    const title = newTitle.trim();
-    if (title) {
-      onCreate(title);
-      return;
-    }
-    if (selectedId) {
-      onLink(selectedId);
-    }
-  }
+  }, [isOpen, onClose, handleSubmit]);
 
   if (!isOpen) return null;
 

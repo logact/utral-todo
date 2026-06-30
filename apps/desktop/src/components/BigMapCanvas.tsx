@@ -413,6 +413,16 @@ const GraphNode = memo(function GraphNode({
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
+const ROAD_TYPES: RoadRelationType[] = [
+  'parent_of',
+  'source_from',
+  'achieves',
+  'ordered_before',
+  'depends_on',
+  'blocked_by',
+  'assign_from',
+];
+
 export function BigMapCanvas({
   nodes,
   execLogNodes = [],
@@ -536,7 +546,7 @@ export function BigMapCanvas({
   /*  Editing actions                                                  */
   /* ---------------------------------------------------------------- */
 
-  async function handleCreateRelationOfType(fromTodoId: string, toTodoId: string, type: TodoRelationType) {
+  const handleCreateRelationOfType = useCallback(async (fromTodoId: string, toTodoId: string, type: TodoRelationType) => {
     if (!onCreateRelation) return;
     setIsProcessing(true);
     try {
@@ -545,9 +555,9 @@ export function BigMapCanvas({
     } finally {
       setIsProcessing(false);
     }
-  }
+  }, [onCreateRelation, onRelationsChange]);
 
-  async function handleDeleteRelationById(relationId: string) {
+  const handleDeleteRelationById = useCallback(async (relationId: string) => {
     if (!onDeleteRelation) return;
     setIsProcessing(true);
     try {
@@ -556,9 +566,9 @@ export function BigMapCanvas({
     } finally {
       setIsProcessing(false);
     }
-  }
+  }, [onDeleteRelation, onRelationsChange]);
 
-  async function handleUpdateRelationType(relationId: string, type: TodoRelationType) {
+  const handleUpdateRelationType = useCallback(async (relationId: string, type: TodoRelationType) => {
     if (!onUpdateRelation) return;
     setIsProcessing(true);
     try {
@@ -567,10 +577,25 @@ export function BigMapCanvas({
     } finally {
       setIsProcessing(false);
     }
-  }
+  }, [onUpdateRelation, onRelationsChange]);
 
+  const selectLinkTargetForDrag = useCallback(async (fromTodoId: string, toTodoId: string) => {
+    if (fromTodoId === toTodoId) return;
+    const fromTodo = todoById.get(fromTodoId);
+    const toTodo = todoById.get(toTodoId);
+    if (!fromTodo || !toTodo) return;
+    const types = allowedLinkTypes(fromTodo, toTodo);
+    if (types.length === 0) return;
+    if (types.length === 1) {
+      await handleCreateRelationOfType(fromTodoId, toTodoId, types[0]);
+    } else {
+      setLinkingFromId(fromTodoId);
+      setPendingLinkTargetId(toTodoId);
+      setShowLinkTypeSelector(true);
+    }
+  }, [todoById, handleCreateRelationOfType]);
 
-  async function commitDrag(targetId: string) {
+  const commitDrag = useCallback(async (targetId: string) => {
     if (nodeDragSourceId) {
       await selectLinkTargetForDrag(nodeDragSourceId, targetId);
       setNodeDragSourceId(null);
@@ -600,34 +625,18 @@ export function BigMapCanvas({
       }
       setEdgeDrag(null);
     }
-  }
+  }, [nodeDragSourceId, edgeDrag, roadEdges, onReconnectRelation, onRelationsChange, selectLinkTargetForDrag]);
 
-  async function selectLinkTargetForDrag(fromTodoId: string, toTodoId: string) {
-    if (fromTodoId === toTodoId) return;
-    const fromTodo = todoById.get(fromTodoId);
-    const toTodo = todoById.get(toTodoId);
-    if (!fromTodo || !toTodo) return;
-    const types = allowedLinkTypes(fromTodo, toTodo);
-    if (types.length === 0) return;
-    if (types.length === 1) {
-      await handleCreateRelationOfType(fromTodoId, toTodoId, types[0]);
-    } else {
-      setLinkingFromId(fromTodoId);
-      setPendingLinkTargetId(toTodoId);
-      setShowLinkTypeSelector(true);
-    }
+  async function confirmLinkType(type: TodoRelationType) {
+    if (!linkingFromId || !pendingLinkTargetId) return;
+    await handleCreateRelationOfType(linkingFromId, pendingLinkTargetId, type);
+    cancelLink();
   }
 
   function cancelLink() {
     setLinkingFromId(null);
     setPendingLinkTargetId(null);
     setShowLinkTypeSelector(false);
-  }
-
-  async function confirmLinkType(type: TodoRelationType) {
-    if (!linkingFromId || !pendingLinkTargetId) return;
-    await handleCreateRelationOfType(linkingFromId, pendingLinkTargetId, type);
-    cancelLink();
   }
 
   // Click-outside and Escape handlers for menus
@@ -678,7 +687,7 @@ export function BigMapCanvas({
   /*  Ref-based drag preview (avoids full React re-renders on move)   */
   /* ---------------------------------------------------------------- */
 
-  function updateDragPreview(point: { x: number; y: number }) {
+  const updateDragPreview = useCallback((point: { x: number; y: number }) => {
     if (!dragPathRef.current || !dragCircleRef.current) return;
 
     const info = dragInfoRef.current;
@@ -744,7 +753,7 @@ export function BigMapCanvas({
     circle.setAttribute('cy', String(toY));
     circle.setAttribute('fill', color);
     circle.setAttribute('opacity', '0.5');
-  }
+  }, [nodeMap, roadEdges]);
 
   function hideDragPreview() {
     if (dragPathRef.current) {
@@ -757,15 +766,6 @@ export function BigMapCanvas({
   }
 
   // Render every TodoRelation as a directed edge.
-  const ROAD_TYPES: RoadRelationType[] = [
-    'parent_of',
-    'source_from',
-    'achieves',
-    'ordered_before',
-    'depends_on',
-    'blocked_by',
-    'assign_from',
-  ];
   const visibleRoadEdges = useMemo(() => {
     return roadEdges
       .filter((r): r is TodoRelation & { type: RoadRelationType } => ROAD_TYPES.includes(r.type as RoadRelationType))
@@ -832,7 +832,7 @@ export function BigMapCanvas({
     }
 
     return map;
-  }, [nodes, actionEdges, parentChildEdges, visibleRoadEdges]);
+  }, [nodes, actionEdges, parentChildEdges, visibleRoadEdges, nodeMap]);
 
   const effectiveNodeClick = useCallback(
     (id: string) => {
@@ -877,7 +877,7 @@ export function BigMapCanvas({
         updateDragPreview(point);
       }
     },
-    [isEditing, toCanvasPoint]
+    [isEditing, toCanvasPoint, updateDragPreview]
   );
 
   const handleNodeClick = useCallback(
@@ -938,7 +938,7 @@ export function BigMapCanvas({
         onMouseMove(e as React.MouseEvent);
       }
     },
-    [connectMode, connectSourceId, connectEdgeType, isInteractionDragging, toCanvasPoint, onMouseMove]
+    [connectMode, connectSourceId, connectEdgeType, isInteractionDragging, toCanvasPoint, onMouseMove, updateDragPreview]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -968,7 +968,7 @@ export function BigMapCanvas({
     }
     dragInfoRef.current = null;
     onMouseUp();
-  }, [dropTargetId, isInteractionDragging, nodeDragSourceId, onCreateNodeFromDrag, onMouseUp, todoById]);
+  }, [dropTargetId, isInteractionDragging, nodeDragSourceId, onCreateNodeFromDrag, onMouseUp, todoById, commitDrag]);
 
   // Global mouse move/up handlers for dragging outside the container
   useEffect(() => {

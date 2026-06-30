@@ -56,7 +56,6 @@ export function TodoExecutionPanel({
 
   const [sourceChain, setSourceChain] = useState<Todo[]>([]);
   const [spawnedTodos, setSpawnedTodos] = useState<Todo[]>([]);
-  const [actionEdges, setActionEdges] = useState<ActionEdge[]>([]);
   const [goalTodo, setGoalTodo] = useState<Todo | null>(null);
   const [graphNodes, setGraphNodes] = useState<Todo[]>([]);
 
@@ -71,6 +70,30 @@ export function TodoExecutionPanel({
   const { logs, isLoading: isLoadingLogs, add: addLog, remove: removeLog } = useTodoLogs(todoId);
 
   const totalMinutesSpent = logs.reduce((sum, l) => sum + (l.minutesSpent ?? 0), 0);
+
+  const loadGraphNodes = useCallback(async (edges: ActionEdge[], goalId: string) => {
+    const connectedIds = new Set<string>([goalId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const edge of edges) {
+        if (connectedIds.has(edge.fromTodoId) && !connectedIds.has(edge.toTodoId)) {
+          connectedIds.add(edge.toTodoId);
+          changed = true;
+        }
+        if (connectedIds.has(edge.toTodoId) && !connectedIds.has(edge.fromTodoId)) {
+          connectedIds.add(edge.fromTodoId);
+          changed = true;
+        }
+      }
+    }
+    const todos: Todo[] = [];
+    for (const id of connectedIds) {
+      const t = await getTodo(id);
+      if (t) todos.push(t);
+    }
+    setGraphNodes(todos);
+  }, []);
 
   const loadTodo = useCallback(async () => {
     setIsLoadingTodo(true);
@@ -90,7 +113,6 @@ export function TodoExecutionPanel({
       setTemplateTodo(tmpl ?? null);
 
       const edges = await getAllActionEdgesForTodo(t.id);
-      setActionEdges(edges);
 
       // Find the ultimate goal via the road-to-goal chain (achieves / parent_of).
       const root = chain.find((x) => x.nodeType === 'goal');
@@ -106,44 +128,14 @@ export function TodoExecutionPanel({
       await loadGraphNodes(edges, goalId);
     }
     setIsLoadingTodo(false);
-  }, [todoId]);
-
-  async function loadGraphNodes(edges?: ActionEdge[], goalId?: string) {
-    const useEdges = edges ?? actionEdges;
-    const useGoalId = goalId ?? goalTodo?.id ?? todoId;
-    if (!useGoalId) {
-      setGraphNodes([]);
-      return;
-    }
-    const connectedIds = new Set<string>([useGoalId]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const edge of useEdges) {
-        if (connectedIds.has(edge.fromTodoId) && !connectedIds.has(edge.toTodoId)) {
-          connectedIds.add(edge.toTodoId);
-          changed = true;
-        }
-        if (connectedIds.has(edge.toTodoId) && !connectedIds.has(edge.fromTodoId)) {
-          connectedIds.add(edge.fromTodoId);
-          changed = true;
-        }
-      }
-    }
-    const todos: Todo[] = [];
-    for (const id of connectedIds) {
-      const t = await getTodo(id);
-      if (t) todos.push(t);
-    }
-    setGraphNodes(todos);
-  }
+  }, [todoId, loadGraphNodes]);
 
   useEffect(() => {
     loadTodo();
   }, [loadTodo]);
 
   useEffect(() => {
-    if (autoStart && todo && todo.status === 'pending') {
+    if (autoStart && todo?.status === 'pending') {
       updateTodoStatus(todoId, 'in_progress').then(() => {
         setTodo((prev) => (prev ? { ...prev, status: 'in_progress', startedAt: new Date() } : prev));
         addLog('system', 'Started execution', {
@@ -151,7 +143,7 @@ export function TodoExecutionPanel({
         });
       });
     }
-  }, [todo?.status, todo?.id, todoId, autoStart]);
+  }, [todo?.status, todo?.id, todoId, autoStart, addLog]);
 
   async function markDone() {
     await updateTodoStatus(todoId, 'done');
@@ -235,8 +227,7 @@ export function TodoExecutionPanel({
     const newTodo = await createTodo(title);
     await createActionEdge(goalTodo.id, newTodo.id, 'to_achieve');
     const edges = await getAllActionEdgesForTodo(todoId);
-    setActionEdges(edges);
-    await loadGraphNodes(edges);
+    await loadGraphNodes(edges, goalTodo.id);
     await addLog('system', `Added node to road: ${title}`, {
       metadata: { action: 'node_create', nodeId: newTodo.id, nodeTitle: title },
     });
@@ -245,8 +236,7 @@ export function TodoExecutionPanel({
   async function handleDeleteNode(nodeId: string) {
     await deleteTodo(nodeId);
     const edges = await getAllActionEdgesForTodo(todoId);
-    setActionEdges(edges);
-    await loadGraphNodes(edges);
+    await loadGraphNodes(edges, goalTodo?.id ?? todoId);
     await addLog('system', 'Removed node from road', {
       metadata: { action: 'node_delete', nodeId },
     });

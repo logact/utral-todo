@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Plus, Target, CheckSquare } from 'lucide-react';
 import type { NodeType } from '../types';
 
@@ -29,6 +29,12 @@ export function NewNodeDialog({
     }
   }, [isOpen, defaultNodeType]);
 
+  const handleSubmit = useCallback(() => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    onCreate(trimmed, nodeType);
+  }, [title, nodeType, onCreate]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -50,13 +56,7 @@ export function NewNodeDialog({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, title, nodeType]);
-
-  function handleSubmit() {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    onCreate(trimmed, nodeType);
-  }
+  }, [isOpen, onClose, handleSubmit]);
 
   const sourceLabel = sourceNodeType === 'goal' ? 'Goal' : 'Task';
 
