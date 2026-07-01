@@ -60,9 +60,6 @@ export default function App() {
     initDatabase()
       .then(() => seedDefaultTimeSlots())
       .then(() => {
-        // ensureRootGoal().catch((err) => {
-        //   console.error('[App] Failed to ensure root goal:', err);
-        // });
         setDbReady(true);
       })
       .catch((err) => {

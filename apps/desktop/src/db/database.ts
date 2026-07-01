@@ -1,8 +1,14 @@
-import { db, initDatabase } from './drizzle-adapter';
+import { db, initDatabase as runMigrations } from './drizzle-adapter';
 import { todos, todoRelations, todoLogs, actionEdges, plans, pluses, repeatOccurrences, hlcState, syncConfig } from './schema';
 import { eq } from 'drizzle-orm';
+import { ensureRootGoal } from './todos';
 
-export { db, initDatabase };
+export { db };
+
+export async function initDatabase(): Promise<void> {
+  await runMigrations();
+  await ensureRootGoal();
+}
 
 export async function clearAllData(): Promise<void> {
   await db.delete(todos);
