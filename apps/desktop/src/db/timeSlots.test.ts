@@ -26,6 +26,10 @@ vi.mock('@utral/sync-share', () => ({
   mergeHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 1, node: 'test-node' }),
 }));
 
+vi.mock('./timeSlotDefinitions', () => ({
+  getTimeSlotDefinitions: vi.fn().mockResolvedValue([]),
+}));
+
 import { ensureTimeSlotTodo, migrateLegacySlotTodos } from './timeSlots';
 import { db } from './drizzle-adapter';
 import { todos, todoLogs } from './schema';

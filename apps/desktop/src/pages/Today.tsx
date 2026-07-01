@@ -1178,7 +1178,7 @@ export function Today() {
       }
       setMilestoneNotes(notesMap);
     })();
-  }, []);
+  }, [timeSlots]);
 
   // Auto-select first in-progress todo
   useEffect(() => {

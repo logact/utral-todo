@@ -12,6 +12,7 @@ import {
   Wifi,
   WifiOff,
   Zap,
+  Clock,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { clearAllData } from '../db/database';
@@ -19,6 +20,77 @@ import { db } from '../db/drizzle-adapter';
 import { todos, todoRelations, todoLogs, actionEdges, pluses } from '../db/schema';
 import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
 import { processQueue, start, stop, getSyncStatus } from '../lib/sync/syncEngine';
+import {
+  getTimeSlotDefinitions,
+  updateTimeSlotDefinition,
+} from '../db/timeSlotDefinitions';
+import { ensureTimeSlotTodo } from '../db/timeSlots';
+import type { TimeSlotConfig } from '../types';
+
+function formatTimeValue(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function parseTimeValue(value: string): { hour: number; minute: number } | null {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
+function TimeSlotEditor({
+  slot,
+  onChange,
+}: {
+  slot: TimeSlotConfig;
+  onChange: (changes: Partial<Omit<TimeSlotConfig, 'id' | 'milestoneId' | 'title'>>) => void;
+}) {
+  const start = formatTimeValue(slot.startHour, slot.startMinute);
+  const end = formatTimeValue(slot.endHour, slot.endMinute);
+
+  return (
+    <div className="flex items-center justify-between gap-4 py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{slot.title}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{slot.time}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="time"
+          defaultValue={start}
+          onBlur={(e) => {
+            const parsed = parseTimeValue(e.target.value);
+            if (parsed) {
+              onChange({
+                startHour: parsed.hour,
+                startMinute: parsed.minute,
+                time: e.target.value,
+              });
+            }
+          }}
+          className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        />
+        <span className="text-slate-400">-</span>
+        <input
+          type="time"
+          defaultValue={end}
+          onBlur={(e) => {
+            const parsed = parseTimeValue(e.target.value);
+            if (parsed) {
+              onChange({
+                endHour: parsed.hour,
+                endMinute: parsed.minute,
+              });
+            }
+          }}
+          className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        />
+      </div>
+    </div>
+  );
+}
 
 export function Settings() {
   const [saved, setSaved] = useState(false);
@@ -38,6 +110,7 @@ export function Settings() {
   const [lastSync, setLastSync] = useState<Date | undefined>(undefined);
   const [error, setError] = useState('');
   const [urlError, setUrlError] = useState('');
+  const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>([]);
 
   useEffect(() => {
     const config = getSyncConfig();
@@ -51,6 +124,15 @@ export function Settings() {
     // Use localStorage for lastSyncAt since syncState is now in the sync engine
     const lastSyncAt = localStorage.getItem('lastSyncAt');
     if (lastSyncAt) setLastSync(new Date(lastSyncAt));
+
+    (async () => {
+      try {
+        const definitions = await getTimeSlotDefinitions();
+        setTimeSlots(definitions);
+      } catch (err) {
+        console.error('[Settings] Failed to load time slot definitions:', err);
+      }
+    })();
 
     const interval = setInterval(() => {
       try {
@@ -252,6 +334,41 @@ export function Settings() {
         >
           {saved ? 'Saved!' : 'Save Settings'}
         </button>
+      </div>
+
+      {/* Daily Time Slots */}
+      <div className="mt-6 space-y-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+        <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-700">
+          <div className="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center">
+            <Clock className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+          </div>
+          <div>
+            <h2 className="font-medium text-slate-900 dark:text-slate-100">Daily Time Slots</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Customize when each part of your day starts and ends</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {timeSlots.map((slot) => (
+            <TimeSlotEditor
+              key={slot.id}
+              slot={slot}
+              onChange={async (changes) => {
+                try {
+                  await updateTimeSlotDefinition(slot.id, changes);
+                  const updated = await getTimeSlotDefinitions();
+                  setTimeSlots(updated);
+                  const changed = updated.find((s) => s.id === slot.id);
+                  if (changed) {
+                    await ensureTimeSlotTodo(changed);
+                  }
+                } catch (err) {
+                  console.error('[Settings] Failed to update time slot:', err);
+                }
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Sync - Server Configuration */}

@@ -147,7 +147,7 @@ export async function ensureTimeSlotTodo(
 }
 
 export async function migrateLegacySlotTodos(date = new Date()): Promise<void> {
-  let slots = await getTimeSlotDefinitions();
+  let slots: TimeSlotConfig[] = await getTimeSlotDefinitions();
   if (slots.length === 0) {
     slots = DEFAULT_TIME_SLOTS;
   }
