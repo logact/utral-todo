@@ -29,6 +29,7 @@ const TABLE_NAME_MAP: Record<string, string> = {
   plans: 'plan',
   pluses: 'pluse',
   repeatOccurrences: 'repeatOccurrence',
+  timeSlots: 'timeSlot',
 };
 
 const TABLE_ORDER: Record<string, number> = {
@@ -39,6 +40,7 @@ const TABLE_ORDER: Record<string, number> = {
   pluses: 4, pluse: 4,
   repeatOccurrences: 5, repeatOccurrence: 5,
   plans: 6, plan: 6,
+  timeSlots: 7, timeSlot: 7,
 };
 
 function normalizeServerUrl(url: string): string {
@@ -81,6 +83,9 @@ async function getEngine(): Promise<ExpoSyncHandler> {
             queryClient.invalidateQueries({ queryKey: ['todos'] });
           } else if (table === 'pluse') {
             queryClient.invalidateQueries({ queryKey: ['pluses'] });
+          } else if (table === 'timeSlot') {
+            queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+            queryClient.invalidateQueries({ queryKey: ['todos'] });
           }
         },
       },
@@ -139,13 +144,14 @@ async function applyRemoteEvent(event: any): Promise<void> {
   const { table, operation, recordId, payload } = event;
 
   // Only handle tables that exist in the expo-app
-  if (table !== 'todo' && table !== 'pluse') {
+  if (table !== 'todo' && table !== 'pluse' && table !== 'timeSlot') {
     return;
   }
 
   const tableMap = {
     todo: schema.todos,
     pluse: schema.pluses,
+    timeSlot: schema.timeSlots,
   } as const;
 
   const drizzleTable = tableMap[table as keyof typeof tableMap];
@@ -157,6 +163,10 @@ async function applyRemoteEvent(event: any): Promise<void> {
       console.log(`[sync] Applied delete: ${table}/${recordId}`);
       if (table === 'todo') queryClient.invalidateQueries({ queryKey: ['todos'] });
       else if (table === 'pluse') queryClient.invalidateQueries({ queryKey: ['pluses'] });
+      else if (table === 'timeSlot') {
+        queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
+      }
       return;
     }
 
@@ -199,6 +209,9 @@ async function applyRemoteEvent(event: any): Promise<void> {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     } else if (table === 'pluse') {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
+    } else if (table === 'timeSlot') {
+      queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
     }
   } catch (err) {
     console.error(`[sync] Failed to apply ${operation} on ${table}/${recordId}:`, err);

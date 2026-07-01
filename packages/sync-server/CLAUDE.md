@@ -21,9 +21,12 @@ is specific to the server.
 1. `acceptPush` validates each item (required fields, registered `table`, valid
    `operation`), assigns `seq`, stamps `id`, sets `createdAt` from the writer's
    HLC (`payload.version`, else `newHLC(deviceId)`), persists, broadcasts
-   (excluding the origin device), and replies `push-ack { accepted, rejected }`.
-2. `broadcastToChannel` sends `event` to each subscribed socket and calls
-   `trackEventDelivery`.
+   (to **all** subscribers **including** the origin device — see below), and
+   replies `push-ack { accepted, rejected }`.
+2. `broadcastToChannel` sends `event` to each subscribed socket (including the
+   origin device, so its per-channel `seq` stream stays contiguous for the client
+   reorder buffer) and calls `trackEventDelivery`. The client recognizes its own
+   events by `event.deviceId` and advances its buffer without re-applying them.
 3. `pull_seq { from, to }` replays a `seq` range to one device.
 4. `event_ack` marks delivery complete.
 

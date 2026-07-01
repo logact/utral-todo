@@ -167,6 +167,12 @@ describe('migrateLegacySlotTodos', () => {
     const legacyId = 'legacy-random-id';
 
     mockedDb.__selectMock
+      // Engine first loads slot definitions; empty → falls back to DEFAULT_TIME_SLOTS.
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue([]),
+      })
       .mockReturnValueOnce(buildSelectChain([{
         id: legacyId,
         nodeType: 'task',

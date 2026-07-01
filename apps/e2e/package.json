@@ -1,0 +1,28 @@
+{
+  "name": "@utral/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@utral/db-schema": "workspace:*",
+    "@utral/sync-client": "workspace:*",
+    "@utral/sync-server": "workspace:*",
+    "@utral/sync-share": "workspace:*",
+    "@utral/types": "workspace:*",
+    "better-sqlite3": "^11.0.0",
+    "drizzle-orm": "0.45.2",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.9"
+  }
+}

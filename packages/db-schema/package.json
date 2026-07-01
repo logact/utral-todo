@@ -13,6 +13,10 @@
     "./storage": {
       "types": "./src/storage.ts",
       "default": "./src/storage.ts"
+    },
+    "./timeslots": {
+      "types": "./src/timeSlotEngine.ts",
+      "default": "./src/timeSlotEngine.ts"
     }
   },
   "scripts": {
@@ -22,7 +26,8 @@
   },
   "dependencies": {
     "@utral/types": "workspace:*",
-    "@utral/sync-client": "workspace:*"
+    "@utral/sync-client": "workspace:*",
+    "@utral/sync-share": "workspace:*"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.44.0"

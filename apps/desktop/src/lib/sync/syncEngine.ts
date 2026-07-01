@@ -51,6 +51,25 @@ function getWsUrl(httpUrl: string): string {
   return httpUrl.replace(/^http/, 'ws');
 }
 
+// --- Device ID ---
+
+const DEVICE_ID_KEY = 'syncDeviceId';
+
+/**
+ * Return this device's stable id, generating and persisting one on first use.
+ * Used both as the HLC node id for local writes and as the sync connection's
+ * deviceId, so it must be stable across launches and independent of whether sync
+ * is configured.
+ */
+export async function getOrCreateDeviceId(): Promise<string> {
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_KEY, id);
+  }
+  return id;
+}
+
 async function getEngine(): Promise<TauriSyncHandler> {
   if (!engine) {
     const config = getSyncConfig();
@@ -64,7 +83,7 @@ async function getEngine(): Promise<TauriSyncHandler> {
       serverUrl,
       tables: Object.values(TABLE_NAME_MAP),
       tableOrder: TABLE_ORDER,
-      deviceId: crypto.randomUUID(),
+      deviceId: await getOrCreateDeviceId(),
       userId: config.userId || 'default',
       channel: config.channel || 'default',
       emitter: new WindowEventEmitter(),
@@ -76,11 +95,6 @@ async function getEngine(): Promise<TauriSyncHandler> {
 }
 
 // --- Public API (same as before) ---
-
-export async function getOrCreateDeviceId(): Promise<string> {
-  const engine = await getEngine();
-  return engine.state;
-}
 
 export async function syncLocalChange(
   table: string,

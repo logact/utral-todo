@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { db } from '../src/db';
 import { ensureRootGoal } from '../src/db/seed';
+import { seedDefaultTimeSlots } from '../src/lib/timeSlots';
 import { startSync, stopSync } from '../src/lib/sync';
 import { queryClient } from '../src/lib/query-client';
 import migrations from '../drizzle/migrations';
@@ -18,11 +19,11 @@ export default function RootLayout() {
     if (!success) return;
 
     let cancelled = false;
-    ensureRootGoal()
+    Promise.all([ensureRootGoal(), seedDefaultTimeSlots()])
       .then(() => {
         if (!cancelled) startSync();
       })
-      .catch((err) => console.error('[seed] ensureRootGoal failed:', err));
+      .catch((err) => console.error('[seed] init failed:', err));
 
     return () => {
       cancelled = true;

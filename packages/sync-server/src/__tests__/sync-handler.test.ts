@@ -81,7 +81,9 @@ describe('SyncHandler', () => {
       const eventMsg = JSON.parse(s2.messages[0]);
       expect(eventMsg.type).toBe('event');
       expect(eventMsg.event.table).toBe('notes');
-      expect(s1.messages).toHaveLength(0);
+      // The origin device is echoed its own event too, so its seq stream stays
+      // contiguous for the client reorder buffer.
+      expect(s1.messages).toHaveLength(1);
     });
 
     it('should not broadcast to unsubscribed devices', async () => {
@@ -163,7 +165,9 @@ describe('SyncHandler', () => {
       expect(storage.trackEventDelivery).toHaveBeenCalledWith(
         expect.any(String), 'device-2', 'default'
       );
-      expect(storage.trackEventDelivery).not.toHaveBeenCalledWith(
+      // The origin device is echoed its own event now, so delivery is tracked
+      // for it as well.
+      expect(storage.trackEventDelivery).toHaveBeenCalledWith(
         expect.any(String), 'device-1', 'default'
       );
     });
@@ -289,7 +293,10 @@ describe('SyncHandler', () => {
       ]);
 
       expect(result.accepted).toHaveLength(1);
-      expect(s2.messages).toHaveLength(0);
+      // device-1 disconnected (removed from subscriptions), so it receives
+      // nothing and causes no error. device-2 is the live subscriber and is
+      // echoed its own event.
+      expect(s2.messages).toHaveLength(1);
     });
   });
 });

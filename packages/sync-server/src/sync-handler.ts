@@ -160,7 +160,12 @@ export class SyncHandler {
         };
         await this.opts.storage.createSyncEvent(event);
         accepted.push(event.id);
-        this.broadcastToChannel(userId, channel, event, deviceId);
+        // Broadcast to ALL subscribers including the origin device. Echoing the
+        // event back to its writer keeps every client's per-channel seq stream
+        // contiguous (the reorder buffer would otherwise stall on the hole left
+        // by the client's own write). The client recognizes its own events by
+        // event.deviceId and advances its buffer without re-applying them.
+        this.broadcastToChannel(userId, channel, event);
       } catch {
         rejected.push({ id, reason: 'storage error' });
       }

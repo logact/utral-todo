@@ -68,6 +68,11 @@ async function pushToServer(): Promise<void> {
           record = rows[0] as Record<string, unknown> | undefined;
           break;
         }
+        case 'timeSlot': {
+          const rows = await db.select().from(schema.timeSlots).where(eq(schema.timeSlots.id, recordId)).limit(1);
+          record = rows[0] as Record<string, unknown> | undefined;
+          break;
+        }
       }
     } catch {
       // Record may have been hard-deleted, skip
@@ -134,6 +139,25 @@ async function pushToServer(): Promise<void> {
             currentIntervalIndex: record.currentIntervalIndex,
             startedAt: record.startedAt,
             accumulatedSeconds: record.accumulatedSeconds,
+            createdAtWall: record.createdAtWall ?? Date.now(),
+            createdAtCounter: record.createdAtCounter ?? 0,
+            createdAtNode: record.createdAtNode ?? deviceId,
+            updatedAtWall: record.updatedAtWall ?? Date.now(),
+            updatedAtCounter: record.updatedAtCounter ?? 0,
+            updatedAtNode: record.updatedAtNode ?? deviceId,
+          };
+          break;
+        case 'timeSlot':
+          payload = {
+            id: record.id,
+            milestoneId: record.milestoneId,
+            title: record.title,
+            time: record.time,
+            startHour: record.startHour,
+            startMinute: record.startMinute,
+            endHour: record.endHour,
+            endMinute: record.endMinute,
+            order: record.order,
             createdAtWall: record.createdAtWall ?? Date.now(),
             createdAtCounter: record.createdAtCounter ?? 0,
             createdAtNode: record.createdAtNode ?? deviceId,

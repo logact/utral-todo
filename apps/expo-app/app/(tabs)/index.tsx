@@ -4,7 +4,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TIME_SLOTS, getTimeSlotForTodo, type TimeSlotConfig } from '@utral/types';
+import { DEFAULT_TIME_SLOTS, getTimeSlotForTodo, type TimeSlotConfig } from '@utral/types';
 import {
   getTodayTodos,
   getInProgressTodos,
@@ -16,6 +16,7 @@ import {
   updateTodoSchedule,
 } from '@/lib/todos';
 import { getAllPluses } from '@/lib/pluse';
+import { getTimeSlotDefinitions, ensureTimeSlotTodo } from '@/lib/timeSlots';
 import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
 import {
   startPluseTimer,
@@ -613,6 +614,29 @@ export default function TodayScreen() {
     queryFn: getAllPluses,
   });
 
+  const { data: timeSlotDefs = [] } = useQuery({
+    queryKey: ['timeSlots'],
+    queryFn: getTimeSlotDefinitions,
+  });
+
+  // DB-driven slot definitions, falling back to the shared defaults until they load.
+  const slots: TimeSlotConfig[] = timeSlotDefs.length > 0 ? timeSlotDefs : DEFAULT_TIME_SLOTS;
+
+  // Ensure the boundary milestone todos exist for the current definitions.
+  useEffect(() => {
+    if (timeSlotDefs.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const slot of timeSlotDefs) {
+        await ensureTimeSlotTodo(slot);
+      }
+      if (!cancelled) queryClient.invalidateQueries({ queryKey: ['todos'] });
+    })().catch((err) => console.error('[timeSlots] ensure failed:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [timeSlotDefs, queryClient]);
+
   const createMutation = useMutation({
     mutationFn: () => createTodo({ title: quickTitle }),
     onSuccess: () => {
@@ -667,7 +691,7 @@ export default function TodayScreen() {
   // Build time slot groups — mirrors desktop Today.tsx logic
   const { timeSlotGroups, activeTodos, doneTodos, totalActive } = useMemo(() => {
     const groups = new Map<string, Todo[]>();
-    for (const slot of TIME_SLOTS) {
+    for (const slot of slots) {
       groups.set(slot.id, []);
     }
 
@@ -683,15 +707,17 @@ export default function TodayScreen() {
     }
 
     function addActive(todo: Todo) {
+      // Boundary milestone todos (pattern 'timeSlot' / system tasks) are never
+      // shown in the task lists — they only anchor the slot sections.
+      if (todo.isSystemTask || todo.pattern === 'timeSlot') return;
       if (todo.status === 'done') {
         addDone(todo);
         return;
       }
       if (seenActive.has(todo.id)) return;
       seenActive.add(todo.id);
-      if (todo.isSystemTask) return;
 
-      const slotId = getTimeSlotForTodo(todo as any);
+      const slotId = getTimeSlotForTodo(todo as any, slots);
       if (slotId) {
         groups.get(slotId)!.push(todo);
       }
@@ -713,14 +739,14 @@ export default function TodayScreen() {
     for (const todo of overdue) {
       if (!active.find((t) => t.id === todo.id)) active.push(todo);
     }
-    for (const slot of TIME_SLOTS) {
+    for (const slot of slots) {
       for (const todo of groups.get(slot.id)!) {
         if (!active.find((t) => t.id === todo.id)) active.push(todo);
       }
     }
 
     return { timeSlotGroups: groups, activeTodos: active, doneTodos: done, totalActive: active.length };
-  }, [todayTodos, inProgress, overdue]);
+  }, [todayTodos, inProgress, overdue, slots]);
 
   const currentTodo = inProgress[0];
   const activePluse = pluses[activePluseIndex] || null;
@@ -901,7 +927,7 @@ export default function TodayScreen() {
 
         {/* Time Slot Sections */}
         <View style={{ paddingHorizontal: 16 }}>
-          {TIME_SLOTS.map((slot) => (
+          {slots.map((slot) => (
             <TimeSlotSection
               key={slot.id}
               config={slot}

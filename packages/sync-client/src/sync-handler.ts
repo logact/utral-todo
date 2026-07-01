@@ -95,11 +95,20 @@ export class SyncClientHandler {
       },
       {
         onReady: (event) => {
-          this.applyRemoteEvent(event);
+          // The server echoes a client's own writes back so its seq stream stays
+          // contiguous. Advance the buffer (this callback already does) and ack,
+          // but don't re-apply our own event — the record is already local.
+          if (event.deviceId !== this.opts.deviceId) {
+            this.applyRemoteEvent(event);
+          }
           this.enqueueAck(event.id);
         },
         pullMissing: (from, to) => this.pullMissingEvents(from, to),
-      }
+      },
+      // The server assigns per-channel seq starting at 1, so the buffer must
+      // expect 1 first; a default of 0 would park the first event behind a
+      // phantom seq-0 gap that never fills (the pull backfill path is a no-op).
+      1
     );
 
     this.registerBuiltinHandlers();
@@ -210,9 +219,26 @@ export class SyncClientHandler {
 
   // ─── Connection management ─────────────────────────────────────────
 
+  /**
+   * Append the connection's routing identity to the server URL as query params.
+   * The server reads `deviceId` / `userId` / `channel` from the URL at connection
+   * time to subscribe the socket to its `(userId, channel)` channel and to tag the
+   * origin device. Without these the server falls back to defaults and events are
+   * broadcast to a channel nobody is subscribed to.
+   */
+  private buildConnectionUrl(): string {
+    const params = new URLSearchParams({
+      deviceId: this.opts.deviceId,
+      userId: this.opts.userId,
+      channel: this.opts.channel,
+    }).toString();
+    const base = this.opts.serverUrl;
+    return base + (base.includes('?') ? '&' : '?') + params;
+  }
+
   private openSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const socket = this.opts.transport.connect(this.opts.serverUrl);
+      const socket = this.opts.transport.connect(this.buildConnectionUrl());
 
       socket.onOpen(() => {
         this.socket = socket;
@@ -319,9 +345,16 @@ export class SyncClientHandler {
     const items = await this.opts.storage.getQueueItems();
     if (items.length === 0) return;
 
+    // The server routes a push by (userId, channel): its PushMessage.deviceId
+    // field carries the userId, and channel is required. Sending the device id
+    // here (and omitting channel) broadcasts to a channel nobody subscribed to,
+    // so the event persists but never reaches other devices. The origin device
+    // is still identified server-side from the connection, so it is correctly
+    // excluded from the broadcast.
     this.send({
       type: 'push',
-      deviceId: this.opts.deviceId,
+      deviceId: this.opts.userId,
+      channel: this.opts.channel,
       items,
     } as any);
   }

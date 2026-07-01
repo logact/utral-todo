@@ -6,8 +6,114 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { syncAll, getSyncConfig, setSyncConfig } from '@/lib/sync';
 import { clearAllData } from '@/lib/database';
+import {
+  getTimeSlotDefinitions,
+  updateTimeSlotDefinition,
+  ensureTimeSlotTodo,
+  type TimeSlotDefinition,
+} from '@/lib/timeSlots';
+import { queryClient } from '@/lib/query-client';
 
 const SYNC_VERSION = 'v5-safe-dates';
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function formatTimeValue(hour: number, minute: number): string {
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+function parseTimeValue(value: string): { hour: number; minute: number } | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 24 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
+type SlotChanges = Partial<Omit<TimeSlotDefinition, 'id' | 'createdAt' | 'updatedAt' | 'isDeleted'>>;
+
+function TimeSlotEditorRow({
+  slot,
+  onCommit,
+}: {
+  slot: TimeSlotDefinition;
+  onCommit: (slot: TimeSlotDefinition, changes: SlotChanges) => void;
+}) {
+  const [start, setStart] = useState(formatTimeValue(slot.startHour, slot.startMinute));
+  const [end, setEnd] = useState(formatTimeValue(slot.endHour, slot.endMinute));
+
+  useEffect(() => {
+    setStart(formatTimeValue(slot.startHour, slot.startMinute));
+    setEnd(formatTimeValue(slot.endHour, slot.endMinute));
+  }, [slot.startHour, slot.startMinute, slot.endHour, slot.endMinute]);
+
+  const commitStart = () => {
+    const parsed = parseTimeValue(start);
+    if (parsed) {
+      onCommit(slot, {
+        startHour: parsed.hour,
+        startMinute: parsed.minute,
+        time: formatTimeValue(parsed.hour, parsed.minute),
+      });
+    } else {
+      setStart(formatTimeValue(slot.startHour, slot.startMinute));
+    }
+  };
+
+  const commitEnd = () => {
+    const parsed = parseTimeValue(end);
+    if (parsed) {
+      onCommit(slot, { endHour: parsed.hour, endMinute: parsed.minute });
+    } else {
+      setEnd(formatTimeValue(slot.endHour, slot.endMinute));
+    }
+  };
+
+  const timeInputStyle = {
+    width: 68,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    fontSize: 14,
+    color: '#0f172a',
+    textAlign: 'center' as const,
+  };
+
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontSize: 13, fontWeight: '500', color: '#0f172a' }}>{slot.title}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <TextInput
+          value={start}
+          onChangeText={setStart}
+          onEndEditing={commitStart}
+          onBlur={commitStart}
+          placeholder="06:00"
+          placeholderTextColor="#94a3b8"
+          keyboardType="numbers-and-punctuation"
+          autoCorrect={false}
+          style={timeInputStyle}
+        />
+        <Text style={{ fontSize: 14, color: '#94a3b8' }}>–</Text>
+        <TextInput
+          value={end}
+          onChangeText={setEnd}
+          onEndEditing={commitEnd}
+          onBlur={commitEnd}
+          placeholder="12:00"
+          placeholderTextColor="#94a3b8"
+          keyboardType="numbers-and-punctuation"
+          autoCorrect={false}
+          style={timeInputStyle}
+        />
+      </View>
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -17,10 +123,24 @@ export default function SettingsScreen() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [syncError, setSyncError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [timeSlots, setTimeSlots] = useState<TimeSlotDefinition[]>([]);
 
   useEffect(() => {
     loadSettings();
+    loadTimeSlots();
   }, []);
+
+  const loadTimeSlots = async () => {
+    setTimeSlots(await getTimeSlotDefinitions());
+  };
+
+  const handleSlotCommit = async (slot: TimeSlotDefinition, changes: SlotChanges) => {
+    await updateTimeSlotDefinition(slot.id, changes);
+    await ensureTimeSlotTodo({ ...slot, ...changes });
+    await loadTimeSlots();
+    queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+    queryClient.invalidateQueries({ queryKey: ['todos'] });
+  };
 
   const loadSettings = async () => {
     const config = await getSyncConfig();
@@ -222,6 +342,25 @@ export default function SettingsScreen() {
                 </View>
               ) : null}
             </View>
+          </View>
+        </View>
+
+        {/* Daily Time Slots */}
+        <View style={{ backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' }}>
+          <View style={{ padding: 16, gap: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Ionicons name="time-outline" size={20} color="#6366f1" />
+              <Text style={{ fontSize: 15, color: '#0f172a' }}>Daily Time Slots</Text>
+            </View>
+            {timeSlots.length === 0 ? (
+              <Text style={{ fontSize: 13, color: '#94a3b8' }}>No time slots configured.</Text>
+            ) : (
+              <View style={{ gap: 14 }}>
+                {timeSlots.map((slot) => (
+                  <TimeSlotEditorRow key={slot.id} slot={slot} onCommit={handleSlotCommit} />
+                ))}
+              </View>
+            )}
           </View>
         </View>
 
