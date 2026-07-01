@@ -909,7 +909,7 @@ export default function TodayScreen() {
         {goals.length > 0 ? (
           <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
             <Text style={{ fontSize: 11, fontWeight: '500', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-              Today's Goals
+              Today&apos;s Goals
             </Text>
             {goals.map((goal) => (
               <View key={goal.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>

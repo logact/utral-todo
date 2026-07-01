@@ -17,14 +17,14 @@
     "build:ios:prod": "eas build --platform ios --profile production"
   },
   "dependencies": {
-    "@utral/db-schema": "workspace:*",
-    "@utral/sync-client": "workspace:*",
-    "@utral/sync-share": "workspace:*",
-    "@utral/types": "workspace:*",
     "@expo/metro-runtime": "^6.1.2",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.101.0",
+    "@utral/db-schema": "workspace:*",
+    "@utral/sync-client": "workspace:*",
+    "@utral/sync-share": "workspace:*",
+    "@utral/types": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "expo": "~54.0.0",
     "expo-constants": "~18.0.13",
@@ -59,6 +59,8 @@
     "babel-plugin-inline-import": "^3.0.0",
     "babel-preset-expo": "^54.0.11",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.3"
   }
 }

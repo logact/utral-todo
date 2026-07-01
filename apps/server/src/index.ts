@@ -80,12 +80,12 @@ wss.on('connection', (ws, req) => {
   // Register the connection with sync handler
   syncHandler.connect(deviceId, {
     id: deviceId,
-    send: (data) => {
+    send: (data: string) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
       }
     },
-    onClose: (cb) => {
+    onClose: (cb: () => void) => {
       ws.on('close', cb);
     },
   });
@@ -96,7 +96,7 @@ wss.on('connection', (ws, req) => {
   // Handle incoming messages
   ws.on('message', (data) => {
     try {
-      const message = JSON.parse(data.toString());
+      JSON.parse(data.toString());
       syncHandler.handleMessage(deviceId, data.toString());
     } catch (err) {
       console.error('[ws] Failed to parse message:', err);

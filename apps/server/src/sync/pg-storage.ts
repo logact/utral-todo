@@ -1,7 +1,7 @@
 import type { ServerSyncStorage, SyncEvent, HLCTimestamp } from '@utral/sync-share';
-import type { PgTableWithColumns, PgColumn } from 'drizzle-orm/pg-core';
+import type { PgTableWithColumns } from 'drizzle-orm/pg-core';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and, isNotNull, gt, lt } from 'drizzle-orm';
+import { eq, isNotNull, gt, lt } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 
 type AnyPgTable = PgTableWithColumns<any>;
@@ -15,10 +15,6 @@ interface DrizzlePgSyncStorageOptions {
   isNotNull: typeof isNotNull;
   gt: typeof gt;
   lt: typeof lt;
-}
-
-function toNum(v: unknown): number {
-  return typeof v === 'bigint' ? Number(v) : (v as number) ?? 0;
 }
 
 export class DrizzlePgSyncStorage implements ServerSyncStorage {
@@ -131,7 +127,7 @@ export class DrizzlePgSyncStorage implements ServerSyncStorage {
     }));
   }
 
-  trackEventDelivery(eventId: string, deviceId: string, channel: string): void {
+  trackEventDelivery(eventId: string, deviceId: string, _channel: string): void {
     // For PostgreSQL, we can use a simple insert with conflict handling
     this.db.insert(this.syncEventTable)
       .values({
@@ -142,12 +138,12 @@ export class DrizzlePgSyncStorage implements ServerSyncStorage {
       .catch(() => {});
   }
 
-  ackEventDelivery(deviceId: string, eventIds: string[]): void {
+  ackEventDelivery(_deviceId: string, _eventIds: string[]): void {
     // For PostgreSQL, we can track this in a separate table or skip for now
     // This is a no-op for the basic implementation
   }
 
-  async getPendingEventsForDevice(deviceId: string): Promise<SyncEvent[]> {
+  async getPendingEventsForDevice(_deviceId: string): Promise<SyncEvent[]> {
     // For PostgreSQL, we can query events that haven't been acknowledged
     // For now, return empty array as this is not critical for basic sync
     return [];

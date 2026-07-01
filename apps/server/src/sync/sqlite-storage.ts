@@ -2,7 +2,7 @@ import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type Database from 'better-sqlite3';
 import type { ServerSyncStorage, SyncEvent, HLCTimestamp } from '@utral/sync-share';
-import { eq, and, gt, gte, lt, lte, or } from 'drizzle-orm';
+import { eq, and, gt, gte, lte, or } from 'drizzle-orm';
 
 export const syncEvents = sqliteTable(
   'sync_events',
