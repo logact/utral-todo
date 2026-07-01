@@ -19,8 +19,9 @@ is specific to the client.
 ## How apps use it
 
 Subclass `SyncClientHandler` and inject platform storage + transport. Example:
-`apps/desktop/src/lib/sync/` (`TauriSyncHandler` + `TauriSqliteStorage` +
-`TauriWebSocketTransport`). Expo has a parallel implementation under
+`apps/desktop/src/lib/sync/` (`TauriSyncHandler` + `TauriWebSocketTransport`). The
+storage impl is shared: both desktop and expo build it via `createSqliteSyncStorage`
+from `@utral/db-schema/storage`. Expo has a parallel handler/transport under
 `apps/expo-app/src/lib/sync/`.
 
 ## The two responsibilities
@@ -130,8 +131,9 @@ timestamp columns, real table objects). The bridge has three responsibilities:
    the real row (soft delete synced like any other update) — do not physically
    remove it, or the tombstone can't propagate / re-merge.
 
-Skeleton (see `apps/desktop/src/lib/sync/sqlite-storage.ts` for the full Drizzle
-impl this is distilled from):
+Skeleton (see `packages/db-schema/src/storage.ts` — `createSqliteSyncStorage`, the
+shared Drizzle impl used by both desktop and expo — for the full version this is
+distilled from):
 
 ```ts
 const TABLE = { todo: todos, todoRelation: todoRelations, /* …canonical → real… */ };

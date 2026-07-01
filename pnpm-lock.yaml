@@ -348,6 +348,9 @@ importers:
 
   packages/db-schema:
     dependencies:
+      '@utral/sync-client':
+        specifier: workspace:*
+        version: link:../sync-client
       '@utral/types':
         specifier: workspace:*
         version: link:../types

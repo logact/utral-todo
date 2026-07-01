@@ -1,6 +1,6 @@
 import { ExpoSyncHandler } from './sync/sync-handler';
 import * as SQLite from 'expo-sqlite';
-import { db, expoDb, schema } from '../db';
+import { db, schema } from '../db';
 import { queryClient } from './query-client';
 import {
   getSyncConfigData,
@@ -71,7 +71,6 @@ async function getEngine(): Promise<ExpoSyncHandler> {
       serverUrl,
       tables: Object.values(TABLE_NAME_MAP),
       tableOrder: TABLE_ORDER,
-      db: expoDb,
       deviceId,
       userId: (config as any).userId || 'default',
       channel: (config as any).channel || 'default',

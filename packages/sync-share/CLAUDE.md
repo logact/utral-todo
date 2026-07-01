@@ -27,7 +27,7 @@ server to make a change.
 | `sync-server`  | `SyncHandler` (relay) + `SqliteSyncStorage`                          | Server                |
 
 Apps subclass the client handler and provide platform storage + transport:
-- Desktop: `apps/desktop/src/lib/sync/` (`TauriSyncHandler`, `TauriSqliteStorage`, `TauriWebSocketTransport`).
+- Desktop: `apps/desktop/src/lib/sync/` (`TauriSyncHandler`, `TauriWebSocketTransport`) with the shared `createSqliteSyncStorage` from `@utral/db-schema/storage`.
 - Server: `apps/server/src/sync/setup.ts` wires `SyncHandler` to Postgres (`DrizzlePgSyncStorage`).
 
 ## How to use the package

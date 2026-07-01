@@ -1,13 +1,14 @@
 import type { SyncHandlerOptions } from '@utral/sync-client';
 import { SyncClientHandler } from '@utral/sync-client';
-import { TauriSqliteStorage } from './sqlite-storage.js';
+import { createSqliteSyncStorage, type SqliteSyncStorage } from '@utral/db-schema/storage';
+import { db } from '../../db/drizzle-adapter';
 import { TauriWebSocketTransport } from './websocket-transport.js';
 
 export type TauriSyncOptions = Omit<SyncHandlerOptions, 'transport' | 'storage'>;
 
 export class TauriSyncHandler extends SyncClientHandler {
   constructor(opts: TauriSyncOptions) {
-    const storage = new TauriSqliteStorage();
+    const storage = createSqliteSyncStorage(db);
     super({
       ...opts,
       storage,
@@ -16,7 +17,7 @@ export class TauriSyncHandler extends SyncClientHandler {
   }
 
   async init(): Promise<void> {
-    const storage = (this as any).opts.storage as TauriSqliteStorage;
+    const storage = (this as any).opts.storage as SqliteSyncStorage;
     await storage.init();
   }
 }

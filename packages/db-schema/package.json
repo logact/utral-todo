@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./storage": {
+      "types": "./src/storage.ts",
+      "default": "./src/storage.ts"
     }
   },
   "scripts": {
@@ -17,7 +21,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@utral/types": "workspace:*"
+    "@utral/types": "workspace:*",
+    "@utral/sync-client": "workspace:*"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.44.0"
