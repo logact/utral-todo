@@ -1,6 +1,6 @@
 import { db } from './drizzle-adapter';
 import { todos, todoRelations, plans as plansTable } from './schema';
-import { eq, and, lt, gte, isNotNull, isNull } from 'drizzle-orm';
+import { eq, and, or, lt, gte, isNotNull, isNull } from 'drizzle-orm';
 import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
@@ -19,6 +19,7 @@ export const ROOT_GOAL_ID = 'system:root-goal';
 export async function createTodo(
   title: string,
   options?: {
+    id?: string;
     nodeType?: NodeType;
     pattern?: TaskPattern;
     parentId?: string;
@@ -36,6 +37,7 @@ export async function createTodo(
     successCriteria?: string;
     targetDate?: Date;
     goalStatus?: GoalStatus;
+    isSystemTask?: boolean;
   }
 ): Promise<Todo> {
   const nodeId = await getOrCreateDeviceId();
@@ -45,7 +47,7 @@ export async function createTodo(
 
 
   const todo: Todo = {
-    id: crypto.randomUUID(),
+    id: options?.id ?? crypto.randomUUID(),
     nodeType,
     pattern: isTaskNode ? (options?.pattern ?? 'task') : undefined,
     title,
@@ -66,6 +68,7 @@ export async function createTodo(
     successCriteria: nodeType === 'goal' ? options?.successCriteria : undefined,
     targetDate: options?.targetDate,
     goalStatus: nodeType === 'goal' ? (options?.goalStatus ?? 'active') : undefined,
+    isSystemTask: options?.isSystemTask,
     isDeleted: false,
   };
   const newRow = todoToRow(todo);
@@ -122,7 +125,12 @@ export async function createTask(
 }
 
 export async function getAllTodos(): Promise<Todo[]> {
-  const rows = await db.select().from(todos).where(eq(todos.isDeleted, false)) as any[];
+  const rows = await db.select().from(todos).where(
+    and(
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
+    )
+  ) as any[];
   return rows.map(rowToTodo);
 }
 
@@ -548,7 +556,8 @@ export async function getTodaysTodos(): Promise<Todo[]> {
       gte(todos.scheduledDate, today),
       lt(todos.scheduledDate, tomorrow),
       eq(todos.nodeType, 'task'),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   const realTodos = rows.map(rowToTodo);
@@ -584,7 +593,8 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
     and(
       gte(todos.scheduledDate, start),
       lt(todos.scheduledDate, end),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   const realTodos = rows.map(rowToTodo);
@@ -599,7 +609,8 @@ export async function getUnscheduledTodos(): Promise<Todo[]> {
       isNotNull(todos.scheduledDate),
       eq(todos.status, 'done'),
       eq(todos.nodeType, 'task'),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
@@ -613,7 +624,8 @@ export async function getOverdueTodos(): Promise<Todo[]> {
       lt(todos.dueDate, now),
       eq(todos.status, 'done'),
       eq(todos.nodeType, 'task'),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   return rows.map(rowToTodo).filter((t) => t.status !== 'done');
@@ -624,7 +636,8 @@ export async function getInProgressTodos(): Promise<Todo[]> {
     and(
       eq(todos.status, 'in_progress'),
       eq(todos.nodeType, 'task'),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   return rows.map(rowToTodo);
@@ -637,7 +650,8 @@ export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
       eq(todos.status, 'done'),
       eq(todos.priority, 'high'),
       eq(todos.nodeType, 'task'),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
@@ -671,7 +685,8 @@ export async function getRepeatTemplates(): Promise<Todo[]> {
     and(
       isNotNull(todos.repeatRule),
       eq(todos.nodeType, 'task'),
-      eq(todos.isDeleted, false)
+      eq(todos.isDeleted, false),
+      or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
   return rows.map(rowToTodo);

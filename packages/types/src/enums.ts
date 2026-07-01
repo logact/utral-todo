@@ -3,7 +3,7 @@ export type Priority = 'low' | 'medium' | 'high';
 export type TodoLogType = 'progress' | 'thought' | 'blocker' | 'decision' | 'system' | 'step_complete' | 'exec';
 
 export type NodeType = 'goal' | 'task';
-export type TaskPattern = 'task' | 'cognitive';
+export type TaskPattern = 'task' | 'cognitive' | 'timeSlot';
 export type GoalStatus = 'active' | 'paused' | 'achieved' | 'abandoned';
 
 export type ActionEdgeType = 'pre_do' | 'parent_child' | 'to_achieve';

@@ -20,6 +20,6 @@ const storage = new DrizzlePgSyncStorage({
 
 export const syncHandler = new SyncHandler({
   storage,
-  tables: ['todo', 'todoRelation', 'todoLog', 'actionEdge', 'pluse', 'repeatOccurrence', 'plan'],
-  
+  tables: ['todo', 'todoRelation', 'todoLog', 'actionEdge', 'pluse', 'repeatOccurrence', 'plan', 'timeSlot'],
+
 });

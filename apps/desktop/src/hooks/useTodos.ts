@@ -322,7 +322,7 @@ export function useScheduleTodos() {
         const rows = await db.select().from(todosTable).where(
           gte(todosTable.scheduledDate, new Date(0))
         ) as any[];
-        return rows.filter((t: any) => t.status !== 'done');
+        return rows.filter((t: any) => t.status !== 'done' && !t.isSystemTask);
       })(),
       getUnscheduledTodos(),
       getRepeatTemplates(),

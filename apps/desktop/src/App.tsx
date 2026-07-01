@@ -4,6 +4,7 @@ import { useCliBridge } from './hooks/useCliBridge';
 import { useSync } from './hooks/useSync';
 import { initIOSSync } from './db/iosSync';
 import { initDatabase } from './db/database';
+import { seedDefaultTimeSlots } from './db/timeSlotDefinitions';
 import { Sidebar } from './components/layout/Sidebar';
 import { QuickTodoModal } from './components/QuickTodoModal';
 import { TodoNew } from './pages/TodoNew';
@@ -58,6 +59,7 @@ export default function App() {
 
   useEffect(() => {
     initDatabase()
+      .then(() => seedDefaultTimeSlots())
       .then(() => {
         // ensureRootGoal().catch((err) => {
         //   console.error('[App] Failed to ensure root goal:', err);

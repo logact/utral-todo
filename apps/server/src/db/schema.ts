@@ -17,7 +17,7 @@ import { relations } from 'drizzle-orm';
 export const todo = pgTable('Todo', {
   id: uuid('id').primaryKey().defaultRandom(),
   nodeType: text('nodeType').notNull().default('task'),
-  pattern: text('pattern').notNull().default('task'),
+  pattern: text('pattern').notNull().default('task'), // 'task' | 'cognitive' | 'timeSlot'
   parentId: uuid('parentId'),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
@@ -198,6 +198,31 @@ export const repeatOccurrence = pgTable(
     index('RepeatOccurrence_templateId_idx').on(t.templateId),
     index('RepeatOccurrence_date_idx').on(t.date),
   ],
+);
+
+// ── TimeSlot ────────────────────────────────────────────────────────────────
+
+export const timeSlot = pgTable(
+  'TimeSlot',
+  {
+    id: text('id').primaryKey(),
+    milestoneId: text('milestoneId').notNull(),
+    title: text('title').notNull(),
+    time: text('time').notNull(),
+    startHour: integer('startHour').notNull(),
+    startMinute: integer('startMinute').notNull(),
+    endHour: integer('endHour').notNull(),
+    endMinute: integer('endMinute').notNull(),
+    order: integer('order').notNull().default(0),
+    createdAt: timestamp('createdAt').notNull().defaultNow(),
+    updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+    // HLC CRDT fields
+    versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
+    versionCounter: integer('versionCounter').notNull().default(0),
+    versionNode: text('versionNode').notNull().default(''),
+    isDeleted: boolean('isDeleted').notNull().default(false),
+  },
+  (t) => [index('TimeSlot_milestoneId_idx').on(t.milestoneId)],
 );
 
 // ── SyncEvent ───────────────────────────────────────────────────────────────

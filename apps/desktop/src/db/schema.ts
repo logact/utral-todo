@@ -9,6 +9,7 @@ import type {
   Pluse,
   TimerSession,
   RepeatOccurrence,
+  TimeSlotDefinition,
   RepeatRule,
   NodeType,
   TaskPattern,
@@ -30,6 +31,7 @@ export type {
   Pluse,
   TimerSession,
   RepeatOccurrence,
+  TimeSlotDefinition,
 };
 
 // ─── HLC column helpers ───
@@ -57,7 +59,7 @@ function objToHlcColumns(obj: unknown, prefix: string) {
 export const todos = sqliteTable('todos', {
   id: text('id').primaryKey(),
   nodeType: text('node_type', { enum: ['goal', 'task'] }).notNull().default('task'),
-  pattern: text('pattern', { enum: ['task', 'cognitive'] }),
+  pattern: text('pattern', { enum: ['task', 'cognitive', 'timeSlot'] }),
   title: text('title').notNull().default('Untitled'),
   description: text('description').notNull().default(''),
   status: text('status', { enum: ['pending', 'in_progress', 'done'] }).notNull().default('pending'),
@@ -250,6 +252,29 @@ export const repeatOccurrences = sqliteTable('repeat_occurrences', {
 }, (table) => [
   index('repeat_occurrences_template_id_idx').on(table.templateId),
   index('repeat_occurrences_date_idx').on(table.date),
+]);
+
+export const timeSlots = sqliteTable('time_slots', {
+  id: text('id').primaryKey(),
+  milestoneId: text('milestone_id').notNull(),
+  title: text('title').notNull().default(''),
+  time: text('time').notNull().default(''),
+  startHour: integer('start_hour').notNull().default(0),
+  startMinute: integer('start_minute').notNull().default(0),
+  endHour: integer('end_hour').notNull().default(0),
+  endMinute: integer('end_minute').notNull().default(0),
+  order: integer('order').notNull().default(0),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('time_slots_milestone_id_idx').on(table.milestoneId),
+  index('time_slots_order_idx').on(table.order),
+  index('time_slots_updated_at_idx').on(table.updatedAtWall),
 ]);
 
 export const hlcState = sqliteTable('hlc_state', {
@@ -563,4 +588,40 @@ export function timerSessionToRow(session: Partial<TimerSession>): InferInsertMo
   Object.assign(row, objToHlcColumns(session.updatedAt, 'updated_at'));
   if (session.isDeleted !== undefined) row.is_deleted = session.isDeleted;
   return row as InferInsertModel<typeof timerSessions>;
+}
+
+export function rowToTimeSlotDefinition(row: Record<string, unknown>): TimeSlotDefinition {
+  return {
+    id: row.id as string,
+    milestoneId: row.milestoneId as string,
+    title: row.title as string,
+    time: row.time as string,
+    startHour: (row.startHour as number) ?? 0,
+    startMinute: (row.startMinute as number) ?? 0,
+    endHour: (row.endHour as number) ?? 0,
+    endMinute: (row.endMinute as number) ?? 0,
+    order: (row.order as number) ?? 0,
+    createdAt: hlcDateToObj(row, 'createdAt')!,
+    updatedAt: hlcDateToObj(row, 'updatedAt')!,
+    isDeleted: (row.isDeleted as boolean) ?? false,
+  };
+}
+
+export function timeSlotDefinitionToRow(
+  slot: Partial<TimeSlotDefinition>
+): InferInsertModel<typeof timeSlots> {
+  const row: Record<string, unknown> = {};
+  if (slot.id !== undefined) row.id = slot.id;
+  if (slot.milestoneId !== undefined) row.milestoneId = slot.milestoneId;
+  if (slot.title !== undefined) row.title = slot.title;
+  if (slot.time !== undefined) row.time = slot.time;
+  if (slot.startHour !== undefined) row.startHour = slot.startHour;
+  if (slot.startMinute !== undefined) row.startMinute = slot.startMinute;
+  if (slot.endHour !== undefined) row.endHour = slot.endHour;
+  if (slot.endMinute !== undefined) row.endMinute = slot.endMinute;
+  if (slot.order !== undefined) row.order = slot.order;
+  Object.assign(row, objToHlcColumns(slot.createdAt, 'createdAt'));
+  Object.assign(row, objToHlcColumns(slot.updatedAt, 'updatedAt'));
+  if (slot.isDeleted !== undefined) row.isDeleted = slot.isDeleted;
+  return row as InferInsertModel<typeof timeSlots>;
 }

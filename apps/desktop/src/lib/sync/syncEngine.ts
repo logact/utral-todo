@@ -10,6 +10,7 @@ const TABLE_NAME_MAP: Record<string, string> = {
   plans: 'plan',
   pluses: 'pluse',
   repeatOccurrences: 'repeatOccurrence',
+  timeSlots: 'timeSlot',
 };
 
 const TABLE_ORDER: Record<string, number> = {
@@ -20,6 +21,7 @@ const TABLE_ORDER: Record<string, number> = {
   pluses: 4, pluse: 4,
   repeatOccurrences: 5, repeatOccurrence: 5,
   plans: 6, plan: 6,
+  timeSlots: 7, timeSlot: 7,
 };
 
 // --- Window Event Emitter ---

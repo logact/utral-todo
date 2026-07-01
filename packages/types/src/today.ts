@@ -14,6 +14,7 @@ export function filterTodayScheduled(todos: Todo[]): Todo[] {
 
   return todos.filter((t) => {
     if (t.nodeType !== 'task' || t.isDeleted) return false;
+    if (t.pattern === 'timeSlot' || t.isSystemTask) return false;
     if (!t.scheduledDate) return false;
     const d = new Date(t.scheduledDate);
     return d >= today && d < tomorrow;
@@ -22,7 +23,12 @@ export function filterTodayScheduled(todos: Todo[]): Todo[] {
 
 export function filterInProgress(todos: Todo[]): Todo[] {
   return todos.filter(
-    (t) => t.status === 'in_progress' && t.nodeType === 'task' && !t.isDeleted
+    (t) =>
+      t.status === 'in_progress' &&
+      t.nodeType === 'task' &&
+      !t.isDeleted &&
+      t.pattern !== 'timeSlot' &&
+      !t.isSystemTask
   );
 }
 
@@ -34,6 +40,8 @@ export function filterOverdue(todos: Todo[]): Todo[] {
     (t) =>
       t.nodeType === 'task' &&
       !t.isDeleted &&
+      t.pattern !== 'timeSlot' &&
+      !t.isSystemTask &&
       t.dueDate &&
       new Date(t.dueDate) < today &&
       t.status !== 'done'
@@ -45,6 +53,8 @@ export function filterUnscheduledHighPriority(todos: Todo[]): Todo[] {
     (t) =>
       t.nodeType === 'task' &&
       !t.isDeleted &&
+      t.pattern !== 'timeSlot' &&
+      !t.isSystemTask &&
       !t.scheduledDate &&
       t.status !== 'done' &&
       t.priority === 'high'

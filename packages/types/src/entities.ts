@@ -141,6 +141,21 @@ export interface TimerSession {
   isDeleted: boolean;
 }
 
+export interface TimeSlotDefinition {
+  id: string;
+  milestoneId: string;
+  title: string;
+  time: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  order: number;
+  createdAt: HLC;
+  updatedAt: HLC;
+  isDeleted: boolean;
+}
+
 export interface Label {
   name: string;
   count: number;

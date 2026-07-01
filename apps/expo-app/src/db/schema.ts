@@ -4,7 +4,7 @@ import type { RepeatRule } from '@utral/types';
 export const todos = sqliteTable('todos', {
   id: text('id').primaryKey(),
   nodeType: text('node_type', { enum: ['goal', 'task'] }).notNull().default('task'),
-  pattern: text('pattern', { enum: ['task', 'cognitive'] }),
+  pattern: text('pattern', { enum: ['task', 'cognitive', 'timeSlot'] }),
   title: text('title').notNull().default('Untitled'),
   description: text('description').notNull().default(''),
   status: text('status', { enum: ['pending', 'in_progress', 'done'] }).notNull().default('pending'),
@@ -171,6 +171,30 @@ export const repeatOccurrences = sqliteTable('repeat_occurrences', {
 }, (table) => [
   index('repeat_occurrences_template_id_idx').on(table.templateId),
   index('repeat_occurrences_date_idx').on(table.date),
+]);
+
+export const timeSlots = sqliteTable('time_slots', {
+  id: text('id').primaryKey(),
+  milestoneId: text('milestone_id').notNull(),
+  title: text('title').notNull().default(''),
+  time: text('time').notNull().default(''),
+  startHour: integer('start_hour').notNull().default(0),
+  startMinute: integer('start_minute').notNull().default(0),
+  endHour: integer('end_hour').notNull().default(0),
+  endMinute: integer('end_minute').notNull().default(0),
+  order: integer('order').notNull().default(0),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  deletedAtWall: integer('deleted_at_wall'),
+  deletedAtCounter: integer('deleted_at_counter'),
+  deletedAtNode: text('deleted_at_node'),
+}, (table) => [
+  index('time_slots_milestone_id_idx').on(table.milestoneId),
+  index('time_slots_order_idx').on(table.order),
 ]);
 
 export const syncConfig = sqliteTable('sync_config', {

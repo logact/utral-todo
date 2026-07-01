@@ -11,7 +11,7 @@ export interface TimeSlotConfig {
   endMinute: number;
 }
 
-export const TIME_SLOTS: TimeSlotConfig[] = [
+export const DEFAULT_TIME_SLOTS: TimeSlotConfig[] = [
   {
     id: 'slot-morning',
     milestoneId: 'system:day-startup',
@@ -74,14 +74,22 @@ export const TIME_SLOTS: TimeSlotConfig[] = [
   },
 ];
 
-export function getTimeSlotForTodo(todo: Todo): string | null {
+/**
+ * @deprecated Use DEFAULT_TIME_SLOTS or load definitions from storage.
+ */
+export const TIME_SLOTS = DEFAULT_TIME_SLOTS;
+
+export function getTimeSlotForTodo(
+  todo: Todo,
+  slots: TimeSlotConfig[] = DEFAULT_TIME_SLOTS
+): string | null {
   if (!todo.scheduledDate) return null;
   const date = new Date(todo.scheduledDate);
   const hour = date.getHours();
   const minute = date.getMinutes();
   const timeInMinutes = hour * 60 + minute;
 
-  for (const slot of TIME_SLOTS) {
+  for (const slot of slots) {
     const startInMinutes = slot.startHour * 60 + slot.startMinute;
     const endInMinutes = slot.endHour * 60 + slot.endMinute;
     if (timeInMinutes >= startInMinutes && timeInMinutes < endInMinutes) {
@@ -91,20 +99,42 @@ export function getTimeSlotForTodo(todo: Todo): string | null {
   return null;
 }
 
-export function groupTodosByTimeSlot(todos: Todo[]): Map<string, Todo[]> {
+export function isTimeSlotTodo(todo: Todo): boolean {
+  return todo.pattern === 'timeSlot';
+}
+
+export function getTimeSlotScheduleDate(
+  slot: TimeSlotConfig,
+  date = new Date()
+): Date {
+  const d = new Date(date);
+  d.setHours(slot.startHour, slot.startMinute, 0, 0);
+  return d;
+}
+
+export function getTimeSlotByMilestoneId(
+  milestoneId: string,
+  slots: TimeSlotConfig[] = DEFAULT_TIME_SLOTS
+): TimeSlotConfig | undefined {
+  return slots.find((s) => s.milestoneId === milestoneId);
+}
+
+export function groupTodosByTimeSlot(
+  todos: Todo[],
+  slots: TimeSlotConfig[] = DEFAULT_TIME_SLOTS
+): Map<string, Todo[]> {
   const groups = new Map<string, Todo[]>();
-  for (const slot of TIME_SLOTS) {
+  for (const slot of slots) {
     groups.set(slot.id, []);
   }
 
   for (const todo of todos) {
-    const slotId = getTimeSlotForTodo(todo);
+    const slotId = getTimeSlotForTodo(todo, slots);
     if (slotId) {
       groups.get(slotId)!.push(todo);
     }
   }
 
-  // Sort within each slot by order
   for (const [, items] of groups) {
     items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }

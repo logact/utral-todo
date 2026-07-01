@@ -68,6 +68,8 @@ export function parseTodo(data: unknown): Todo {
     targetDate: parseDate(t.targetDate),
     goalStatus: t.goalStatus as Todo['goalStatus'],
     pattern: (t.pattern as Todo['pattern']) ?? 'task',
+    isSystemTask: (t.isSystemTask as boolean | undefined) ?? false,
+    isRootGoal: (t.isRootGoal as boolean | undefined) ?? false,
     isDeleted: (t.isDeleted as boolean) ?? false,
   };
 }

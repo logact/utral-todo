@@ -14,9 +14,13 @@ export {
 } from './repeat.js';
 
 export {
+  DEFAULT_TIME_SLOTS,
   TIME_SLOTS,
   getTimeSlotForTodo,
   groupTodosByTimeSlot,
+  isTimeSlotTodo,
+  getTimeSlotScheduleDate,
+  getTimeSlotByMilestoneId,
   type TimeSlotConfig,
 } from './timeSlots.js';
 

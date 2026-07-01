@@ -10,6 +10,8 @@ import type {
 import { db } from '../../db/drizzle-adapter';
 import * as schema from '../../db/schema';
 import { eq } from 'drizzle-orm';
+import { getTimeSlotDefinitionByMilestoneId } from '../../db/timeSlotDefinitions';
+import { getTimeSlotByMilestoneId, getTimeSlotScheduleDate, DEFAULT_TIME_SLOTS } from '../../types';
 
 const SYNC_TABLE_MAP: Record<string, any> = {
   todo:             schema.todos,
@@ -19,6 +21,7 @@ const SYNC_TABLE_MAP: Record<string, any> = {
   plan:             schema.plans,
   pluse:            schema.pluses,
   repeatOccurrence: schema.repeatOccurrences,
+  timeSlot:         schema.timeSlots,
 };
 
 export class TauriSqliteStorage implements SyncQueueStorage, SyncRecordStorage, SyncStateStorage {

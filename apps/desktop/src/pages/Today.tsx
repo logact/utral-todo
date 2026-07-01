@@ -7,6 +7,7 @@ import {
   Play,
   Pause,
   RotateCcw,
+  NotebookPen,
   SkipForward,
   X,
   ChevronDown,
@@ -20,8 +21,13 @@ import {
 import { useTodayData } from '../hooks/useTodos';
 import { getInProgressTodos, getAllTodos } from '../db/todos';
 import { getAllPluses, getActivePluse, setActivePluse as setActivePluseInDb } from '../db/pluse';
-import { createTodoLog } from '../db/todoLogs';
+import { createTodoLog, getTodoLogs, deleteTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
+import {
+  ensureTimeSlotTodo,
+  migrateLegacySlotTodos,
+} from '../db/timeSlots';
+import { getTimeSlotDefinitions } from '../db/timeSlotDefinitions';
 import {
   getActivePluseTimer,
   createTimerSession,
@@ -37,7 +43,7 @@ import {
 
 } from '../utils/date';
 import type { Todo, TodoStatus, Priority, Pluse } from '../types';
-import { TIME_SLOTS as SHARED_TIME_SLOTS, getTimeSlotForTodo } from '../types';
+import { DEFAULT_TIME_SLOTS, getTimeSlotForTodo } from '../types';
 import type { TimeSlotConfig as SharedTimeSlotConfig } from '../types';
 
 function isTauriApp(): boolean {
@@ -941,7 +947,7 @@ const TIME_SLOT_UI: Record<string, { icon: typeof Flag; color: string; bgColor: 
   'slot-night': { icon: Flag, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50', darkBgColor: 'dark:bg-emerald-950/30' },
 };
 
-const TIME_SLOTS: TimeSlotConfig[] = SHARED_TIME_SLOTS.map((slot) => ({
+const TIME_SLOTS: TimeSlotConfig[] = DEFAULT_TIME_SLOTS.map((slot) => ({
   ...slot,
   ...TIME_SLOT_UI[slot.id],
 }));
@@ -950,46 +956,64 @@ function TimeSlotHeader({
   config,
   isCollapsed,
   onToggle,
+  onReset,
   taskCount,
 }: {
   config: TimeSlotConfig;
   isCollapsed: boolean;
   onToggle: () => void;
+  onReset?: () => void;
   taskCount: number;
 }) {
   const Icon = config.icon;
 
   return (
-    <button
-      onClick={onToggle}
-      className={`w-full flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50`}
-    >
-      <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${config.bgColor} ${config.darkBgColor} ${config.color}`}>
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="flex-1 min-w-0 text-left">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            {config.title}
-          </span>
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-            {config.time}
-          </span>
+    <div className="w-full flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 group">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+      >
+        <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${config.bgColor} ${config.darkBgColor} ${config.color}`}>
+          <Icon className="w-4 h-4" />
         </div>
-      </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {config.title}
+            </span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+              {config.time}
+            </span>
+          </div>
+        </div>
+      </button>
       <div className="flex items-center gap-2 shrink-0">
         {taskCount > 0 && (
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
             {taskCount}
           </span>
         )}
-        {isCollapsed ? (
-          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+        {onReset && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onReset();
+            }}
+            className="p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
+            title="Reset / Add summary note"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
         )}
+        <button onClick={onToggle} className="text-slate-400 dark:text-slate-500">
+          {isCollapsed ? (
+            <ChevronRight className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -1002,6 +1026,7 @@ function TimeSlotSection({
   onTitleClick,
   isCollapsed,
   onToggleCollapse,
+  onReset,
 }: {
   config: TimeSlotConfig;
   todos: Todo[];
@@ -1011,6 +1036,7 @@ function TimeSlotSection({
   onTitleClick?: (id: string) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onReset?: () => void;
 }) {
   return (
     <div className="mb-1">
@@ -1018,6 +1044,7 @@ function TimeSlotSection({
         config={config}
         isCollapsed={isCollapsed}
         onToggle={onToggleCollapse}
+        onReset={onReset}
         taskCount={todos.length}
       />
       {!isCollapsed && todos.length > 0 && (
@@ -1067,6 +1094,10 @@ export function Today() {
   const [plusesLoading, setPlusesLoading] = useState(true);
   const [activePluse, setActivePluse] = useState<Pluse | null>(null);
   const [collapsedSlots, setCollapsedSlots] = useState<Set<string>>(new Set());
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null);
+  const [milestoneNotes, setMilestoneNotes] = useState<Record<string, { content: string; id: string }[]>>({});
+  const [milestoneNoteInput, setMilestoneNoteInput] = useState('');
+  const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>(TIME_SLOTS);
 
   useEffect(() => {
     (async () => {
@@ -1076,6 +1107,76 @@ export function Today() {
         setActivePluse(active && all.find((p) => p.id === active.id) ? active : all[0]);
       }
       setPlusesLoading(false);
+    })();
+  }, []);
+
+  // Load time slot definitions from DB on mount (supports user edits + sync)
+  useEffect(() => {
+    (async () => {
+      try {
+        const definitions = await getTimeSlotDefinitions();
+        if (definitions.length > 0) {
+          setTimeSlots(
+            definitions.map((slot) => ({
+              ...slot,
+              ...TIME_SLOT_UI[slot.id],
+            }))
+          );
+        }
+      } catch (err) {
+        console.error('[Today] Failed to load time slot definitions:', err);
+      }
+    })();
+  }, []);
+
+  // Reload slot definitions when they change locally or from sync
+  useEffect(() => {
+    function handleDbChanged(event: Event) {
+      const detail = (event as CustomEvent).detail as
+        | { table?: string; operation?: string; recordId?: string }
+        | undefined;
+      if (detail?.table !== 'timeSlot') return;
+
+      (async () => {
+        try {
+          const definitions = await getTimeSlotDefinitions();
+          if (definitions.length > 0) {
+            const nextSlots = definitions.map((slot) => ({
+              ...slot,
+              ...TIME_SLOT_UI[slot.id],
+            }));
+            setTimeSlots(nextSlots);
+
+            const changedSlot = nextSlots.find((s) => s.id === detail?.recordId);
+            if (changedSlot) {
+              await ensureTimeSlotTodo(changedSlot);
+            }
+          }
+        } catch (err) {
+          console.error('[Today] Failed to reload time slot definitions:', err);
+        }
+      })();
+    }
+
+    window.addEventListener('db:changed', handleDbChanged);
+    return () => window.removeEventListener('db:changed', handleDbChanged);
+  }, []);
+
+  // Load milestone notes for all time slots on mount
+  useEffect(() => {
+    (async () => {
+      await migrateLegacySlotTodos();
+      const notesMap: Record<string, { content: string; id: string }[]> = {};
+      for (const slot of timeSlots) {
+        try {
+          const todoId = await ensureTimeSlotTodo(slot);
+          const logs = await getTodoLogs(todoId);
+          notesMap[slot.id] = logs.map((log) => ({ content: log.content, id: log.id }));
+        } catch (err) {
+          console.error('Failed to load notes for slot', slot.id, err);
+        }
+      }
+      setMilestoneNotes(notesMap);
     })();
   }, []);
 
@@ -1166,14 +1267,54 @@ export function Today() {
     if (todoMatch) {
       setPanelTodoId(null);
       setSelectedTodoId(todoMatch[1]);
+      setSelectedMilestoneId(null);
     } else {
       navigate(path);
     }
   }
 
+  async function handleResetTimeSlot(slotId: string, slot: typeof TIME_SLOTS[number]) {
+    setSelectedTodoId(null);
+    setPanelTodoId(null);
+    setSelectedMilestoneId(slotId);
+
+    const todoId = await ensureTimeSlotTodo(slot);
+    const logs = await getTodoLogs(todoId);
+    setMilestoneNotes((prev) => ({
+      ...prev,
+      [slotId]: logs.map((log) => ({ content: log.content, id: log.id })),
+    }));
+  }
+
+  async function handleAddMilestoneNote(slotId: string, slot: typeof TIME_SLOTS[number]) {
+    const trimmed = milestoneNoteInput.trim();
+    if (!trimmed) return;
+
+    const todoId = await ensureTimeSlotTodo(slot);
+    await createTodoLog(todoId, 'thought', trimmed);
+    setMilestoneNoteInput('');
+
+    const logs = await getTodoLogs(todoId);
+    setMilestoneNotes((prev) => ({
+      ...prev,
+      [slotId]: logs.map((log) => ({ content: log.content, id: log.id })),
+    }));
+  }
+
+  async function handleDeleteMilestoneNote(slotId: string, slot: typeof TIME_SLOTS[number], logId: string) {
+    await deleteTodoLog(logId);
+
+    const todoId = await ensureTimeSlotTodo(slot);
+    const logs = await getTodoLogs(todoId);
+    setMilestoneNotes((prev) => ({
+      ...prev,
+      [slotId]: logs.map((log) => ({ content: log.content, id: log.id })),
+    }));
+  }
+
   // Build time slot groups (must not memoize – addActive mutates the map)
   const timeSlotGroups = new Map<string, Todo[]>();
-  for (const slot of TIME_SLOTS) {
+  for (const slot of timeSlots) {
     timeSlotGroups.set(slot.id, []);
   }
 
@@ -1195,10 +1336,10 @@ export function Today() {
     }
     if (seenActive.has(todo.id)) return;
     seenActive.add(todo.id);
-    // Skip system tasks - they're shown as time slot headers
-    if (todo.isSystemTask) return;
+    // Skip system tasks and time-slot todos - they're shown as time slot headers
+    if (todo.isSystemTask || todo.pattern === 'timeSlot') return;
     
-    const slotId = getTimeSlotForTodo(todo);
+    const slotId = getTimeSlotForTodo(todo, timeSlots);
     if (slotId) {
       timeSlotGroups.get(slotId)!.push(todo);
     }
@@ -1220,7 +1361,7 @@ export function Today() {
   };
   for (const todo of inProgress) pushActiveOrdered(todo);
   for (const todo of overdue) pushActiveOrdered(todo);
-  for (const slot of TIME_SLOTS) {
+  for (const slot of timeSlots) {
     for (const todo of timeSlotGroups.get(slot.id)!) pushActiveOrdered(todo);
   }
 
@@ -1362,16 +1503,20 @@ export function Today() {
             ) : (
               <div className="space-y-1">
                 {/* Time Slots */}
-                {TIME_SLOTS.map((slot) => (
+                {timeSlots.map((slot) => (
                   <TimeSlotSection
                     key={slot.id}
                     config={slot}
                     todos={timeSlotGroups.get(slot.id) ?? []}
                     selectedTodoId={selectedTodoId}
-                    onSelect={handleSelectTodo}
+                    onSelect={(id) => {
+                      setSelectedMilestoneId(null);
+                      handleSelectTodo(id);
+                    }}
                     onToggle={toggleTodo}
                     isCollapsed={collapsedSlots.has(slot.id)}
                     onToggleCollapse={() => toggleSlotCollapse(slot.id)}
+                    onReset={() => handleResetTimeSlot(slot.id, slot)}
                   />
                 ))}
 
@@ -1425,7 +1570,79 @@ export function Today() {
 
       {/* ─── Right Main: Execution Detail ─── */}
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col min-h-0 min-w-0 overflow-hidden">
-        {selectedTodoId ? (
+        {selectedMilestoneId ? (
+          <div className="flex-1 overflow-y-auto min-w-0">
+            <div className="p-6 space-y-6">
+              {(() => {
+                const slot = timeSlots.find((s) => s.id === selectedMilestoneId);
+                if (!slot) return null;
+                const notes = milestoneNotes[selectedMilestoneId] ?? [];
+                return (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${slot.bgColor} ${slot.darkBgColor} ${slot.color}`}>
+                        <NotebookPen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                          {slot.title}
+                        </h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          Summary & Notes
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 space-y-3">
+                      <textarea
+                        value={milestoneNoteInput}
+                        onChange={(e) => setMilestoneNoteInput(e.target.value)}
+                        placeholder="Add a note or summary for this time slot..."
+                        className="w-full h-24 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-100 placeholder:text-slate-400"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => handleAddMilestoneNote(slot.id, slot)}
+                          disabled={!milestoneNoteInput.trim()}
+                          className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Add Note
+                        </button>
+                      </div>
+                    </div>
+
+                    {notes.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Previous Notes ({notes.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {notes.map((note) => (
+                            <div
+                              key={note.id}
+                              className="group flex items-start gap-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg"
+                            >
+                              <p className="flex-1 text-sm text-slate-700 dark:text-slate-300">
+                                {note.content}
+                              </p>
+                              <button
+                                onClick={() => handleDeleteMilestoneNote(slot.id, slot, note.id)}
+                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 transition-all shrink-0"
+                                title="Delete"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        ) : selectedTodoId ? (
           <div className="flex-1 overflow-y-auto min-w-0">
             <div className="mb-40">
               <TodoExecutionPanel
