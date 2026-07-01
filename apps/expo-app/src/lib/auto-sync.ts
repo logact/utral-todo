@@ -76,14 +76,15 @@ async function pushToServer(): Promise<void> {
 
     if (!record) continue;
 
-    const isDeleted = !!record.deletedAtWall;
+    const isDeleted = !!record.isDeleted;
 
     let payload: Record<string, unknown>;
     if (isDeleted) {
       payload = {
-        deletedAtWall: record.deletedAtWall ?? Date.now(),
-        deletedAtCounter: record.deletedAtCounter ?? 0,
-        deletedAtNode: record.deletedAtNode ?? deviceId,
+        isDeleted: true,
+        updatedAtWall: record.updatedAtWall ?? Date.now(),
+        updatedAtCounter: record.updatedAtCounter ?? 0,
+        updatedAtNode: record.updatedAtNode ?? deviceId,
       };
     } else {
       switch (table) {

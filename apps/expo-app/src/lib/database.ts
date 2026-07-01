@@ -1,4 +1,4 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db, expoDb, schema } from '../db';
 import { queryClient } from './query-client';
 import type { Todo, Pluse, SyncConfig, TodoStatus, PluseTimerStatus } from '@utral/types';
@@ -204,7 +204,7 @@ export async function getActivePluseTimer(): Promise<Pluse | null> {
     .from(schema.pluses)
     .where(
       and(
-        isNull(schema.pluses.deletedAtWall),
+        eq(schema.pluses.isDeleted, false),
         eq(schema.pluses.timerStatus, 'running')
       )
     )
@@ -216,7 +216,7 @@ export async function getActivePluseTimer(): Promise<Pluse | null> {
     .from(schema.pluses)
     .where(
       and(
-        isNull(schema.pluses.deletedAtWall),
+        eq(schema.pluses.isDeleted, false),
         eq(schema.pluses.timerStatus, 'paused')
       )
     )

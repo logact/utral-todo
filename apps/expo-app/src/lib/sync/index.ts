@@ -1,4 +1,4 @@
-export { ExpoSqliteStorage } from './sqlite-storage.js';
-export { ExpoWebSocketTransport } from './websocket-transport.js';
-export { ExpoSyncHandler } from './sync-handler.js';
-export type { ExpoSyncOptions } from './sync-handler.js';
+export { ExpoSqliteStorage } from './sqlite-storage';
+export { ExpoWebSocketTransport } from './websocket-transport';
+export { ExpoSyncHandler } from './sync-handler';
+export type { ExpoSyncOptions } from './sync-handler';

@@ -1,19 +1,51 @@
 import { useEffect } from 'react';
+import { View, Text } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { initDatabase } from '../src/db';
+import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
+import { db } from '../src/db';
+import { ensureRootGoal } from '../src/db/seed';
 import { startSync, stopSync } from '../src/lib/sync';
 import { queryClient } from '../src/lib/query-client';
-
-initDatabase();
+import migrations from '../drizzle/migrations';
 
 export default function RootLayout() {
+  const { success, error } = useMigrations(db, migrations);
+
   useEffect(() => {
-    startSync();
-    return () => stopSync();
-  }, []);
+    if (!success) return;
+
+    let cancelled = false;
+    ensureRootGoal()
+      .then(() => {
+        if (!cancelled) startSync();
+      })
+      .catch((err) => console.error('[seed] ensureRootGoal failed:', err));
+
+    return () => {
+      cancelled = true;
+      stopSync();
+    };
+  }, [success]);
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>数据库初始化失败：{error.message}</Text>
+      </View>
+    );
+  }
+
+  if (!success) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>正在初始化数据库…</Text>
+      </View>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>

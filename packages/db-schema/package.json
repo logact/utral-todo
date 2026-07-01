@@ -1,0 +1,29 @@
+{
+  "name": "@utral/db-schema",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@utral/types": "workspace:*"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.44.0"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.45.2",
+    "typescript": "~6.0.2"
+  }
+}

@@ -1,4 +1,4 @@
-import { ExpoSyncHandler } from './sync/sync-handler.js';
+import { ExpoSyncHandler } from './sync/sync-handler';
 import * as SQLite from 'expo-sqlite';
 import { db, expoDb, schema } from '../db';
 import { queryClient } from './query-client';

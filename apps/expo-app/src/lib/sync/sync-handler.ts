@@ -1,8 +1,8 @@
 import type { SyncHandlerOptions } from '@utral/sync-client';
 import { SyncClientHandler } from '@utral/sync-client';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { ExpoSqliteStorage } from './sqlite-storage.js';
-import { ExpoWebSocketTransport } from './websocket-transport.js';
+import { ExpoSqliteStorage } from './sqlite-storage';
+import { ExpoWebSocketTransport } from './websocket-transport';
 
 export interface ExpoSyncOptions extends Omit<SyncHandlerOptions, 'transport' | 'storage'> {
   db: SQLiteDatabase;

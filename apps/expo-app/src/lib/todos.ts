@@ -1,4 +1,4 @@
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import { db, schema } from '../db';
 import type { Todo } from '@utral/types';
 import { scheduleSyncPush, addPendingChange } from './auto-sync';
@@ -11,7 +11,7 @@ export async function getAllTodos(): Promise<Todo[]> {
   const rows = await db
     .select()
     .from(schema.todos)
-    .where(isNull(schema.todos.deletedAtWall))
+    .where(eq(schema.todos.isDeleted, false))
     .orderBy(asc(schema.todos.order));
   return rows as unknown as Todo[];
 }
@@ -167,7 +167,7 @@ export async function deleteTodo(id: string): Promise<void> {
     const now = Date.now();
     await db
       .update(schema.todos)
-      .set({ deletedAtWall: now, updatedAtWall: now })
+      .set({ isDeleted: true, updatedAtWall: now })
       .where(eq(schema.todos.id, id));
     addPendingChange('todo', 'update', id);
     scheduleSyncPush();

@@ -25,6 +25,7 @@
     "@tauri-apps/plugin-http": "^2.4.3",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-sql": "^2.0.0",
+    "@utral/db-schema": "workspace:*",
     "@utral/sync-client": "workspace:*",
     "@utral/sync-share": "workspace:*",
     "@utral/types": "workspace:*",

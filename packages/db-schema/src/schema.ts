@@ -1,0 +1,209 @@
+import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import type { RepeatRule } from '@utral/types';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared SQLite domain schema for Utral Todo clients (desktop + mobile).
+//
+// These table definitions are the single source of truth for the entity model
+// on every SQLite-backed client. Sync-plumbing / infra tables (hlc_state,
+// sync_config, sync_queue, sync_state, ...) intentionally differ per client and
+// are defined locally in each app, not here.
+//
+// Soft deletes use a single `isDeleted` boolean column, matching the entity
+// types in `@utral/types`. HLC timestamps are stored as three flat columns per
+// clock (`*Wall`, `*Counter`, `*Node`) and reconstructed via `./converters`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const todos = sqliteTable('todos', {
+  id: text('id').primaryKey(),
+  nodeType: text('node_type', { enum: ['goal', 'task'] }).notNull().default('task'),
+  pattern: text('pattern', { enum: ['task', 'cognitive', 'timeSlot'] }),
+  title: text('title').notNull().default('Untitled'),
+  description: text('description').notNull().default(''),
+  status: text('status', { enum: ['pending', 'in_progress', 'done'] }).notNull().default('pending'),
+  priority: text('priority', { enum: ['low', 'medium', 'high'] }).notNull().default('medium'),
+  goalStatus: text('goal_status', { enum: ['active', 'paused', 'achieved', 'abandoned'] }),
+  estimatedMinutes: integer('estimated_minutes').notNull().default(60),
+  scheduledDate: integer('scheduled_date', { mode: 'timestamp' }),
+  scheduledEndDate: integer('scheduled_end_date', { mode: 'timestamp' }),
+  dueDate: integer('due_date', { mode: 'timestamp' }),
+  startedAt: integer('started_at', { mode: 'timestamp' }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  parentId: text('parent_id'),
+  activePlanId: text('active_plan_id'),
+  isRootGoal: integer('is_root_goal', { mode: 'boolean' }),
+  isSystemTask: integer('is_system_task', { mode: 'boolean' }),
+  motivation: text('motivation'),
+  successCriteria: text('success_criteria'),
+  targetDate: integer('target_date', { mode: 'timestamp' }),
+  repeatRule: text('repeat_rule', { mode: 'json' }).$type<RepeatRule>(),
+  tags: text('tags', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  order: integer('order').notNull().default(0),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('todos_node_type_idx').on(table.nodeType),
+  index('todos_pattern_idx').on(table.pattern),
+  index('todos_parent_id_idx').on(table.parentId),
+  index('todos_status_idx').on(table.status),
+  index('todos_scheduled_date_idx').on(table.scheduledDate),
+  index('todos_due_date_idx').on(table.dueDate),
+  index('todos_created_at_idx').on(table.createdAtWall),
+  index('todos_updated_at_idx').on(table.updatedAtWall),
+  index('todos_order_idx').on(table.order),
+  index('todos_started_at_idx').on(table.startedAt),
+  index('todos_status_scheduled_idx').on(table.status, table.scheduledDate),
+]);
+
+export const todoRelations = sqliteTable('todo_relations', {
+  id: text('id').primaryKey(),
+  fromTodoId: text('from_todo_id').notNull(),
+  toTodoId: text('to_todo_id').notNull(),
+  type: text('type').notNull(),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('todo_relations_from_idx').on(table.fromTodoId),
+  index('todo_relations_to_idx').on(table.toTodoId),
+  index('todo_relations_type_idx').on(table.type),
+  index('todo_relations_created_at_idx').on(table.createdAtWall),
+  index('todo_relations_updated_at_idx').on(table.updatedAtWall),
+]);
+
+export const todoLogs = sqliteTable('todo_logs', {
+  id: text('id').primaryKey(),
+  todoId: text('todo_id').notNull(),
+  type: text('type').notNull(),
+  content: text('content').notNull().default(''),
+  minutesSpent: integer('minutes_spent'),
+  metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('todo_logs_todo_id_idx').on(table.todoId),
+  index('todo_logs_type_idx').on(table.type),
+  index('todo_logs_created_at_idx').on(table.createdAtWall),
+  index('todo_logs_updated_at_idx').on(table.updatedAtWall),
+]);
+
+export const actionEdges = sqliteTable('action_edges', {
+  id: text('id').primaryKey(),
+  fromTodoId: text('from_todo_id').notNull(),
+  toTodoId: text('to_todo_id').notNull(),
+  type: text('type').notNull(),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('action_edges_from_idx').on(table.fromTodoId),
+  index('action_edges_to_idx').on(table.toTodoId),
+  index('action_edges_type_idx').on(table.type),
+  index('action_edges_created_at_idx').on(table.createdAtWall),
+  index('action_edges_updated_at_idx').on(table.updatedAtWall),
+]);
+
+export const plans = sqliteTable('plans', {
+  id: text('id').primaryKey(),
+  goalTodoId: text('goal_todo_id').notNull(),
+  title: text('title').notNull().default('Untitled Plan'),
+  nodeIds: text('node_ids', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  edgeIds: text('edge_ids', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  isSystemPlan: integer('is_system_plan', { mode: 'boolean' }),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('plans_goal_todo_id_idx').on(table.goalTodoId),
+  index('plans_updated_at_idx').on(table.updatedAtWall),
+]);
+
+export const pluses = sqliteTable('pluses', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().default('Untitled Pluse'),
+  description: text('description').notNull().default(''),
+  intervals: text('intervals', { mode: 'json' }).$type<number[]>().notNull().default([1500]),
+  repeatCount: integer('repeat_count').notNull().default(1),
+  intervalTodos: text('interval_todos', { mode: 'json' }).$type<Record<number, string>>(),
+  autoAdvance: integer('auto_advance', { mode: 'boolean' }).notNull().default(true),
+  timerStatus: text('timer_status', { enum: ['idle', 'running', 'paused'] }).notNull().default('idle'),
+  currentIntervalIndex: integer('current_interval_index').notNull().default(0),
+  startedAt: integer('started_at', { mode: 'timestamp' }),
+  accumulatedSeconds: integer('accumulated_seconds').notNull().default(0),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('pluses_created_at_idx').on(table.createdAtWall),
+  index('pluses_updated_at_idx').on(table.updatedAtWall),
+  index('pluses_timer_status_idx').on(table.timerStatus),
+]);
+
+export const repeatOccurrences = sqliteTable('repeat_occurrences', {
+  id: text('id').primaryKey(),
+  templateId: text('template_id').notNull(),
+  date: integer('date', { mode: 'timestamp' }).notNull(),
+  status: text('status', { enum: ['pending', 'in_progress', 'done'] }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  materializedTodoId: text('materialized_todo_id'),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('repeat_occurrences_template_id_idx').on(table.templateId),
+  index('repeat_occurrences_date_idx').on(table.date),
+]);
+
+export const timeSlots = sqliteTable('time_slots', {
+  id: text('id').primaryKey(),
+  milestoneId: text('milestone_id').notNull(),
+  title: text('title').notNull().default(''),
+  time: text('time').notNull().default(''),
+  startHour: integer('start_hour').notNull().default(0),
+  startMinute: integer('start_minute').notNull().default(0),
+  endHour: integer('end_hour').notNull().default(0),
+  endMinute: integer('end_minute').notNull().default(0),
+  order: integer('order').notNull().default(0),
+  createdAtWall: integer('created_at_wall'),
+  createdAtCounter: integer('created_at_counter').notNull().default(0),
+  createdAtNode: text('created_at_node'),
+  updatedAtWall: integer('updated_at_wall'),
+  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
+  updatedAtNode: text('updated_at_node'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => [
+  index('time_slots_milestone_id_idx').on(table.milestoneId),
+  index('time_slots_order_idx').on(table.order),
+  index('time_slots_updated_at_idx').on(table.updatedAtWall),
+]);

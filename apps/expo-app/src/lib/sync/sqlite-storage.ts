@@ -18,36 +18,7 @@ export class ExpoSqliteStorage implements SyncQueueStorage, SyncRecordStorage, S
   }
 
   async init(): Promise<void> {
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS sync_queue (
-        id TEXT PRIMARY KEY,
-        table_name TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        record_id TEXT NOT NULL,
-        payload TEXT,
-        created_at TEXT NOT NULL,
-        retry_count INTEGER DEFAULT 0,
-        last_error TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS sync_records (
-        id TEXT NOT NULL,
-        table_name TEXT NOT NULL,
-        record TEXT NOT NULL,
-        updated_at_wall INTEGER NOT NULL,
-        updated_at_counter INTEGER NOT NULL,
-        updated_at_node TEXT NOT NULL,
-        deleted_at_wall INTEGER,
-        deleted_at_counter INTEGER,
-        deleted_at_node TEXT,
-        PRIMARY KEY (id, table_name)
-      );
-
-      CREATE TABLE IF NOT EXISTS sync_state (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
-    `);
+    // Schema is now owned by Drizzle migrations via useMigrations.
   }
 
   async addToQueue(item: SyncQueueItem): Promise<void> {

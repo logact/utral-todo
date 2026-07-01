@@ -10,12 +10,14 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
     "eas:ios:dev": "eas build --platform ios --profile development",
     "eas:ios:prod": "eas build --platform ios --profile production",
     "build:ios:dev": "eas build --platform ios --profile development",
     "build:ios:prod": "eas build --platform ios --profile production"
   },
   "dependencies": {
+    "@utral/db-schema": "workspace:*",
     "@utral/sync-client": "workspace:*",
     "@utral/sync-share": "workspace:*",
     "@utral/types": "workspace:*",
@@ -54,6 +56,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.17",
+    "babel-plugin-inline-import": "^3.0.0",
     "babel-preset-expo": "^54.0.11",
     "drizzle-kit": "^0.31.10",
     "typescript": "~5.9.3"

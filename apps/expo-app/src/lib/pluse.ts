@@ -1,4 +1,4 @@
-import { eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, schema } from '../db';
 import type { Pluse } from '@utral/types';
 import { scheduleSyncPush, addPendingChange } from './auto-sync';
@@ -11,7 +11,7 @@ export async function getAllPluses(): Promise<Pluse[]> {
   const rows = await db
     .select()
     .from(schema.pluses)
-    .where(isNull(schema.pluses.deletedAtWall));
+    .where(eq(schema.pluses.isDeleted, false));
   return rows as unknown as Pluse[];
 }
 
@@ -63,7 +63,7 @@ export async function deletePluse(id: string): Promise<void> {
     const now = Date.now();
     await db
       .update(schema.pluses)
-      .set({ deletedAtWall: now, updatedAtWall: now })
+      .set({ isDeleted: true, updatedAtWall: now })
       .where(eq(schema.pluses.id, id));
     addPendingChange('pluse', 'update', id);
     scheduleSyncPush();
