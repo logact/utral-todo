@@ -36,7 +36,7 @@ export function Sidebar({ onQuickCreate }: SidebarProps) {
   return (
     <aside
       className={clsx(
-        'bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 flex flex-col min-h-screen sticky top-0 transition-all duration-200',
+        'bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 flex flex-col h-screen sticky top-0 transition-all duration-200',
         collapsed ? 'w-16' : 'w-60'
       )}
     >
@@ -78,7 +78,7 @@ export function Sidebar({ onQuickCreate }: SidebarProps) {
         </button>
       </div>
 
-      <nav className={clsx('flex-1 space-y-1', collapsed ? 'px-2' : 'px-3')}>
+      <nav className={clsx('flex-1 space-y-1 overflow-y-auto', collapsed ? 'px-2' : 'px-3')}>
         {/* New dropdown */}
         {collapsed ? (
           <Link

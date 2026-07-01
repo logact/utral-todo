@@ -45,7 +45,7 @@ export function Labels() {
   );
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <button
         onClick={() => navigate('/')}
         className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 mb-6"
