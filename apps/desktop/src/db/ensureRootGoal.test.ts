@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Shared, hoisted mock plumbing for the transaction-scoped `tx` object.
-// `db.transaction(cb)` invokes `cb` with a fake `tx` whose query builders are
-// these vi.fns, so we can assert on what ensureRootGoal inserted/updated.
+// Shared, hoisted mock plumbing for the query builders ensureRootGoal uses.
+// ensureRootGoal runs statements directly on `db` (no transaction, because the
+// Tauri SQL plugin can't span one across pooled connections), so we mock
+// db.select / db.insert / db.update chains here and assert on their calls.
 const H = vi.hoisted(() => {
   const selectRows = { current: [] as any[] };
   const insertValues = vi.fn().mockResolvedValue(undefined);
@@ -12,9 +13,6 @@ const H = vi.hoisted(() => {
   const update = vi.fn(() => ({ set: updateSet }));
   const selectWhere = vi.fn(() => Promise.resolve(selectRows.current));
   const select = vi.fn(() => ({ from: vi.fn(() => ({ where: selectWhere })) }));
-  const transaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
-    cb({ select, insert, update }),
-  );
   return {
     selectRows,
     insertValues,
@@ -24,12 +22,11 @@ const H = vi.hoisted(() => {
     update,
     selectWhere,
     select,
-    transaction,
   };
 });
 
 vi.mock('./drizzle-adapter', () => ({
-  db: { transaction: H.transaction },
+  db: { select: H.select, insert: H.insert, update: H.update },
 }));
 
 vi.mock('../lib/sync/syncEngine', () => ({

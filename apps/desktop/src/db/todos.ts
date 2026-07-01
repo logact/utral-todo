@@ -148,53 +148,56 @@ export async function getRootGoal(): Promise<Todo | undefined> {
 }
 
 export async function ensureRootGoal(): Promise<Todo> {
-  return db.transaction(async (tx) => {
-    const rows = await tx.select().from(todos).where(eq(todos.id, ROOT_GOAL_ID)) as any[];
-    const existing = rows[0];
-    if (existing) return rowToTodo(existing);
+  // No db.transaction here: the Tauri SQL plugin runs each statement on a
+  // separate pooled connection, so a proxy-driver transaction's `begin` and
+  // the following writes land on different connections and deadlock. This runs
+  // once at startup and is idempotent on the root goal id, so sequential
+  // statements are sufficient.
+  const rows = await db.select().from(todos).where(eq(todos.id, ROOT_GOAL_ID)) as any[];
+  const existing = rows[0];
+  if (existing) return rowToTodo(existing);
 
-    const nodeId = await getOrCreateDeviceId();
-    const hlc = newHLC(nodeId);
-    const rootGoal: Todo = {
-      id: ROOT_GOAL_ID,
-      nodeType: 'goal',
-      title: 'Root Goal',
-      description: '',
-      isRootGoal: true,
-      goalStatus: 'active',
-      tags: [],
-      order: 0,
-      createdAt: hlc,
-      updatedAt: hlc,
-      isDeleted: false,
-    };
-    await tx.insert(todos).values(todoToRow(rootGoal));
-    syncLocalChange('todos', 'create', rootGoal.id).catch(() => {});
+  const nodeId = await getOrCreateDeviceId();
+  const hlc = newHLC(nodeId);
+  const rootGoal: Todo = {
+    id: ROOT_GOAL_ID,
+    nodeType: 'goal',
+    title: 'Root Goal',
+    description: '',
+    isRootGoal: true,
+    goalStatus: 'active',
+    tags: [],
+    order: 0,
+    createdAt: hlc,
+    updatedAt: hlc,
+    isDeleted: false,
+  };
+  await db.insert(todos).values(todoToRow(rootGoal));
+  syncLocalChange('todos', 'create', rootGoal.id).catch(() => {});
 
-    const plan: Plan = {
-      id: crypto.randomUUID(),
-      goalTodoId: rootGoal.id,
-      title: 'Root Road',
-      nodeIds: [],
-      edgeIds: [],
-      isSystemPlan: true,
-      createdAt: hlc,
-      updatedAt: hlc,
-      isDeleted: false,
-    };
-    await tx.insert(plansTable).values(planToRow(plan));
-    syncLocalChange('plans', 'create', plan.id).catch(() => {});
+  const plan: Plan = {
+    id: crypto.randomUUID(),
+    goalTodoId: rootGoal.id,
+    title: 'Root Road',
+    nodeIds: [],
+    edgeIds: [],
+    isSystemPlan: true,
+    createdAt: hlc,
+    updatedAt: hlc,
+    isDeleted: false,
+  };
+  await db.insert(plansTable).values(planToRow(plan));
+  syncLocalChange('plans', 'create', plan.id).catch(() => {});
 
-    await tx.update(todos).set({
-      activePlanId: plan.id,
-      updatedAtWall: hlc.wall,
-      updatedAtCounter: hlc.counter,
-      updatedAtNode: hlc.node,
-    }).where(eq(todos.id, rootGoal.id));
-    syncLocalChange('todos', 'update', rootGoal.id).catch(() => {});
+  await db.update(todos).set({
+    activePlanId: plan.id,
+    updatedAtWall: hlc.wall,
+    updatedAtCounter: hlc.counter,
+    updatedAtNode: hlc.node,
+  }).where(eq(todos.id, rootGoal.id));
+  syncLocalChange('todos', 'update', rootGoal.id).catch(() => {});
 
-    return { ...rootGoal, activePlanId: plan.id };
-  });
+  return { ...rootGoal, activePlanId: plan.id };
 }
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
