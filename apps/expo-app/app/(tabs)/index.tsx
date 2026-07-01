@@ -17,8 +17,16 @@ import {
 } from '@/lib/todos';
 import { getAllPluses } from '@/lib/pluse';
 import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
-import { createTimerSession, updateTimerSession, getActiveTimerSession, deleteTimerSession, setActiveTimerState, getActiveTimerState } from '@/lib/database';
-import type { Todo, Pluse, TimerSession } from '@/lib/database';
+import {
+  startPluseTimer,
+  pausePluseTimer,
+  resumePluseTimer,
+  stopPluseTimer,
+  advancePluseTimer,
+  getElapsedSeconds,
+  getActivePluseTimer,
+} from '@/lib/database';
+import type { Todo, Pluse } from '@/lib/database';
 import * as Notifications from 'expo-notifications';
 
 Notifications.setNotificationHandler({
@@ -235,258 +243,245 @@ function TimeSlotSection({
 function PluseMiniTimer({
   pluse,
   onClose,
-  onRequireTask,
   onPress,
 }: {
   pluse: Pluse;
   onClose: () => void;
-  onRequireTask: () => void;
   onPress?: () => void;
 }) {
-  const expandedIntervals: number[] = [];
-  for (let r = 0; r < pluse.repeatCount; r++) {
-    expandedIntervals.push(...pluse.intervals);
-  }
+  const expandedIntervals = useMemo(() => {
+    const result: number[] = [];
+    for (let r = 0; r < pluse.repeatCount; r++) result.push(...pluse.intervals);
+    return result;
+  }, [pluse.intervals, pluse.repeatCount]);
   const totalItems = expandedIntervals.length;
 
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(pluse.currentIntervalIndex);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isRunning, setIsRunning] = useState(pluse.timerStatus === 'running');
   const [isCompleted, setIsCompleted] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(
+    pluse.timerStatus === 'running' && pluse.startedAt ? new Date(pluse.startedAt).getTime() : null
+  );
+
+  const [, forceTick] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentDurationRef = useRef(0);
-  const currentIndexRef = useRef(0);
-  const elapsedSecondsRef = useRef(0);
-  const isRunningRef = useRef(false);
-  const sessionRef = useRef<TimerSession | null>(null);
 
-  const currentDuration = expandedIntervals[currentIndex] || 0;
-  const remainingSeconds = Math.max(0, currentDuration - elapsedSeconds);
-
-  useEffect(() => {
-    currentDurationRef.current = currentDuration;
-    currentIndexRef.current = currentIndex;
-    elapsedSecondsRef.current = elapsedSeconds;
-    isRunningRef.current = isRunning;
-  });
-
-  useEffect(() => {
-    getActiveTimerState().then((timerState) => {
-      if (timerState && timerState.pluseId === pluse.id) {
-        setCurrentIndex(timerState.currentIndex);
-        setElapsedSeconds(timerState.elapsedSeconds);
-        if (timerState.isRunning) {
-          setIsRunning(true);
-        }
-        setActiveTimerState(null);
-      } else {
-        getActiveTimerSession().then((session) => {
-          if (session && session.pluseId === pluse.id) {
-            sessionRef.current = session;
-            setCurrentIndex(session.currentIndex);
-            setElapsedSeconds(session.elapsedSeconds);
-            if (session.status === 'running') {
-              setIsRunning(true);
-            }
-          }
-        });
-      }
-    });
-  }, [pluse.id]);
-
-  // React to sync-pushed timer sessions
-  const { data: syncedSession } = useQuery({
-    queryKey: ['timerSessions'],
-    queryFn: getActiveTimerSession,
-    refetchInterval: false,
-    staleTime: Infinity,
-  });
-
-  useEffect(() => {
-    if (!syncedSession) return;
-    if (syncedSession.pluseId !== pluse.id) return;
-    if (isRunningRef.current) return;
-    sessionRef.current = syncedSession;
-    setCurrentIndex(syncedSession.currentIndex);
-    setElapsedSeconds(syncedSession.elapsedSeconds);
-    if (syncedSession.status === 'running') {
-      setIsRunning(true);
+  // Reconstruct local state from the persisted pluse row (authoritative).
+  const syncFromDb = useCallback(async () => {
+    const active = await getActivePluseTimer();
+    if (!active || active.id !== pluse.id) {
+      setIsRunning(false);
+      setIsCompleted(false);
+      setCurrentIndex(0);
+      setElapsedSeconds(0);
+      setStartTime(null);
+      return;
     }
-  }, [syncedSession, pluse.id]);
 
+    setCurrentIndex(active.currentIntervalIndex);
+    setIsRunning(active.timerStatus === 'running');
+
+    if (active.timerStatus === 'running' && active.startedAt) {
+      const totalElapsed = getElapsedSeconds(active);
+      let idx = active.currentIntervalIndex;
+      let e = totalElapsed;
+      while (idx < totalItems) {
+        const dur = expandedIntervals[idx];
+        if (e < dur) break;
+        e -= dur;
+        idx++;
+      }
+      if (idx >= totalItems) {
+        setCurrentIndex(totalItems - 1);
+        setElapsedSeconds(expandedIntervals[totalItems - 1] ?? 0);
+        setIsRunning(false);
+        setIsCompleted(true);
+        setStartTime(null);
+        await stopPluseTimer(pluse.id);
+      } else {
+        setCurrentIndex(idx);
+        if (idx === active.currentIntervalIndex) {
+          setElapsedSeconds(active.accumulatedSeconds);
+          setStartTime(new Date(active.startedAt).getTime());
+        } else {
+          setElapsedSeconds(0);
+          setStartTime(Date.now() - e * 1000);
+        }
+      }
+    } else {
+      setElapsedSeconds(active.accumulatedSeconds);
+      setStartTime(null);
+    }
+  }, [pluse.id, expandedIntervals, totalItems]);
+
+  useEffect(() => {
+    syncFromDb();
+  }, [syncFromDb]);
+
+  // Re-sync when the tab regains focus (e.g. returning from full-screen run).
   useFocusEffect(
     useCallback(() => {
-      getActiveTimerState().then((timerState) => {
-        if (timerState && timerState.pluseId === pluse.id) {
-          setCurrentIndex(timerState.currentIndex);
-          setElapsedSeconds(timerState.elapsedSeconds);
-          setActiveTimerState(null);
-          if (timerState.isRunning) {
-            setIsRunning(false);
-            setTimeout(() => setIsRunning(true), 50);
-          }
-        }
-      });
-    }, [pluse.id])
+      syncFromDb();
+    }, [syncFromDb])
   );
 
   useEffect(() => {
     requestNotificationPermission();
   }, []);
 
+  const getElapsed = useCallback(() => {
+    if (!isRunning || !startTime) return elapsedSeconds;
+    return elapsedSeconds + Math.floor((Date.now() - startTime) / 1000);
+  }, [isRunning, elapsedSeconds, startTime]);
+
+  const currentDuration = expandedIntervals[currentIndex] || 0;
+  const elapsed = getElapsed();
+  const remainingSeconds = Math.max(0, currentDuration - elapsed);
+
+  // Tick every second while running (recomputes elapsed from wall clock).
   useEffect(() => {
-    if (isCompleted || !isRunning) return;
-    intervalRef.current = setInterval(() => {
-      setElapsedSeconds((prev) => {
-        const next = prev + 1;
-        const duration = currentDurationRef.current;
-        elapsedSecondsRef.current = next;
-
-        if (duration > 0 && next >= duration) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = null;
-
-          hapticNotification('success');
-
-          setCurrentIndex((idx) => {
-            const nextIdx = idx < totalItems - 1 ? idx + 1 : 0;
-            const completed = idx >= totalItems - 1;
-            currentIndexRef.current = nextIdx;
-
-            if (sessionRef.current) {
-              if (completed) {
-                updateTimerSession(sessionRef.current.id, {
-                  status: 'completed',
-                  completedAt: new Date(),
-                }).catch(() => {});
-              } else {
-                updateTimerSession(sessionRef.current.id, {
-                  currentIndex: nextIdx,
-                  elapsedSeconds: 0,
-                  status: pluse.autoAdvance !== false ? 'running' : 'paused',
-                }).catch(() => {});
-              }
-            }
-
-            if (idx < totalItems - 1) {
-              scheduleNotification(
-                `${pluse.name} — Interval ${idx + 1} complete`,
-                `Interval ${idx + 2} of ${totalItems} is next.`,
-                1
-              );
-              if (pluse.autoAdvance !== false) {
-                timeoutRef.current = setTimeout(() => {
-                  setIsRunning(true);
-                  hapticImpact();
-                }, 2000);
-              }
-              return idx + 1;
-            } else {
-              setIsCompleted(true);
-              scheduleNotification(`${pluse.name} — Complete!`, 'All intervals finished. Great work!', 1);
-              return 0;
-            }
-          });
-
-          setIsRunning(false);
-          return 0;
-        }
-
-        if (sessionRef.current && next % 5 === 0) {
-          updateTimerSession(sessionRef.current.id, {
-            elapsedSeconds: next,
-            currentIndex: currentIndexRef.current,
-            status: 'running',
-          }, true).catch(() => {});
-        }
-
-        return next;
-      });
-    }, 1000);
+    if (!isRunning || isCompleted) return;
+    intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [isRunning, isCompleted]);
+
+  // Clear pending auto-advance timeout when running resumes.
+  useEffect(() => {
+    if (isRunning && timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, [isRunning]);
 
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (sessionRef.current && isRunningRef.current) {
-        updateTimerSession(sessionRef.current.id, {
-          status: 'running',
-          currentIndex: currentIndexRef.current,
-          elapsedSeconds: elapsedSecondsRef.current,
-        }).catch(() => {});
-      }
     };
   }, []);
+
+  // Check completion / auto-advance.
+  useEffect(() => {
+    if (isCompleted || !isRunning) return;
+    const shouldAutoAdvance = pluse.autoAdvance !== false;
+    if (elapsed >= currentDuration) {
+      hapticNotification('success');
+      if (currentIndex < totalItems - 1) {
+        const nextIndex = currentIndex + 1;
+        setIsRunning(false);
+        setCurrentIndex(nextIndex);
+        setElapsedSeconds(0);
+        setStartTime(null);
+        pausePluseTimer(pluse.id, 0, nextIndex).catch(() => {});
+
+        scheduleNotification(
+          `${pluse.name} — Interval ${currentIndex + 1} complete`,
+          `Interval ${nextIndex + 1} of ${totalItems} is next.`,
+          1
+        );
+
+        if (shouldAutoAdvance) {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => {
+            setIsRunning(true);
+            setStartTime(Date.now());
+            resumePluseTimer(pluse.id).catch(() => {});
+            hapticImpact();
+          }, 2000);
+        }
+      } else {
+        setIsRunning(false);
+        setIsCompleted(true);
+        setStartTime(null);
+        stopPluseTimer(pluse.id).catch(() => {});
+        scheduleNotification(`${pluse.name} — Complete!`, 'All intervals finished. Great work!', 1);
+      }
+    }
+  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, currentDuration, pluse.id, pluse.name, pluse.autoAdvance]);
 
   const toggleRunning = useCallback(async () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    hapticImpact();
+
     if (isCompleted) {
-      onRequireTask();
+      setIsCompleted(false);
+      setCurrentIndex(0);
+      setElapsedSeconds(0);
+      setIsRunning(true);
+      setStartTime(Date.now());
+      await startPluseTimer(pluse.id);
       return;
     }
 
-    const newRunning = !isRunning;
-    if (newRunning) {
-      if (!sessionRef.current) {
-        const session = await createTimerSession({
-          name: pluse.name,
-          pluseId: pluse.id,
-          intervals: pluse.intervals,
-          repeatCount: pluse.repeatCount,
-          status: 'running',
-          startedAt: new Date(),
-          currentIndex,
-          elapsedSeconds,
-        });
-        sessionRef.current = session;
-      } else {
-        await updateTimerSession(sessionRef.current.id, {
-          status: 'running',
-        });
-      }
+    if (isRunning) {
+      const total = elapsedSeconds + (startTime ? Math.floor((Date.now() - startTime) / 1000) : 0);
+      setIsRunning(false);
+      setElapsedSeconds(total);
+      setStartTime(null);
+      await pausePluseTimer(pluse.id, total, currentIndex);
     } else {
-      if (sessionRef.current) {
-        await updateTimerSession(sessionRef.current.id, {
-          status: 'paused',
-          currentIndex,
-          elapsedSeconds,
-        });
+      setIsRunning(true);
+      setStartTime(Date.now());
+      // First-ever start (idle) resets progress; otherwise resume where paused.
+      if (pluse.timerStatus === 'idle' && elapsedSeconds === 0 && currentIndex === 0) {
+        await startPluseTimer(pluse.id);
+      } else {
+        await resumePluseTimer(pluse.id);
       }
     }
+  }, [isRunning, isCompleted, elapsedSeconds, startTime, currentIndex, pluse.id, pluse.timerStatus]);
 
-    setIsRunning(newRunning);
+  const skipToNext = useCallback(async () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (currentIndex >= totalItems - 1) return;
+    const nextIndex = currentIndex + 1;
+    setIsRunning(false);
+    setCurrentIndex(nextIndex);
+    setElapsedSeconds(0);
+    setStartTime(null);
     hapticImpact();
-  }, [isRunning, isCompleted, onRequireTask, pluse, currentIndex, elapsedSeconds]);
+    await advancePluseTimer(pluse.id, nextIndex);
+  }, [currentIndex, totalItems, pluse.id]);
 
   const restart = useCallback(async () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (sessionRef.current) {
-      await deleteTimerSession(sessionRef.current.id);
-      sessionRef.current = null;
-    }
+    await stopPluseTimer(pluse.id);
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setIsRunning(false);
     setIsCompleted(false);
+    setStartTime(null);
     hapticImpact();
-  }, []);
+  }, [pluse.id]);
 
-  const skipToNext = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (currentIndex >= totalItems - 1) return;
-    setCurrentIndex((prev) => prev + 1);
-    setElapsedSeconds(0);
+  const handleOpen = useCallback(() => {
+    if (!onPress) return;
+    // Freeze this timer locally; the pluse DB row stays authoritative and the
+    // full-screen run reads from it. We re-sync on focus when returning.
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     setIsRunning(false);
-    hapticImpact();
-  }, [currentIndex, totalItems]);
+    onPress();
+  }, [onPress]);
 
   if (isCompleted) {
     return (
@@ -514,18 +509,7 @@ function PluseMiniTimer({
 
   return (
     <View style={{ alignItems: 'center', paddingVertical: 8 }}>
-      <Pressable onPress={() => {
-        if (onPress) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          setActiveTimerState({
-            pluseId: pluse.id,
-            currentIndex: currentIndexRef.current,
-            elapsedSeconds: elapsedSecondsRef.current,
-            isRunning: isRunningRef.current,
-          }).then(() => onPress());
-        }
-      }} disabled={!onPress}>
+      <Pressable onPress={handleOpen} disabled={!onPress}>
         <Text style={{ fontSize: 42, fontFamily: 'monospace', fontWeight: '600', color: '#0f172a', letterSpacing: -1 }}>
           {formatCountdown(remainingSeconds)}
         </Text>
@@ -550,7 +534,7 @@ function PluseMiniTimer({
         >
           <Ionicons name={isRunning ? 'pause' : 'play'} size={14} color={isRunning ? '#d97706' : 'white'} />
           <Text style={{ fontSize: 12, fontWeight: '500', color: isRunning ? '#d97706' : 'white' }}>
-            {isRunning ? 'Pause' : elapsedSeconds > 0 ? 'Resume' : 'Start'}
+            {isRunning ? 'Pause' : elapsed > 0 ? 'Resume' : 'Start'}
           </Text>
         </Pressable>
 
@@ -574,7 +558,7 @@ function PluseMiniTimer({
           <Text style={{ fontSize: 12, fontWeight: '500', color: '#475569' }}>Skip</Text>
         </Pressable>
 
-        {elapsedSeconds > 0 ? (
+        {elapsed > 0 ? (
           <Pressable onPress={restart} style={{ padding: 8 }}>
             <Ionicons name="refresh" size={14} color="#94a3b8" />
           </Pressable>
@@ -789,9 +773,6 @@ export default function TodayScreen() {
                 key={`${activePluse?.id}-${activePluseIndex}`}
                 pluse={activePluse!}
                 onClose={() => setActivePluseIndex(0)}
-                onRequireTask={() => {
-                  if (suggested.length > 0) setQuickOpen(true);
-                }}
                 onPress={() => router.push(`/pluse-run/${activePluse!.id}`)}
               />
               {pluses.length > 1 ? (

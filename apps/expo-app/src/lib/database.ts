@@ -13,23 +13,6 @@ function addPendingChange(table: string, operation: 'create' | 'update' | 'delet
   import('./auto-sync').then((m) => m.addPendingChange(table, operation, recordId, payload)).catch(() => {});
 }
 
-export interface ActiveTimerState {
-  pluseId: string;
-  currentIntervalIndex: number;
-  accumulatedSeconds: number;
-  isRunning: boolean;
-}
-
-let activeTimerState: ActiveTimerState | null = null;
-
-export async function setActiveTimerState(state: ActiveTimerState | null) {
-  activeTimerState = state;
-}
-
-export async function getActiveTimerState(): Promise<ActiveTimerState | null> {
-  return activeTimerState;
-}
-
 export interface HLCState {
   counter: number;
   node: string;
