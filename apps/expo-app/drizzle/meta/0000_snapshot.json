@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2d100379-d77f-4114-9b2b-3907b4f68a38",
+  "id": "3e74e89b-62c4-401b-b3c1-6b03f03c951a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "action_edges": {
@@ -133,35 +133,20 @@
     "hlc_state": {
       "name": "hlc_state",
       "columns": {
-        "id": {
-          "name": "id",
+        "key": {
+          "name": "key",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'default'"
+          "autoincrement": false
         },
-        "counter": {
-          "name": "counter",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "node": {
-          "name": "node",
+        "value": {
+          "name": "value",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "last_seen": {
-          "name": "last_seen",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "''"
         }
       },
       "indexes": {},
@@ -591,28 +576,20 @@
     "sync_config": {
       "name": "sync_config",
       "columns": {
-        "id": {
-          "name": "id",
+        "key": {
+          "name": "key",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'default'"
+          "autoincrement": false
         },
-        "server_url": {
-          "name": "server_url",
+        "value": {
+          "name": "value",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "''"
-        },
-        "api_token": {
-          "name": "api_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {},
@@ -670,7 +647,7 @@
           "name": "retry_count",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
@@ -685,87 +662,6 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "sync_records": {
-      "name": "sync_records",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "table_name": {
-          "name": "table_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "record": {
-          "name": "record",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at_wall": {
-          "name": "updated_at_wall",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at_counter": {
-          "name": "updated_at_counter",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at_node": {
-          "name": "updated_at_node",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "deleted_at_wall": {
-          "name": "deleted_at_wall",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "deleted_at_counter": {
-          "name": "deleted_at_counter",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "deleted_at_node": {
-          "name": "deleted_at_node",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "sync_records_id_table_name_pk": {
-          "columns": [
-            "id",
-            "table_name"
-          ],
-          "name": "sync_records_id_table_name_pk"
-        }
-      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

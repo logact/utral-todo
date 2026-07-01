@@ -1,4 +1,4 @@
-CREATE TABLE `action_edges` (
+CREATE TABLE IF NOT EXISTS `action_edges` (
 	`id` text PRIMARY KEY NOT NULL,
 	`from_todo_id` text NOT NULL,
 	`to_todo_id` text NOT NULL,
@@ -12,19 +12,17 @@ CREATE TABLE `action_edges` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `action_edges_from_idx` ON `action_edges` (`from_todo_id`);--> statement-breakpoint
-CREATE INDEX `action_edges_to_idx` ON `action_edges` (`to_todo_id`);--> statement-breakpoint
-CREATE INDEX `action_edges_type_idx` ON `action_edges` (`type`);--> statement-breakpoint
-CREATE INDEX `action_edges_created_at_idx` ON `action_edges` (`created_at_wall`);--> statement-breakpoint
-CREATE INDEX `action_edges_updated_at_idx` ON `action_edges` (`updated_at_wall`);--> statement-breakpoint
-CREATE TABLE `hlc_state` (
-	`id` text PRIMARY KEY DEFAULT 'default' NOT NULL,
-	`counter` integer DEFAULT 0 NOT NULL,
-	`node` text NOT NULL,
-	`last_seen` integer NOT NULL
+CREATE INDEX IF NOT EXISTS `action_edges_from_idx` ON `action_edges` (`from_todo_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `action_edges_to_idx` ON `action_edges` (`to_todo_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `action_edges_type_idx` ON `action_edges` (`type`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `action_edges_created_at_idx` ON `action_edges` (`created_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `action_edges_updated_at_idx` ON `action_edges` (`updated_at_wall`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `hlc_state` (
+	`key` text PRIMARY KEY NOT NULL,
+	`value` text DEFAULT '' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE `plans` (
+CREATE TABLE IF NOT EXISTS `plans` (
 	`id` text PRIMARY KEY NOT NULL,
 	`goal_todo_id` text NOT NULL,
 	`title` text DEFAULT 'Untitled Plan' NOT NULL,
@@ -40,9 +38,9 @@ CREATE TABLE `plans` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `plans_goal_todo_id_idx` ON `plans` (`goal_todo_id`);--> statement-breakpoint
-CREATE INDEX `plans_updated_at_idx` ON `plans` (`updated_at_wall`);--> statement-breakpoint
-CREATE TABLE `pluses` (
+CREATE INDEX IF NOT EXISTS `plans_goal_todo_id_idx` ON `plans` (`goal_todo_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `plans_updated_at_idx` ON `plans` (`updated_at_wall`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `pluses` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text DEFAULT 'Untitled Pluse' NOT NULL,
 	`description` text DEFAULT '' NOT NULL,
@@ -64,10 +62,10 @@ CREATE TABLE `pluses` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `pluses_created_at_idx` ON `pluses` (`created_at_wall`);--> statement-breakpoint
-CREATE INDEX `pluses_updated_at_idx` ON `pluses` (`updated_at_wall`);--> statement-breakpoint
-CREATE INDEX `pluses_timer_status_idx` ON `pluses` (`timer_status`);--> statement-breakpoint
-CREATE TABLE `repeat_occurrences` (
+CREATE INDEX IF NOT EXISTS `pluses_created_at_idx` ON `pluses` (`created_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `pluses_updated_at_idx` ON `pluses` (`updated_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `pluses_timer_status_idx` ON `pluses` (`timer_status`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `repeat_occurrences` (
 	`id` text PRIMARY KEY NOT NULL,
 	`template_id` text NOT NULL,
 	`date` integer NOT NULL,
@@ -83,44 +81,30 @@ CREATE TABLE `repeat_occurrences` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `repeat_occurrences_template_id_idx` ON `repeat_occurrences` (`template_id`);--> statement-breakpoint
-CREATE INDEX `repeat_occurrences_date_idx` ON `repeat_occurrences` (`date`);--> statement-breakpoint
-CREATE TABLE `sync_config` (
-	`id` text PRIMARY KEY DEFAULT 'default' NOT NULL,
-	`server_url` text DEFAULT '' NOT NULL,
-	`api_token` text
+CREATE INDEX IF NOT EXISTS `repeat_occurrences_template_id_idx` ON `repeat_occurrences` (`template_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `repeat_occurrences_date_idx` ON `repeat_occurrences` (`date`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `sync_config` (
+	`key` text PRIMARY KEY NOT NULL,
+	`value` text DEFAULT '' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE `sync_queue` (
+CREATE TABLE IF NOT EXISTS `sync_queue` (
 	`id` text PRIMARY KEY NOT NULL,
 	`table_name` text NOT NULL,
 	`operation` text NOT NULL,
 	`record_id` text NOT NULL,
 	`payload` text,
 	`created_at` text NOT NULL,
-	`retry_count` integer DEFAULT 0 NOT NULL,
+	`retry_count` integer DEFAULT 0,
 	`last_error` text
 );
 --> statement-breakpoint
-CREATE TABLE `sync_records` (
-	`id` text NOT NULL,
-	`table_name` text NOT NULL,
-	`record` text NOT NULL,
-	`updated_at_wall` integer NOT NULL,
-	`updated_at_counter` integer NOT NULL,
-	`updated_at_node` text NOT NULL,
-	`deleted_at_wall` integer,
-	`deleted_at_counter` integer,
-	`deleted_at_node` text,
-	PRIMARY KEY(`id`, `table_name`)
-);
---> statement-breakpoint
-CREATE TABLE `sync_state` (
+CREATE TABLE IF NOT EXISTS `sync_state` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text
 );
 --> statement-breakpoint
-CREATE TABLE `time_slots` (
+CREATE TABLE IF NOT EXISTS `time_slots` (
 	`id` text PRIMARY KEY NOT NULL,
 	`milestone_id` text NOT NULL,
 	`title` text DEFAULT '' NOT NULL,
@@ -139,10 +123,10 @@ CREATE TABLE `time_slots` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `time_slots_milestone_id_idx` ON `time_slots` (`milestone_id`);--> statement-breakpoint
-CREATE INDEX `time_slots_order_idx` ON `time_slots` (`order`);--> statement-breakpoint
-CREATE INDEX `time_slots_updated_at_idx` ON `time_slots` (`updated_at_wall`);--> statement-breakpoint
-CREATE TABLE `todo_logs` (
+CREATE INDEX IF NOT EXISTS `time_slots_milestone_id_idx` ON `time_slots` (`milestone_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `time_slots_order_idx` ON `time_slots` (`order`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `time_slots_updated_at_idx` ON `time_slots` (`updated_at_wall`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `todo_logs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`todo_id` text NOT NULL,
 	`type` text NOT NULL,
@@ -158,11 +142,11 @@ CREATE TABLE `todo_logs` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `todo_logs_todo_id_idx` ON `todo_logs` (`todo_id`);--> statement-breakpoint
-CREATE INDEX `todo_logs_type_idx` ON `todo_logs` (`type`);--> statement-breakpoint
-CREATE INDEX `todo_logs_created_at_idx` ON `todo_logs` (`created_at_wall`);--> statement-breakpoint
-CREATE INDEX `todo_logs_updated_at_idx` ON `todo_logs` (`updated_at_wall`);--> statement-breakpoint
-CREATE TABLE `todo_relations` (
+CREATE INDEX IF NOT EXISTS `todo_logs_todo_id_idx` ON `todo_logs` (`todo_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_logs_type_idx` ON `todo_logs` (`type`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_logs_created_at_idx` ON `todo_logs` (`created_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_logs_updated_at_idx` ON `todo_logs` (`updated_at_wall`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `todo_relations` (
 	`id` text PRIMARY KEY NOT NULL,
 	`from_todo_id` text NOT NULL,
 	`to_todo_id` text NOT NULL,
@@ -176,12 +160,12 @@ CREATE TABLE `todo_relations` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `todo_relations_from_idx` ON `todo_relations` (`from_todo_id`);--> statement-breakpoint
-CREATE INDEX `todo_relations_to_idx` ON `todo_relations` (`to_todo_id`);--> statement-breakpoint
-CREATE INDEX `todo_relations_type_idx` ON `todo_relations` (`type`);--> statement-breakpoint
-CREATE INDEX `todo_relations_created_at_idx` ON `todo_relations` (`created_at_wall`);--> statement-breakpoint
-CREATE INDEX `todo_relations_updated_at_idx` ON `todo_relations` (`updated_at_wall`);--> statement-breakpoint
-CREATE TABLE `todos` (
+CREATE INDEX IF NOT EXISTS `todo_relations_from_idx` ON `todo_relations` (`from_todo_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_relations_to_idx` ON `todo_relations` (`to_todo_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_relations_type_idx` ON `todo_relations` (`type`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_relations_created_at_idx` ON `todo_relations` (`created_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todo_relations_updated_at_idx` ON `todo_relations` (`updated_at_wall`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `todos` (
 	`id` text PRIMARY KEY NOT NULL,
 	`node_type` text DEFAULT 'task' NOT NULL,
 	`pattern` text,
@@ -215,14 +199,14 @@ CREATE TABLE `todos` (
 	`is_deleted` integer DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `todos_node_type_idx` ON `todos` (`node_type`);--> statement-breakpoint
-CREATE INDEX `todos_pattern_idx` ON `todos` (`pattern`);--> statement-breakpoint
-CREATE INDEX `todos_parent_id_idx` ON `todos` (`parent_id`);--> statement-breakpoint
-CREATE INDEX `todos_status_idx` ON `todos` (`status`);--> statement-breakpoint
-CREATE INDEX `todos_scheduled_date_idx` ON `todos` (`scheduled_date`);--> statement-breakpoint
-CREATE INDEX `todos_due_date_idx` ON `todos` (`due_date`);--> statement-breakpoint
-CREATE INDEX `todos_created_at_idx` ON `todos` (`created_at_wall`);--> statement-breakpoint
-CREATE INDEX `todos_updated_at_idx` ON `todos` (`updated_at_wall`);--> statement-breakpoint
-CREATE INDEX `todos_order_idx` ON `todos` (`order`);--> statement-breakpoint
-CREATE INDEX `todos_started_at_idx` ON `todos` (`started_at`);--> statement-breakpoint
-CREATE INDEX `todos_status_scheduled_idx` ON `todos` (`status`,`scheduled_date`);
+CREATE INDEX IF NOT EXISTS `todos_node_type_idx` ON `todos` (`node_type`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_pattern_idx` ON `todos` (`pattern`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_parent_id_idx` ON `todos` (`parent_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_status_idx` ON `todos` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_scheduled_date_idx` ON `todos` (`scheduled_date`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_due_date_idx` ON `todos` (`due_date`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_created_at_idx` ON `todos` (`created_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_updated_at_idx` ON `todos` (`updated_at_wall`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_order_idx` ON `todos` (`order`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_started_at_idx` ON `todos` (`started_at`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `todos_status_scheduled_idx` ON `todos` (`status`,`scheduled_date`);

@@ -31,6 +31,7 @@ export default function RootLayout() {
   }, [success]);
 
   if (error) {
+    console.error('[migrations] failed:', error);
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <Text>数据库初始化失败：{error.message}</Text>
