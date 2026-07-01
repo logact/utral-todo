@@ -1,4 +1,5 @@
 export * from './schema.js';
+export * from './infra.js';
 export * from './converters.js';
 
 // Re-export entity types for convenience so consumers can pull the schema and

@@ -9,6 +9,21 @@ import type {
   SyncStateStorage,
 } from '@utral/sync-client';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { eq } from 'drizzle-orm';
+import { db, schema } from '../../db';
+
+// Entity-name → drizzle table. Domain records live in their real tables; there
+// is no shadow `sync_records` table (mirrors desktop's TauriSqliteStorage).
+const SYNC_TABLE_MAP: Record<string, any> = {
+  todo:             schema.todos,
+  todoRelation:     schema.todoRelations,
+  todoLog:          schema.todoLogs,
+  actionEdge:       schema.actionEdges,
+  plan:             schema.plans,
+  pluse:            schema.pluses,
+  repeatOccurrence: schema.repeatOccurrences,
+  timeSlot:         schema.timeSlots,
+};
 
 export class ExpoSqliteStorage implements SyncQueueStorage, SyncRecordStorage, SyncStateStorage {
   private db: SQLiteDatabase;
@@ -20,6 +35,80 @@ export class ExpoSqliteStorage implements SyncQueueStorage, SyncRecordStorage, S
   async init(): Promise<void> {
     // Schema is now owned by Drizzle migrations via useMigrations.
   }
+
+  // ─── Record operations (real domain tables via Drizzle) ──────────
+
+  async getRecord(table: string, id: string): Promise<SyncableRecord | undefined> {
+    const t = SYNC_TABLE_MAP[table];
+    if (!t) return undefined;
+
+    const rows = await db.select().from(t).where(eq(t.id, id));
+    if (!rows[0]) return undefined;
+
+    const row = rows[0] as Record<string, unknown>;
+    const record: SyncableRecord = {
+      id: row.id as string,
+      isDeleted: (row.isDeleted as boolean) ?? false,
+      version: {
+        wall: (row.updatedAtWall as number) ?? 0,
+        counter: (row.updatedAtCounter as number) ?? 0,
+        node: (row.updatedAtNode as string) ?? '',
+      },
+    };
+    for (const [key, value] of Object.entries(row)) {
+      if (key !== 'id' && !(key in record)) {
+        (record as Record<string, unknown>)[key] = value;
+      }
+    }
+    return record;
+  }
+
+  async addRecord(table: string, record: SyncableRecord): Promise<void> {
+    const t = SYNC_TABLE_MAP[table];
+    if (!t) return;
+
+    const r = record as Record<string, unknown>;
+    const version = r.version as { wall?: number; counter?: number; node?: string } | undefined;
+    const createdAt = r.createdAt as { wall?: number; counter?: number; node?: string } | undefined;
+
+    const values: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(r)) {
+      if (key === 'version' || key === 'createdAt' || key === 'updatedAt') continue;
+      values[key] = value;
+    }
+    values.createdAtWall = createdAt?.wall ?? version?.wall ?? null;
+    values.createdAtCounter = createdAt?.counter ?? version?.counter ?? 0;
+    values.createdAtNode = createdAt?.node ?? version?.node ?? null;
+    values.updatedAtWall = version?.wall ?? null;
+    values.updatedAtCounter = version?.counter ?? 0;
+    values.updatedAtNode = version?.node ?? null;
+    values.isDeleted = (r.isDeleted as boolean) ?? false;
+
+    await db.insert(t).values(values as any).onConflictDoUpdate({
+      target: t.id,
+      set: values as any,
+    });
+  }
+
+  async updateRecord(table: string, id: string, changes: Partial<SyncableRecord>): Promise<void> {
+    const existing = await this.getRecord(table, id);
+    if (!existing) {
+      await this.addRecord(table, { ...changes, id } as SyncableRecord);
+      return;
+    }
+
+    const merged: SyncableRecord = { ...existing, ...changes, id };
+    await this.addRecord(table, merged);
+  }
+
+  async deleteRecord(table: string, id: string): Promise<void> {
+    const t = SYNC_TABLE_MAP[table];
+    if (!t) return;
+
+    await db.delete(t).where(eq(t.id, id));
+  }
+
+  // ─── Queue operations (sync_queue table) ─────────────────────────
 
   async addToQueue(item: SyncQueueItem): Promise<void> {
     await this.db.runAsync(
@@ -86,63 +175,7 @@ export class ExpoSqliteStorage implements SyncQueueStorage, SyncRecordStorage, S
     );
   }
 
-  async getRecord(table: string, id: string): Promise<SyncableRecord | undefined> {
-    const row = await this.db.getFirstAsync<{
-      record: string;
-      deleted_at_wall: number | null;
-      deleted_at_counter: number | null;
-      deleted_at_node: string | null;
-    }>(
-      'SELECT record, deleted_at_wall, deleted_at_counter, deleted_at_node FROM sync_records WHERE id = ? AND table_name = ?',
-      id,
-      table
-    );
-
-    if (!row) return undefined;
-
-    const record = JSON.parse(row.record) as SyncableRecord;
-    if (row.deleted_at_wall !== null) {
-      record.deletedAt = {
-        wall: row.deleted_at_wall,
-        counter: row.deleted_at_counter!,
-        node: row.deleted_at_node!,
-      };
-    }
-    return record;
-  }
-
-  async addRecord(table: string, record: SyncableRecord): Promise<void> {
-    const { updatedAt, deletedAt, ...data } = record;
-    await this.db.runAsync(
-      `INSERT OR REPLACE INTO sync_records (id, table_name, record, updated_at_wall, updated_at_counter, updated_at_node, deleted_at_wall, deleted_at_counter, deleted_at_node)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      record.id,
-      table,
-      JSON.stringify(data),
-      updatedAt.wall,
-      updatedAt.counter,
-      updatedAt.node,
-      deletedAt?.wall ?? null,
-      deletedAt?.counter ?? null,
-      deletedAt?.node ?? null
-    );
-  }
-
-  async updateRecord(table: string, id: string, changes: Partial<SyncableRecord>): Promise<void> {
-    const existing = await this.getRecord(table, id);
-    if (!existing) return;
-
-    const merged = { ...existing, ...changes };
-    await this.addRecord(table, merged);
-  }
-
-  async deleteRecord(table: string, id: string): Promise<void> {
-    await this.db.runAsync(
-      'DELETE FROM sync_records WHERE id = ? AND table_name = ?',
-      id,
-      table
-    );
-  }
+  // ─── State operations (sync_state table) ─────────────────────────
 
   async getDeviceId(): Promise<string | undefined> {
     const row = await this.db.getFirstAsync<{ value: string }>(

@@ -5,9 +5,9 @@ import type { RepeatRule } from '@utral/types';
 // Shared SQLite domain schema for Utral Todo clients (desktop + mobile).
 //
 // These table definitions are the single source of truth for the entity model
-// on every SQLite-backed client. Sync-plumbing / infra tables (hlc_state,
-// sync_config, sync_queue, sync_state, ...) intentionally differ per client and
-// are defined locally in each app, not here.
+// on every SQLite-backed client. The shared sync-plumbing / infra tables
+// (hlc_state, sync_config, sync_queue, sync_state) live alongside them in
+// `./infra`.
 //
 // Soft deletes use a single `isDeleted` boolean column, matching the entity
 // types in `@utral/types`. HLC timestamps are stored as three flat columns per

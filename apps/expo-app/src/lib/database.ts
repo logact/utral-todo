@@ -36,44 +36,58 @@ export interface HLCState {
   lastSeen: number;
 }
 
+// ─── Key/value helpers for the shared KV-shaped infra tables ───
+
+async function getConfigValue(key: string): Promise<string | undefined> {
+  const rows = await db.select().from(schema.syncConfig).where(eq(schema.syncConfig.key, key)).limit(1);
+  return rows[0]?.value;
+}
+
+async function setConfigValue(key: string, value: string): Promise<void> {
+  await db.insert(schema.syncConfig).values({ key, value })
+    .onConflictDoUpdate({ target: schema.syncConfig.key, set: { value } });
+}
+
+async function getHlcValue(key: string): Promise<string | undefined> {
+  const rows = await db.select().from(schema.hlcState).where(eq(schema.hlcState.key, key)).limit(1);
+  return rows[0]?.value;
+}
+
+async function setHlcValue(key: string, value: string): Promise<void> {
+  await db.insert(schema.hlcState).values({ key, value })
+    .onConflictDoUpdate({ target: schema.hlcState.key, set: { value } });
+}
+
 export async function getSyncConfigData(): Promise<SyncConfig | null> {
-  const rows = await db.select().from(schema.syncConfig).limit(1);
-  if (rows.length === 0) return null;
-  return { serverUrl: rows[0].serverUrl, apiToken: rows[0].apiToken || undefined };
+  const serverUrl = await getConfigValue('server_url');
+  if (serverUrl === undefined) return null;
+  const apiToken = await getConfigValue('api_token');
+  return { serverUrl, apiToken: apiToken || undefined };
 }
 
 export async function setSyncConfigData(config: SyncConfig): Promise<void> {
-  await db
-    .insert(schema.syncConfig)
-    .values({ id: 'default', serverUrl: config.serverUrl, apiToken: config.apiToken || null })
-    .onConflictDoUpdate({
-      target: schema.syncConfig.id,
-      set: { serverUrl: config.serverUrl, apiToken: config.apiToken || null },
-    });
+  await setConfigValue('server_url', config.serverUrl);
+  await setConfigValue('api_token', config.apiToken || '');
 }
 
 export async function getHLCState(): Promise<HLCState> {
-  const rows = await db.select().from(schema.hlcState).limit(1);
-  if (rows.length > 0) {
-    return { counter: rows[0].counter, node: rows[0].node, lastSeen: rows[0].lastSeen };
+  const node = await getHlcValue('node');
+  if (node !== undefined && node !== '') {
+    return {
+      counter: Number(await getHlcValue('counter') ?? 0),
+      node,
+      lastSeen: Number(await getHlcValue('lastSeen') ?? 0),
+    };
   }
   const defaultState = { counter: 0, node: Math.random().toString(36).slice(2, 10), lastSeen: Date.now() };
-  await db.insert(schema.hlcState).values({ id: 'default', ...defaultState }).onConflictDoNothing();
-  const rows2 = await db.select().from(schema.hlcState).limit(1);
-  if (rows2.length > 0) {
-    return { counter: rows2[0].counter, node: rows2[0].node, lastSeen: rows2[0].lastSeen };
-  }
+  await setHLCState(defaultState);
   return defaultState;
 }
 
 export async function setHLCState(state: HLCState): Promise<void> {
-  await db
-    .insert(schema.hlcState)
-    .values({ id: 'default', ...state })
-    .onConflictDoUpdate({
-      target: schema.hlcState.id,
-      set: { counter: state.counter, node: state.node, lastSeen: state.lastSeen },
-    });
+  await setHlcValue('node', state.node);
+  await setHlcValue('counter', String(state.counter));
+  await setHlcValue('lastSeen', String(state.lastSeen));
 }
 
 export async function getDeviceId(): Promise<string> {
