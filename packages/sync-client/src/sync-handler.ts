@@ -160,12 +160,17 @@ export class SyncClientHandler {
 
   /** Enqueue a local change and push via WebSocket */
   async syncLocalChange(table: string, operation: 'create' | 'update' | 'delete', recordId: string): Promise<void> {
+    // Attach the full record as the payload so a receiving device can
+    // materialize it even if it has never seen this record before.
+    // `applyRemoteEvent` reads `event.payload` as the record to persist;
+    // an empty payload would relay an envelope with no data.
+    const record = await this.opts.storage.getRecord(table, recordId);
     await this.opts.storage.addToQueue({
       id: crypto.randomUUID(),
       table,
       operation,
       recordId,
-      payload: {},
+      payload: record ?? {},
       createdAt: new Date(),
       retryCount: 0,
     });

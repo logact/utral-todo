@@ -16,7 +16,6 @@ import { Todos } from './pages/Todos';
 import { Schedule } from './pages/Schedule';
 import { Settings } from './pages/Settings';
 import { PluseList } from './pages/PluseList';
-import { PluseRun } from './pages/PluseRun';
 import { Labels } from './pages/Labels';
 
 
@@ -178,14 +177,6 @@ function AppInner() {
           element={
             <AppLayout>
               <PluseList />
-            </AppLayout>
-          }
-        />
-        <Route
-          path="/pluse/:id/run"
-          element={
-            <AppLayout>
-              <PluseRun />
             </AppLayout>
           }
         />

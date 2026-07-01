@@ -30,11 +30,13 @@ import {
 import { getTimeSlotDefinitions } from '../db/timeSlotDefinitions';
 import {
   getActivePluseTimer,
-  createTimerSession,
-  updateTimerSession,
-  getTimerSessions,
-  deleteTimerSession,
-} from '../db/timerSessions';
+  startPluseTimer,
+  pausePluseTimer,
+  resumePluseTimer,
+  stopPluseTimer,
+  advancePluseTimer,
+  getElapsedSeconds,
+} from '../db/pluseTimers';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import {
   formatDuration,
@@ -113,187 +115,7 @@ function formatCountdown(totalSeconds: number): string {
 
 /* ─── Small Components ─── */
 
-/* ─── TimerClock with server persistence ─── */
-
-function TimerClock() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  const [, forceTick] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // On mount: restore from server
-  useEffect(() => {
-    getTimerSessions({ type: 'stopwatch' }).then((sessions) => {
-      const active = sessions.find((s) => s.status !== 'completed');
-      if (!active) return;
-
-      setSessionId(active.id);
-      setRunning(active.status === 'running');
-
-      if (active.status === 'running' && active.startedAt) {
-        setElapsedSeconds(active.elapsedSeconds);
-        setStartTime(active.startedAt.getTime());
-      } else {
-        setElapsedSeconds(active.elapsedSeconds);
-        setStartTime(null);
-      }
-    });
-  }, []);
-
-  // Sync remote timer session changes (e.g. from iOS)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
-      if (detail?.table !== 'timerSession') return;
-      getTimerSessions({ type: 'stopwatch' }).then((sessions) => {
-        const active = sessions.find((s) => s.status !== 'completed');
-        if (!active) {
-          setSessionId(null);
-          setRunning(false);
-          setElapsedSeconds(0);
-          setStartTime(null);
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-          return;
-        }
-        setSessionId(active.id);
-        if (active.status === 'running' && active.startedAt) {
-          const newStart = new Date(active.startedAt).getTime();
-          setElapsedSeconds(active.elapsedSeconds);
-          setStartTime(newStart);
-          setRunning(true);
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
-        } else {
-          setElapsedSeconds(active.elapsedSeconds);
-          setStartTime(null);
-          setRunning(false);
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-        }
-      });
-    };
-    window.addEventListener('sync:remote-applied', handler);
-    return () => window.removeEventListener('sync:remote-applied', handler);
-  }, []);
-
-  // Tick every second while running
-  useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
-    }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [running]);
-
-  const displayElapsed = useCallback(() => {
-    if (!running || !startTime) return elapsedSeconds;
-    return elapsedSeconds + Math.floor((Date.now() - startTime) / 1000);
-  }, [running, elapsedSeconds, startTime]);
-
-  const toggle = useCallback(async () => {
-    if (running) {
-      // Pause
-      const total = displayElapsed();
-      setRunning(false);
-      setElapsedSeconds(total);
-      setStartTime(null);
-      if (sessionId) {
-        await updateTimerSession(sessionId, {
-          status: 'paused',
-          elapsedSeconds: total,
-          pausedAt: new Date(),
-        });
-      }
-    } else {
-      // Start / Resume
-      setRunning(true);
-      setStartTime(Date.now());
-      if (sessionId) {
-        await updateTimerSession(sessionId, {
-          status: 'running',
-          startedAt: new Date(),
-        });
-      } else {
-        const session = await createTimerSession({
-          type: 'stopwatch',
-          name: 'Focus Timer',
-          status: 'running',
-          startedAt: new Date(),
-        });
-        setSessionId(session.id);
-      }
-    }
-  }, [running, sessionId, displayElapsed]);
-
-  const reset = useCallback(async () => {
-    if (sessionId) {
-      await deleteTimerSession(sessionId);
-    }
-    setSessionId(null);
-    setRunning(false);
-    setElapsedSeconds(0);
-    setStartTime(null);
-  }, [sessionId]);
-
-  const total = displayElapsed();
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const display = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-
-  return (
-    <div className="px-4 pt-5 pb-3 text-center">
-      <div className="text-5xl font-mono font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
-        {display}
-      </div>
-      <div className="flex items-center justify-center gap-3 mt-4">
-        <button
-          onClick={toggle}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-            running
-              ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-200 dark:border-amber-800'
-              : 'bg-indigo-600 text-white hover:bg-indigo-700'
-          }`}
-          title={running ? 'Pause' : 'Start'}
-        >
-          {running ? (
-            <>
-              <Pause className="w-4 h-4" />
-              Pause
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4" />
-              {total > 0 ? 'Resume' : 'Start'}
-            </>
-          )}
-        </button>
-        {total > 0 && (
-          <button
-            onClick={reset}
-            className="p-2.5 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Reset"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── PluseMiniTimer with server persistence ─── */
+/* ─── PluseMiniTimer using pluses table state ─── */
 
 function PluseMiniTimer({
   pluse,
@@ -310,12 +132,13 @@ function PluseMiniTimer({
   );
   const totalItems = expandedIntervals.length;
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0); // elapsed within current interval
-  const [isRunning, setIsRunning] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(pluse.currentIntervalIndex);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isRunning, setIsRunning] = useState(pluse.timerStatus === 'running');
   const [isCompleted, setIsCompleted] = useState(false);
-  const [startTime, setStartTime] = useState<number | null>(null);
+  const [startTime, setStartTime] = useState<number | null>(
+    pluse.timerStatus === 'running' && pluse.startedAt ? pluse.startedAt.getTime() : null
+  );
   const [todos, setTodos] = useState<Todo[]>([]);
 
   const [, forceTick] = useState(0);
@@ -327,30 +150,24 @@ function PluseMiniTimer({
     getAllTodos().then(setTodos);
   }, []);
 
-  // Auto-switch todo when interval changes
+  // Sync local state with the persisted pluse row
   useEffect(() => {
-    if (pluse.intervals.length === 0) return;
-    const templateIndex = currentIndex % pluse.intervals.length;
-    const boundTodoId = pluse.intervalTodos?.[templateIndex];
-    if (boundTodoId && onIntervalTodo) {
-      onIntervalTodo(boundTodoId);
-    }
-  }, [currentIndex, pluse, onIntervalTodo]);
+    const sync = async () => {
+      const active = await getActivePluseTimer();
+      if (!active || active.id !== pluse.id) {
+        setIsRunning(false);
+        setIsCompleted(false);
+        setCurrentIndex(0);
+        setElapsedSeconds(0);
+        setStartTime(null);
+        return;
+      }
 
-  // On mount: restore from server
-  useEffect(() => {
-    getActivePluseTimer().then((active) => {
-      if (!active || active.id !== pluse.id) return;
-
-      setSessionId(active.id);
       setCurrentIndex(active.currentIntervalIndex);
       setIsRunning(active.timerStatus === 'running');
-      setIsCompleted(active.timerStatus === 'idle');
 
       if (active.timerStatus === 'running' && active.startedAt) {
-        const runningElapsed = Math.floor((Date.now() - active.startedAt.getTime()) / 1000);
-        const totalElapsed = active.accumulatedSeconds + runningElapsed;
-        // Catch up through completed intervals
+        const totalElapsed = getElapsedSeconds(active);
         let idx = active.currentIntervalIndex;
         let e = totalElapsed;
         while (idx < totalItems) {
@@ -361,11 +178,11 @@ function PluseMiniTimer({
         }
         if (idx >= totalItems) {
           setCurrentIndex(totalItems - 1);
-          setElapsedSeconds(expandedIntervals[totalItems - 1]);
+          setElapsedSeconds(expandedIntervals[totalItems - 1] ?? 0);
           setIsRunning(false);
           setIsCompleted(true);
           setStartTime(null);
-          updateTimerSession(active.id, { status: 'completed', completedAt: new Date() });
+          await stopPluseTimer(pluse.id);
         } else {
           setCurrentIndex(idx);
           if (idx === active.currentIntervalIndex) {
@@ -380,52 +197,47 @@ function PluseMiniTimer({
         setElapsedSeconds(active.accumulatedSeconds);
         setStartTime(null);
       }
-    });
+    };
+
+    sync();
   }, [pluse.id, expandedIntervals, totalItems]);
 
-  // Sync remote timer session changes (e.g. from iOS)
+  // Listen for remote/local pluse changes
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { table: string; recordId: string } | undefined;
-      if (detail?.table !== 'timerSession') return;
-      getTimerSessions({ type: 'pluse' }).then((sessions) => {
-        const active = sessions.find((s) => s.pluseId === pluse.id && s.status !== 'completed');
-        if (!active) {
-          setSessionId(null);
-          setCurrentIndex(0);
-          setElapsedSeconds(0);
+      const detail = (e as CustomEvent).detail as { table?: string; recordId?: string } | undefined;
+      if (detail?.table !== 'pluses') return;
+      getActivePluseTimer().then((active) => {
+        if (!active || active.id !== pluse.id) {
           setIsRunning(false);
-          setIsCompleted(false);
           setStartTime(null);
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
           return;
         }
-        setSessionId(active.id);
-        setCurrentIndex(active.currentIndex);
-        setIsCompleted(active.status === 'completed');
-        if (active.status === 'running' && active.startedAt) {
-          setElapsedSeconds(active.elapsedSeconds);
-          setStartTime(Date.now());
-          setIsRunning(true);
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = setInterval(() => forceTick((n) => n + 1), 1000);
-        } else {
-          setElapsedSeconds(active.elapsedSeconds);
-          setIsRunning(false);
-          setStartTime(null);
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-        }
+        setCurrentIndex(active.currentIntervalIndex);
+        setIsRunning(active.timerStatus === 'running');
+        setElapsedSeconds(active.accumulatedSeconds);
+        setStartTime(
+          active.timerStatus === 'running' && active.startedAt ? active.startedAt.getTime() : null
+        );
       });
     };
     window.addEventListener('sync:remote-applied', handler);
-    return () => window.removeEventListener('sync:remote-applied', handler);
+    window.addEventListener('db:changed', handler);
+    return () => {
+      window.removeEventListener('sync:remote-applied', handler);
+      window.removeEventListener('db:changed', handler);
+    };
   }, [pluse.id]);
+
+  // Auto-switch todo when interval changes
+  useEffect(() => {
+    if (pluse.intervals.length === 0) return;
+    const templateIndex = currentIndex % pluse.intervals.length;
+    const boundTodoId = pluse.intervalTodos?.[templateIndex];
+    if (boundTodoId && onIntervalTodo) {
+      onIntervalTodo(boundTodoId);
+    }
+  }, [currentIndex, pluse, onIntervalTodo]);
 
   const getElapsed = useCallback(() => {
     if (!isRunning || !startTime) return elapsedSeconds;
@@ -478,13 +290,7 @@ function PluseMiniTimer({
         setCurrentIndex(nextIndex);
         setElapsedSeconds(0);
         setStartTime(null);
-        if (sessionId) {
-          updateTimerSession(sessionId, {
-            currentIndex: nextIndex,
-            elapsedSeconds: 0,
-            status: 'paused',
-          });
-        }
+        pausePluseTimer(pluse.id, 0, nextIndex).catch(() => {});
 
         showBrowserNotification(
           `${pluse.name} — Interval ${currentIndex + 1} complete`,
@@ -496,24 +302,14 @@ function PluseMiniTimer({
           timeoutRef.current = setTimeout(() => {
             setIsRunning(true);
             setStartTime(Date.now());
-            if (sessionId) {
-              updateTimerSession(sessionId, {
-                status: 'running',
-                startedAt: new Date(),
-              });
-            }
+            resumePluseTimer(pluse.id).catch(() => {});
           }, 2000);
         }
       } else {
         setIsRunning(false);
         setIsCompleted(true);
         setStartTime(null);
-        if (sessionId) {
-          updateTimerSession(sessionId, {
-            status: 'completed',
-            completedAt: new Date(),
-          });
-        }
+        stopPluseTimer(pluse.id).catch(() => {});
 
         showBrowserNotification(
           `${pluse.name} — Complete!`,
@@ -521,7 +317,7 @@ function PluseMiniTimer({
         );
       }
     }
-  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, sessionId, pluse.name, pluse.autoAdvance]);
+  }, [elapsed, isRunning, isCompleted, currentIndex, totalItems, itemDurationSeconds, pluse.id, pluse.name, pluse.autoAdvance]);
 
   const toggleRunning = useCallback(async () => {
     if (timeoutRef.current) {
@@ -529,61 +325,27 @@ function PluseMiniTimer({
       timeoutRef.current = null;
     }
     if (isCompleted) {
-      // Restart
-      const newSession = await createTimerSession({
-        type: 'pluse',
-        name: pluse.name,
-        pluseId: pluse.id,
-        intervals: pluse.intervals,
-        repeatCount: pluse.repeatCount,
-        status: 'running',
-        startedAt: new Date(),
-      });
-      setSessionId(newSession.id);
+      setIsCompleted(false);
       setCurrentIndex(0);
       setElapsedSeconds(0);
       setIsRunning(true);
-      setIsCompleted(false);
       setStartTime(Date.now());
+      await startPluseTimer(pluse.id);
       return;
     }
 
     if (isRunning) {
-      // Pause
       const total = elapsedSeconds + (startTime ? Math.floor((Date.now() - startTime) / 1000) : 0);
       setIsRunning(false);
       setElapsedSeconds(total);
       setStartTime(null);
-      if (sessionId) {
-        await updateTimerSession(sessionId, {
-          status: 'paused',
-          elapsedSeconds: total,
-          pausedAt: new Date(),
-        });
-      }
+      await pausePluseTimer(pluse.id, total, currentIndex);
     } else {
-      // Resume / Start
       setIsRunning(true);
       setStartTime(Date.now());
-      if (sessionId) {
-        await updateTimerSession(sessionId, {
-          status: 'running',
-          startedAt: new Date(),
-        });
-      } else {
-        const session = await createTimerSession({
-          type: 'pluse',
-          name: pluse.name,
-          pluseId: pluse.id,
-          intervals: pluse.intervals,
-          repeatCount: pluse.repeatCount,
-          status: 'running',
-          startedAt: new Date(),
-        });
-        setSessionId(session.id);
-      }
+      await resumePluseTimer(pluse.id);
     }
-  }, [isRunning, isCompleted, sessionId, elapsedSeconds, startTime, pluse]);
+  }, [isRunning, isCompleted, elapsedSeconds, startTime, currentIndex, pluse.id]);
 
   const skipToNext = useCallback(async () => {
     if (timeoutRef.current) {
@@ -596,40 +358,21 @@ function PluseMiniTimer({
     setCurrentIndex(nextIndex);
     setElapsedSeconds(0);
     setStartTime(null);
-    if (sessionId) {
-      await updateTimerSession(sessionId, {
-        currentIndex: nextIndex,
-        elapsedSeconds: 0,
-        status: 'paused',
-      });
-    }
-  }, [currentIndex, totalItems, sessionId]);
+    await advancePluseTimer(pluse.id, nextIndex);
+  }, [currentIndex, totalItems, pluse.id]);
 
   const restart = useCallback(async () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    if (sessionId) {
-      await deleteTimerSession(sessionId);
-    }
-    const session = await createTimerSession({
-      type: 'pluse',
-      name: pluse.name,
-      pluseId: pluse.id,
-      intervals: pluse.intervals,
-      repeatCount: pluse.repeatCount,
-      status: 'paused',
-      elapsedSeconds: 0,
-      currentIndex: 0,
-    });
-    setSessionId(session.id);
+    await stopPluseTimer(pluse.id);
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setIsRunning(false);
     setIsCompleted(false);
     setStartTime(null);
-  }, [sessionId, pluse]);
+  }, [pluse.id]);
 
   const handleClose = useCallback(() => {
     onClose();
@@ -1389,7 +1132,7 @@ export function Today() {
       <div className="w-72 h-full flex flex-col gap-3 min-h-0 shrink-0">
         {/* Clock + Date Header */}
         <div className="shrink-0 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-          {/* Timer Clock or Active Pluse */}
+          {/* Active Pluse */}
           {activePluse ? (
             <PluseMiniTimer
               pluse={activePluse}
@@ -1401,9 +1144,7 @@ export function Today() {
                 if (todoId) setSelectedTodoId(todoId);
               }}
             />
-          ) : (
-            <TimerClock />
-          )}
+          ) : null}
 
           {/* Status bar */}
           <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 dark:border-slate-800">

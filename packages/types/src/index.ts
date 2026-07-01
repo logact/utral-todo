@@ -20,6 +20,9 @@ export {
   groupTodosByTimeSlot,
   isTimeSlotTodo,
   getTimeSlotScheduleDate,
+  getTimeSlotMilestoneId,
+  getTimeSlotStartMilestoneId,
+  getTimeSlotEndMilestoneId,
   getTimeSlotByMilestoneId,
   type TimeSlotConfig,
 } from './timeSlots.js';

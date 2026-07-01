@@ -7,7 +7,6 @@ import type {
   ActionEdge,
   Plan,
   Pluse,
-  TimerSession,
   RepeatOccurrence,
   TimeSlotDefinition,
   RepeatRule,
@@ -29,7 +28,6 @@ export type {
   ActionEdge,
   Plan,
   Pluse,
-  TimerSession,
   RepeatOccurrence,
   TimeSlotDefinition,
 };
@@ -206,33 +204,6 @@ export const pluses = sqliteTable('pluses', {
   index('pluses_created_at_idx').on(table.createdAtWall),
   index('pluses_updated_at_idx').on(table.updatedAtWall),
   index('pluses_timer_status_idx').on(table.timerStatus),
-]);
-
-export const timerSessions = sqliteTable('timer_sessions', {
-  id: text('id').primaryKey(),
-  type: text('type', { enum: ['stopwatch', 'pluse'] }).notNull(),
-  name: text('name').notNull().default(''),
-  pluseId: text('pluse_id'),
-  todoId: text('todo_id'),
-  intervals: text('intervals', { mode: 'json' }).$type<number[]>(),
-  repeatCount: integer('repeat_count'),
-  currentIndex: integer('current_index').notNull().default(0),
-  elapsedSeconds: integer('elapsed_seconds').notNull().default(0),
-  status: text('status', { enum: ['running', 'paused', 'completed'] }).notNull().default('running'),
-  startedAt: integer('started_at', { mode: 'timestamp' }),
-  pausedAt: integer('paused_at', { mode: 'timestamp' }),
-  completedAt: integer('completed_at', { mode: 'timestamp' }),
-  createdAtWall: integer('created_at_wall'),
-  createdAtCounter: integer('created_at_counter').notNull().default(0),
-  createdAtNode: text('created_at_node'),
-  updatedAtWall: integer('updated_at_wall'),
-  updatedAtCounter: integer('updated_at_counter').notNull().default(0),
-  updatedAtNode: text('updated_at_node'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
-}, (table) => [
-  index('timer_sessions_type_idx').on(table.type),
-  index('timer_sessions_status_idx').on(table.status),
-  index('timer_sessions_pluse_id_idx').on(table.pluseId),
 ]);
 
 export const repeatOccurrences = sqliteTable('repeat_occurrences', {
@@ -546,48 +517,6 @@ export function repeatOccurrenceToRow(occ: Partial<RepeatOccurrence>): InferInse
   Object.assign(row, objToHlcColumns(occ.updatedAt, 'updatedAt'));
   if (occ.isDeleted !== undefined) row.isDeleted = occ.isDeleted;
   return row as InferInsertModel<typeof repeatOccurrences>;
-}
-
-export function rowToTimerSession(row: Record<string, unknown>): TimerSession {
-  return {
-    id: row.id as string,
-    type: row.type as 'stopwatch' | 'pluse',
-    name: row.name as string,
-    pluseId: row.pluseId as string | undefined,
-    todoId: row.todoId as string | undefined,
-    intervals: row.intervals as number[] | undefined,
-    repeatCount: row.repeatCount as number | undefined,
-    currentIndex: (row.currentIndex as number) ?? 0,
-    elapsedSeconds: (row.elapsedSeconds as number) ?? 0,
-    status: row.status as 'running' | 'paused' | 'completed',
-    startedAt: timestampToDate(row.startedAt),
-    pausedAt: timestampToDate(row.pausedAt),
-    completedAt: timestampToDate(row.completedAt),
-    createdAt: hlcDateToObj(row, 'createdAt')!,
-    updatedAt: hlcDateToObj(row, 'updatedAt')!,
-    isDeleted: (row.isDeleted as boolean) ?? false,
-  };
-}
-
-export function timerSessionToRow(session: Partial<TimerSession>): InferInsertModel<typeof timerSessions> {
-  const row: Record<string, unknown> = {};
-  if (session.id !== undefined) row.id = session.id;
-  if (session.type !== undefined) row.type = session.type;
-  if (session.name !== undefined) row.name = session.name;
-  if (session.pluseId !== undefined) row.pluse_id = session.pluseId;
-  if (session.todoId !== undefined) row.todo_id = session.todoId;
-  if (session.intervals !== undefined) row.intervals = session.intervals;
-  if (session.repeatCount !== undefined) row.repeat_count = session.repeatCount;
-  if (session.currentIndex !== undefined) row.current_index = session.currentIndex;
-  if (session.elapsedSeconds !== undefined) row.elapsed_seconds = session.elapsedSeconds;
-  if (session.status !== undefined) row.status = session.status;
-  if (session.startedAt !== undefined) row.started_at = session.startedAt ? session.startedAt.getTime() : null;
-  if (session.pausedAt !== undefined) row.paused_at = session.pausedAt ? session.pausedAt.getTime() : null;
-  if (session.completedAt !== undefined) row.completed_at = session.completedAt ? session.completedAt.getTime() : null;
-  Object.assign(row, objToHlcColumns(session.createdAt, 'created_at'));
-  Object.assign(row, objToHlcColumns(session.updatedAt, 'updated_at'));
-  if (session.isDeleted !== undefined) row.is_deleted = session.isDeleted;
-  return row as InferInsertModel<typeof timerSessions>;
 }
 
 export function rowToTimeSlotDefinition(row: Record<string, unknown>): TimeSlotDefinition {

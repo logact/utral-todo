@@ -112,6 +112,25 @@ export function getTimeSlotScheduleDate(
   return d;
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Deterministic milestone id for a boundary time: `timeslot:HHmm`. Independent of the calendar/create date. */
+export function getTimeSlotMilestoneId(hour: number, minute: number): string {
+  return `timeslot:${pad2(hour)}${pad2(minute)}`;
+}
+
+/** Milestone id for a slot's start boundary. */
+export function getTimeSlotStartMilestoneId(slot: TimeSlotConfig): string {
+  return getTimeSlotMilestoneId(slot.startHour, slot.startMinute);
+}
+
+/** Milestone id for a slot's end boundary. */
+export function getTimeSlotEndMilestoneId(slot: TimeSlotConfig): string {
+  return getTimeSlotMilestoneId(slot.endHour, slot.endMinute);
+}
+
 export function getTimeSlotByMilestoneId(
   milestoneId: string,
   slots: TimeSlotConfig[] = DEFAULT_TIME_SLOTS

@@ -169,6 +169,35 @@ describe('SyncHandler', () => {
     });
   });
 
+  describe('client HLC preservation', () => {
+    it('uses the writer HLC from payload.version as the event createdAt', async () => {
+      const writerHLC = { wall: 5000, counter: 3, node: 'writer-device' };
+      await handler.acceptPush('device-1', 'user-1', 'default', [
+        {
+          table: 'notes',
+          operation: 'update',
+          recordId: 'r1',
+          payload: { id: 'r1', version: writerHLC, title: 'hi' },
+        },
+      ]);
+      expect(storage.events).toHaveLength(1);
+      expect(storage.events[0].createdAt).toEqual(writerHLC);
+    });
+
+    it('falls back to newHLC(deviceId) when payload has no valid version', async () => {
+      await handler.acceptPush('device-1', 'user-1', 'default', [
+        { table: 'notes', operation: 'create', recordId: 'r1', payload: {} },
+        { table: 'notes', operation: 'create', recordId: 'r2', payload: { version: { wall: 1 } } },
+        { table: 'notes', operation: 'create', recordId: 'r3' },
+      ]);
+      expect(storage.events).toHaveLength(3);
+      // node falls back to the origin deviceId, not the writer's node
+      for (const ev of storage.events) {
+        expect(ev.createdAt.node).toBe('device-1');
+      }
+    });
+  });
+
   describe('event_ack', () => {
     it('should call storage.ackEventDelivery', () => {
       const socket = createMockSocket();

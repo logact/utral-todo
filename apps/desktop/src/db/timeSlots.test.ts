@@ -33,7 +33,7 @@ vi.mock('./timeSlotDefinitions', () => ({
 import { ensureTimeSlotTodo, migrateLegacySlotTodos } from './timeSlots';
 import { db } from './drizzle-adapter';
 import { todos, todoLogs } from './schema';
-import type { Todo } from '../types';
+import { getTimeSlotStartMilestoneId, getTimeSlotEndMilestoneId } from '../types';
 
 const mockedDb = db as unknown as {
   insert: ReturnType<typeof vi.fn>;
@@ -48,190 +48,113 @@ function buildSelectChain(result: unknown) {
   };
 }
 
+/** A stored `timeSlot` boundary row (title == id), as returned from the DB. */
+function boundaryRow(
+  id: string,
+  scheduledSeconds: number,
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    id,
+    nodeType: 'task',
+    pattern: 'timeSlot',
+    title: id,
+    description: '',
+    status: 'done',
+    scheduledDate: scheduledSeconds,
+    isSystemTask: true,
+    tags: '[]',
+    order: 0,
+    createdAtWall: 100,
+    createdAtCounter: 0,
+    createdAtNode: 'other',
+    updatedAtWall: 100,
+    updatedAtCounter: 0,
+    updatedAtNode: 'other',
+    isDeleted: false,
+    ...overrides,
+  };
+}
+
+const MORNING_SLOT = {
+  id: 'slot-morning',
+  milestoneId: 'system:day-startup',
+  title: 'Day Startup Plan',
+  time: '06:00',
+  startHour: 6,
+  startMinute: 0,
+  endHour: 12,
+  endMinute: 0,
+};
+
+const START_SECONDS = new Date('2026-07-01T06:00:00').getTime() / 1000;
+const END_SECONDS = new Date('2026-07-01T12:00:00').getTime() / 1000;
+
 describe('ensureTimeSlotTodo', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedDb.__selectMock.mockReturnValue(buildSelectChain([]));
   });
 
-  it('creates a time-slot todo with deterministic id and slot start time', async () => {
-    const slot = {
-      id: 'slot-morning',
-      milestoneId: 'system:day-startup',
-      title: 'Day Startup Plan',
-      time: '06:00',
-      startHour: 6,
-      startMinute: 0,
-      endHour: 12,
-      endMinute: 0,
-    };
-
+  it('creates start + end boundary todos with time-derived ids and titles', async () => {
     const today = new Date('2026-07-01T12:00:00');
-    const todoId = await ensureTimeSlotTodo(slot, today);
+    const todoId = await ensureTimeSlotTodo(MORNING_SLOT, today);
 
-    expect(todoId).toBe(slot.milestoneId);
+    const startId = getTimeSlotStartMilestoneId(MORNING_SLOT);
+    const endId = getTimeSlotEndMilestoneId(MORNING_SLOT);
+    expect(startId).toBe('timeslot:0600');
+    expect(endId).toBe('timeslot:1200');
+
+    // Returns the start boundary id; ensures both boundaries.
+    expect(todoId).toBe(startId);
     expect(mockedDb.insert).toHaveBeenCalledWith(todos);
+    expect(mockedDb.insert).toHaveBeenCalledTimes(2);
 
-    const insertCall = mockedDb.insert.mock.results[0].value.values.mock.calls[0];
-    const insertedRow = insertCall[0];
+    const startRow = mockedDb.insert.mock.results[0].value.values.mock.calls[0][0];
+    expect(startRow.id).toBe(startId);
+    expect(startRow.title).toBe(startId);
+    expect(startRow.pattern).toBe('timeSlot');
+    expect(startRow.isSystemTask).toBe(true);
+    expect(startRow.status).toBe('done');
+    expect(startRow.scheduledDate).toEqual(new Date('2026-07-01T06:00:00'));
 
-    expect(insertedRow.id).toBe(slot.milestoneId);
-    expect(insertedRow.pattern).toBe('timeSlot');
-    expect(insertedRow.isSystemTask).toBe(true);
-    expect(insertedRow.status).toBe('done');
-    expect(insertedRow.title).toBe(slot.title);
-    expect(insertedRow.scheduledDate).toEqual(new Date('2026-07-01T06:00:00'));
+    const endRow = mockedDb.insert.mock.results[0].value.values.mock.calls[1][0];
+    expect(endRow.id).toBe(endId);
+    expect(endRow.scheduledDate).toEqual(new Date('2026-07-01T12:00:00'));
   });
 
-  it('does not insert when a matching time-slot todo already exists', async () => {
-    const slot = {
-      id: 'slot-morning',
-      milestoneId: 'system:day-startup',
-      title: 'Day Startup Plan',
-      time: '06:00',
-      startHour: 6,
-      startMinute: 0,
-      endHour: 12,
-      endMinute: 0,
-    };
+  it('does not insert or update when both boundary todos already exist', async () => {
+    const startId = getTimeSlotStartMilestoneId(MORNING_SLOT);
+    const endId = getTimeSlotEndMilestoneId(MORNING_SLOT);
+
+    mockedDb.__selectMock
+      .mockReturnValueOnce(buildSelectChain([boundaryRow(startId, START_SECONDS)]))
+      .mockReturnValueOnce(buildSelectChain([boundaryRow(endId, END_SECONDS)]));
 
     const today = new Date('2026-07-01T12:00:00');
-    const existing: Todo = {
-      id: slot.milestoneId,
-      nodeType: 'task',
-      pattern: 'timeSlot',
-      title: slot.title,
-      description: '',
-      status: 'done',
-      scheduledDate: new Date('2026-07-01T06:00:00'),
-      isSystemTask: true,
-      tags: [],
-      order: 0,
-      createdAt: { wall: 100, counter: 0, node: 'other' },
-      updatedAt: { wall: 100, counter: 0, node: 'other' },
-      isDeleted: false,
-    };
+    const todoId = await ensureTimeSlotTodo(MORNING_SLOT, today);
 
-    mockedDb.__selectMock.mockReturnValue(buildSelectChain([{
-      ...existing,
-      scheduledDate: existing.scheduledDate!.getTime() / 1000,
-    }]));
-
-    const todoId = await ensureTimeSlotTodo(slot, today);
-
-    expect(todoId).toBe(slot.milestoneId);
+    expect(todoId).toBe(startId);
     expect(mockedDb.insert).not.toHaveBeenCalled();
     expect(mockedDb.update).not.toHaveBeenCalled();
   });
 
-  it('updates an existing todo when its pattern or system-task flag is wrong', async () => {
-    const slot = {
-      id: 'slot-morning',
-      milestoneId: 'system:day-startup',
-      title: 'Day Startup Plan',
-      time: '06:00',
-      startHour: 6,
-      startMinute: 0,
-      endHour: 12,
-      endMinute: 0,
-    };
-
-    const today = new Date('2026-07-01T12:00:00');
-    const existing: Todo = {
-      id: slot.milestoneId,
-      nodeType: 'task',
-      pattern: 'task',
-      title: slot.title,
-      description: '',
-      status: 'done',
-      scheduledDate: new Date('2026-07-01T06:00:00'),
-      tags: [],
-      order: 0,
-      createdAt: { wall: 100, counter: 0, node: 'other' },
-      updatedAt: { wall: 100, counter: 0, node: 'other' },
-      isDeleted: false,
-    };
-
-    mockedDb.__selectMock.mockReturnValue(buildSelectChain([{
-      ...existing,
-      scheduledDate: existing.scheduledDate!.getTime() / 1000,
-    }]));
-
-    const todoId = await ensureTimeSlotTodo(slot, today);
-
-    expect(todoId).toBe(slot.milestoneId);
-    expect(mockedDb.insert).not.toHaveBeenCalled();
-    expect(mockedDb.update).toHaveBeenCalledWith(todos);
-  });
-
-  it('migrates a legacy slot todo found by scheduled time to the canonical id', async () => {
-    const slot = {
-      id: 'slot-morning',
-      milestoneId: 'system:day-startup',
-      title: 'Day Startup Plan',
-      time: '06:00',
-      startHour: 6,
-      startMinute: 0,
-      endHour: 12,
-      endMinute: 0,
-    };
-
-    const legacyId = 'legacy-random-id';
-    const scheduledSeconds = new Date('2026-07-01T06:00:00').getTime() / 1000;
+  it('updates an existing boundary todo when its pattern is wrong', async () => {
+    const startId = getTimeSlotStartMilestoneId(MORNING_SLOT);
+    const endId = getTimeSlotEndMilestoneId(MORNING_SLOT);
 
     mockedDb.__selectMock
-      .mockReturnValueOnce(buildSelectChain([]))
       .mockReturnValueOnce(
-        buildSelectChain([
-          {
-            id: legacyId,
-            nodeType: 'task',
-            pattern: 'timeSlot',
-            title: slot.title,
-            description: '',
-            status: 'done',
-            scheduledDate: scheduledSeconds,
-            isSystemTask: true,
-            tags: '[]',
-            order: 0,
-            createdAtWall: 100,
-            createdAtCounter: 0,
-            createdAtNode: 'other',
-            updatedAtWall: 100,
-            updatedAtCounter: 0,
-            updatedAtNode: 'other',
-            isDeleted: false,
-          },
-        ])
+        buildSelectChain([boundaryRow(startId, START_SECONDS, { pattern: 'task' })])
       )
-      .mockReturnValueOnce(
-        buildSelectChain([
-          {
-            id: 'log-1',
-            todoId: legacyId,
-            type: 'thought',
-            content: 'legacy note',
-            createdAtWall: 100,
-            createdAtCounter: 0,
-            createdAtNode: 'other',
-            updatedAtWall: 100,
-            updatedAtCounter: 0,
-            updatedAtNode: 'other',
-            isDeleted: false,
-          },
-        ])
-      );
+      .mockReturnValueOnce(buildSelectChain([boundaryRow(endId, END_SECONDS)]));
 
     const today = new Date('2026-07-01T12:00:00');
-    const todoId = await ensureTimeSlotTodo(slot, today);
+    const todoId = await ensureTimeSlotTodo(MORNING_SLOT, today);
 
-    expect(todoId).toBe(slot.milestoneId);
-    expect(mockedDb.update).toHaveBeenCalledWith(todoLogs);
+    expect(todoId).toBe(startId);
+    expect(mockedDb.insert).not.toHaveBeenCalled();
     expect(mockedDb.update).toHaveBeenCalledWith(todos);
-    expect(mockedDb.insert).toHaveBeenCalledWith(todos);
-
-    const insertCall = mockedDb.insert.mock.results[0].value.values.mock.calls[0];
-    expect(insertCall[0].id).toBe(slot.milestoneId);
   });
 });
 
@@ -240,18 +163,7 @@ describe('migrateLegacySlotTodos', () => {
     vi.clearAllMocks();
   });
 
-  it('moves logs from legacy duplicate todos to the canonical time-slot todo', async () => {
-    const slot = {
-      id: 'slot-morning',
-      milestoneId: 'system:day-startup',
-      title: 'Day Startup Plan',
-      time: '06:00',
-      startHour: 6,
-      startMinute: 0,
-      endHour: 12,
-      endMinute: 0,
-    };
-
+  it('moves logs from a legacy slot todo to the start-boundary milestone todo', async () => {
     const legacyId = 'legacy-random-id';
 
     mockedDb.__selectMock
@@ -259,10 +171,10 @@ describe('migrateLegacySlotTodos', () => {
         id: legacyId,
         nodeType: 'task',
         pattern: 'task',
-        title: slot.title,
+        title: MORNING_SLOT.title,
         description: '',
         status: 'done',
-        scheduledDate: new Date().setHours(0, 0, 0, 0),
+        scheduledDate: new Date('2026-07-01T00:00:00').getTime() / 1000,
         isSystemTask: true,
         tags: '[]',
         order: 0,
@@ -274,8 +186,6 @@ describe('migrateLegacySlotTodos', () => {
         updatedAtNode: 'other',
         isDeleted: false,
       }]))
-      .mockReturnValueOnce(buildSelectChain([]))
-      .mockReturnValueOnce(buildSelectChain([]))
       .mockReturnValueOnce(buildSelectChain([{
         id: 'log-1',
         todoId: legacyId,

@@ -10,7 +10,7 @@ import * as relationsDb from '../db/relations';
 import * as todoLogsDb from '../db/todoLogs';
 import * as actionEdgesDb from '../db/actionEdges';
 import * as plusesDb from '../db/pluse';
-import * as timerSessionsDb from '../db/timerSessions';
+import * as pluseTimersDb from '../db/pluseTimers';
 import type { TodoLog, ActionEdgeType } from '../types';
 
 interface CliRequestEvent {
@@ -292,30 +292,30 @@ async function handlePluses(action: string, args: Record<string, unknown>) {
 async function handlePluseTimers(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'active': {
-      const pluse = await timerSessionsDb.getActivePluseTimer();
+      const pluse = await pluseTimersDb.getActivePluseTimer();
       return { success: true, data: pluse ? serializeForJson(pluse) : null };
     }
     case 'start': {
-      const pluse = await timerSessionsDb.startPluseTimer(String(args.id));
+      const pluse = await pluseTimersDb.startPluseTimer(String(args.id));
       return { success: true, data: serializeForJson(pluse) };
     }
     case 'pause': {
       const accumulatedSeconds = args.accumulatedSeconds ? Number(args.accumulatedSeconds) : 0;
       const currentIntervalIndex = args.currentIntervalIndex ? Number(args.currentIntervalIndex) : 0;
-      const pluse = await timerSessionsDb.pausePluseTimer(String(args.id), accumulatedSeconds, currentIntervalIndex);
+      const pluse = await pluseTimersDb.pausePluseTimer(String(args.id), accumulatedSeconds, currentIntervalIndex);
       return { success: true, data: serializeForJson(pluse) };
     }
     case 'resume': {
-      const pluse = await timerSessionsDb.resumePluseTimer(String(args.id));
+      const pluse = await pluseTimersDb.resumePluseTimer(String(args.id));
       return { success: true, data: serializeForJson(pluse) };
     }
     case 'stop': {
-      await timerSessionsDb.stopPluseTimer(String(args.id));
+      await pluseTimersDb.stopPluseTimer(String(args.id));
       return { success: true };
     }
     case 'advance': {
       const currentIntervalIndex = args.currentIntervalIndex ? Number(args.currentIntervalIndex) : 0;
-      const pluse = await timerSessionsDb.advancePluseTimer(String(args.id), currentIntervalIndex);
+      const pluse = await pluseTimersDb.advancePluseTimer(String(args.id), currentIntervalIndex);
       return { success: true, data: serializeForJson(pluse) };
     }
     default:

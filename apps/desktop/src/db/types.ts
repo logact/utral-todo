@@ -6,7 +6,6 @@ import type {
   actionEdges,
   plans,
   pluses,
-  timerSessions,
   repeatOccurrences,
 } from './schema';
 
@@ -27,9 +26,6 @@ export type PlanSelect = InferSelectModel<typeof plans>;
 
 export type PluseInsert = InferInsertModel<typeof pluses>;
 export type PluseSelect = InferSelectModel<typeof pluses>;
-
-export type TimerSessionInsert = InferInsertModel<typeof timerSessions>;
-export type TimerSessionSelect = InferSelectModel<typeof timerSessions>;
 
 export type RepeatOccurrenceInsert = InferInsertModel<typeof repeatOccurrences>;
 export type RepeatOccurrenceSelect = InferSelectModel<typeof repeatOccurrences>;

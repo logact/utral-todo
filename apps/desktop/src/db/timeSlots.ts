@@ -1,22 +1,19 @@
 import { db } from './drizzle-adapter';
 import { todos, todoLogs } from './schema';
-import { eq, and, gte, lt } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createTodo, getTodo } from './todos';
 import { getTodoLogs } from './todoLogs';
 import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { todoToRow, rowToTodo } from './schema';
 import {
   DEFAULT_TIME_SLOTS,
-  getTimeSlotScheduleDate,
+  getTimeSlotMilestoneId,
+  getTimeSlotStartMilestoneId,
   newHLC,
   mergeHLC,
 } from '../types';
 import { getTimeSlotDefinitions } from './timeSlotDefinitions';
 import type { TimeSlotConfig, Todo } from '../types';
-
-function slotTodoId(slot: TimeSlotConfig): string {
-  return slot.milestoneId;
-}
 
 async function migrateLegacyTodoToCanonical(
   legacy: Todo,
@@ -57,55 +54,34 @@ async function migrateLegacyTodoToCanonical(
   syncLocalChange('todos', 'delete', legacy.id).catch(() => {});
 }
 
-export async function getTimeSlotTodo(slot: TimeSlotConfig): Promise<Todo | undefined> {
-  return getTodo(slotTodoId(slot));
+export async function getTimeSlotTodo(
+  slot: TimeSlotConfig
+): Promise<Todo | undefined> {
+  return getTodo(getTimeSlotStartMilestoneId(slot));
 }
 
-export async function ensureTimeSlotTodo(
-  slot: TimeSlotConfig,
-  date = new Date()
+/**
+ * Ensure a single boundary milestone todo exists for the given time-of-day.
+ * The id and title are `timeslot:HHmm` — a pure function of the time, so
+ * adjacent slots that share a boundary share one todo.
+ */
+async function ensureMilestoneTodo(
+  hour: number,
+  minute: number,
+  date: Date
 ): Promise<string> {
-  const id = slotTodoId(slot);
-  const scheduledDate = getTimeSlotScheduleDate(slot, date);
-  let existing = await getTodo(id);
+  const id = getTimeSlotMilestoneId(hour, minute);
+  const scheduledDate = new Date(date);
+  scheduledDate.setHours(hour, minute, 0, 0);
 
-  // Fallback: the slot may already exist at this scheduled time under a
-  // different id. Decide existence by the slot's time and migrate to the
-  // canonical id.
-  if (!existing) {
-    const dayStart = new Date(scheduledDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
-
-    const rows = (await db
-      .select()
-      .from(todos)
-      .where(
-        and(
-          eq(todos.isDeleted, false),
-          eq(todos.pattern, 'timeSlot'),
-          gte(todos.scheduledDate, dayStart),
-          lt(todos.scheduledDate, dayEnd)
-        )
-      )) as any[];
-
-    existing = rows
-      .map(rowToTodo)
-      .find((t) => t.scheduledDate?.getTime() === scheduledDate.getTime());
-
-    if (existing && existing.id !== id) {
-      await migrateLegacyTodoToCanonical(existing, id);
-      existing = undefined;
-    }
-  }
+  const existing = await getTodo(id);
 
   if (existing) {
     const scheduledMs = existing.scheduledDate?.getTime();
     const needsUpdate =
       existing.pattern !== 'timeSlot' ||
       existing.isSystemTask !== true ||
-      existing.title !== slot.title ||
+      existing.title !== id ||
       scheduledMs !== scheduledDate.getTime();
 
     if (needsUpdate) {
@@ -121,7 +97,7 @@ export async function ensureTimeSlotTodo(
             id,
             pattern: 'timeSlot',
             isSystemTask: true,
-            title: slot.title,
+            title: id,
             scheduledDate,
             updatedAt: mergedUpdatedAt,
           } as Partial<Todo>)
@@ -133,7 +109,7 @@ export async function ensureTimeSlotTodo(
     return id;
   }
 
-  await createTodo(slot.title, {
+  await createTodo(id, {
     id,
     nodeType: 'task',
     pattern: 'timeSlot',
@@ -146,7 +122,20 @@ export async function ensureTimeSlotTodo(
   return id;
 }
 
-export async function migrateLegacySlotTodos(date = new Date()): Promise<void> {
+/**
+ * Ensure both boundary todos (start + end) exist for a slot and return the
+ * start boundary id. Adjacent slots that share a boundary reuse the same todo.
+ */
+export async function ensureTimeSlotTodo(
+  slot: TimeSlotConfig,
+  date = new Date()
+): Promise<string> {
+  const startId = await ensureMilestoneTodo(slot.startHour, slot.startMinute, date);
+  await ensureMilestoneTodo(slot.endHour, slot.endMinute, date);
+  return startId;
+}
+
+export async function migrateLegacySlotTodos(): Promise<void> {
   let slots: TimeSlotConfig[] = await getTimeSlotDefinitions();
   if (slots.length === 0) {
     slots = DEFAULT_TIME_SLOTS;
@@ -158,26 +147,17 @@ export async function migrateLegacySlotTodos(date = new Date()): Promise<void> {
     .where(and(eq(todos.isDeleted, false), eq(todos.isSystemTask, true)))) as any[];
   const systemTodos = rows.map(rowToTodo);
 
-  const slotTitles = new Set(slots.map((s) => s.title));
-  const legacyByTitle = new Map<string, Todo[]>();
+  const slotByTitle = new Map(slots.map((s) => [s.title, s]));
 
   for (const todo of systemTodos) {
-    if (!slotTitles.has(todo.title)) continue;
-    const list = legacyByTitle.get(todo.title) ?? [];
-    list.push(todo);
-    legacyByTitle.set(todo.title, list);
-  }
+    const slot = slotByTitle.get(todo.title);
+    if (!slot) continue;
 
-  for (const slot of slots) {
-    const legacy = legacyByTitle.get(slot.title) ?? [];
-    if (legacy.length === 0) continue;
+    // Re-home legacy slot todos (old `system:*` ids, random UUIDs) to the
+    // start-boundary milestone id, carrying their notes over.
+    const canonicalId = getTimeSlotStartMilestoneId(slot);
+    if (todo.id === canonicalId) continue;
 
-    const canonicalId = await ensureTimeSlotTodo(slot, date);
-
-    for (const todo of legacy) {
-      if (todo.id === canonicalId) continue;
-
-      await migrateLegacyTodoToCanonical(todo, canonicalId);
-    }
+    await migrateLegacyTodoToCanonical(todo, canonicalId);
   }
 }

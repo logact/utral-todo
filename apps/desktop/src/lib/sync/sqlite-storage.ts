@@ -10,9 +10,7 @@ import type {
 import { db } from '../../db/drizzle-adapter';
 import * as schema from '../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getTimeSlotDefinitionByMilestoneId } from '../../db/timeSlotDefinitions';
-import { getTimeSlotByMilestoneId, getTimeSlotScheduleDate, DEFAULT_TIME_SLOTS } from '../../types';
-import type { TimeSlotConfig } from '../../types';
+
 
 const SYNC_TABLE_MAP: Record<string, any> = {
   todo:             schema.todos,
@@ -79,18 +77,6 @@ export class TauriSqliteStorage implements SyncQueueStorage, SyncRecordStorage, 
     values.updatedAtNode = version?.node ?? null;
     values.isDeleted = (r.isDeleted as boolean) ?? false;
 
-    // Normalize scheduledDate for time-slot todos to the stored (or default)
-    // local slot start time. This keeps CRDT merges correct across timezones
-    // without creating sync loops.
-    if (table === 'todo' && r.pattern === 'timeSlot') {
-      let slot: TimeSlotConfig | undefined = await getTimeSlotDefinitionByMilestoneId(r.id as string);
-      if (!slot) {
-        slot = getTimeSlotByMilestoneId(r.id as string, DEFAULT_TIME_SLOTS);
-      }
-      if (slot) {
-        values.scheduledDate = getTimeSlotScheduleDate(slot).getTime();
-      }
-    }
 
     await db.insert(t).values(values as any);
   }

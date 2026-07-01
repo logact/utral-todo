@@ -4,6 +4,22 @@ import { newHLC } from '@utral/sync-share';
 import { randomUUID } from 'node:crypto';
 
 /**
+ * Pull the writer's originating HLC out of a pushed record payload.
+ * The record's `version` is the writer's logical clock (client stamps
+ * `updatedAt = mergeHLC(existing, newHLC(node))` on every local write).
+ * Returns undefined for legacy/empty payloads with no valid version.
+ */
+function extractClientHLC(payload: unknown): HLCTimestamp | undefined {
+  const version = (payload as { version?: unknown } | null | undefined)?.version;
+  if (!version || typeof version !== 'object') return undefined;
+  const { wall, counter, node } = version as Record<string, unknown>;
+  if (typeof wall !== 'number' || typeof counter !== 'number' || typeof node !== 'string') {
+    return undefined;
+  }
+  return { wall, counter, node };
+}
+
+/**
  * Server-side sync handler — channel-based WebSocket relay.
  *
  * No CRDT merge on the server. It only:
@@ -136,7 +152,11 @@ export class SyncHandler {
           recordId: entry.recordId,
           payload: entry.payload,
           deviceId,
-          createdAt: newHLC(deviceId),
+          // Preserve the writer's originating logical clock so LWW ordering
+          // reflects writer logical time, not server arrival time. The record's
+          // HLC travels in payload.version (see sync-client syncLocalChange).
+          // Fall back to a fresh server stamp only for legacy/empty payloads.
+          createdAt: extractClientHLC(entry.payload) ?? newHLC(deviceId),
         };
         await this.opts.storage.createSyncEvent(event);
         accepted.push(event.id);
