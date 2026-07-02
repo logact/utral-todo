@@ -4,6 +4,7 @@ import type { ServerSyncStorage, SyncEvent, HLCTimestamp } from '@utral/sync-sha
 export class SqliteSyncStorage implements ServerSyncStorage {
   private db: Database.Database;
   private insertStmt!: Database.Statement;
+  private nextSeqStmt!: Database.Statement;
   private selectSinceStmt!: Database.Statement;
   private selectSinceHLCStmt!: Database.Statement;
   private selectBySeqStmt!: Database.Statement;
@@ -21,6 +22,7 @@ export class SqliteSyncStorage implements ServerSyncStorage {
       CREATE TABLE IF NOT EXISTS sync_events (
         id TEXT PRIMARY KEY,
         seq INTEGER NOT NULL,
+        channel TEXT NOT NULL DEFAULT '',
         tableName TEXT NOT NULL,
         operation TEXT NOT NULL,
         recordId TEXT NOT NULL,
@@ -32,8 +34,8 @@ export class SqliteSyncStorage implements ServerSyncStorage {
       );
       CREATE INDEX IF NOT EXISTS idx_sync_events_created_at
         ON sync_events (createdAtWall);
-      CREATE INDEX IF NOT EXISTS idx_sync_events_seq
-        ON sync_events (seq);
+      CREATE INDEX IF NOT EXISTS idx_sync_events_channel_seq
+        ON sync_events (channel, seq);
 
       CREATE TABLE IF NOT EXISTS device_event_queue (
         event_id TEXT NOT NULL,
@@ -49,8 +51,12 @@ export class SqliteSyncStorage implements ServerSyncStorage {
     `);
 
     this.insertStmt = this.db.prepare(`
-      INSERT INTO sync_events (id, seq, tableName, operation, recordId, payload, deviceId, createdAtWall, createdAtCounter, createdAtNode)
-      VALUES (@id, @seq, @tableName, @operation, @recordId, @payload, @deviceId, @createdAtWall, @createdAtCounter, @createdAtNode)
+      INSERT INTO sync_events (id, seq, channel, tableName, operation, recordId, payload, deviceId, createdAtWall, createdAtCounter, createdAtNode)
+      VALUES (@id, @seq, @channel, @tableName, @operation, @recordId, @payload, @deviceId, @createdAtWall, @createdAtCounter, @createdAtNode)
+    `);
+
+    this.nextSeqStmt = this.db.prepare(`
+      SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM sync_events WHERE channel = @channel
     `);
 
     this.selectSinceStmt = this.db.prepare(`
@@ -70,9 +76,9 @@ export class SqliteSyncStorage implements ServerSyncStorage {
     `);
 
     this.selectBySeqStmt = this.db.prepare(`
-      SELECT id, seq, tableName, operation, recordId, payload, deviceId, createdAtWall, createdAtCounter, createdAtNode
+      SELECT id, seq, channel, tableName, operation, recordId, payload, deviceId, createdAtWall, createdAtCounter, createdAtNode
       FROM sync_events
-      WHERE seq >= @from AND seq <= @to
+      WHERE channel = @channel AND seq >= @from AND seq <= @to
       ORDER BY seq ASC
     `);
 
@@ -98,9 +104,19 @@ export class SqliteSyncStorage implements ServerSyncStorage {
   }
 
   async createSyncEvent(syncEvent: SyncEvent): Promise<SyncEvent> {
+    // Assign the sequence from the DB (MAX+1 within the event's channel), not
+    // from an in-memory counter, so seq survives restarts and is monotonic
+    // per channel. better-sqlite3 is synchronous, so this MAX-then-INSERT pair
+    // runs with no interleaving JS (no await between) and is atomic for the
+    // single-threaded server. Persist under the caller's (client's raw) id so
+    // the push-ack echoes an id the client recognizes.
+    const channel = syncEvent.channel ?? '';
+    const seq = (this.nextSeqStmt.get({ channel }) as { seq: number }).seq;
+
     this.insertStmt.run({
       id: syncEvent.id,
-      seq: syncEvent.seq,
+      seq,
+      channel,
       tableName: syncEvent.table,
       operation: syncEvent.operation,
       recordId: syncEvent.recordId,
@@ -111,7 +127,7 @@ export class SqliteSyncStorage implements ServerSyncStorage {
       createdAtNode: syncEvent.createdAt.node,
     });
 
-    return syncEvent;
+    return { ...syncEvent, seq, channel };
   }
 
   async getEventsSince(since: Date): Promise<SyncEvent[]> {
@@ -178,10 +194,11 @@ export class SqliteSyncStorage implements ServerSyncStorage {
     }));
   }
 
-  async getEventsBySeq(from: number, to: number): Promise<SyncEvent[]> {
-    const rows = this.selectBySeqStmt.all({ from, to }) as Array<{
+  async getEventsBySeq(from: number, to: number, channel: string): Promise<SyncEvent[]> {
+    const rows = this.selectBySeqStmt.all({ from, to, channel }) as Array<{
       id: string;
       seq: number;
+      channel: string;
       tableName: string;
       operation: 'create' | 'update' | 'delete';
       recordId: string;
@@ -195,6 +212,7 @@ export class SqliteSyncStorage implements ServerSyncStorage {
     return rows.map((row) => ({
       id: row.id,
       seq: row.seq,
+      channel: row.channel,
       table: row.tableName,
       operation: row.operation,
       recordId: row.recordId,

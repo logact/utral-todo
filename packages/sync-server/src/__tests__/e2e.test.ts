@@ -211,34 +211,6 @@ describe('E2E: Full sync flow', () => {
     clientB.ws.close();
   });
 
-  it('should handle event_ack and mark delivery as acked', async () => {
-    const handler = makeHandler();
-
-    const clientA = await connectClient(handler, 'device-a');
-    const clientB = await connectClient(handler, 'device-b');
-
-    clientA.send({ type: 'subscribe', deviceId: 'user-1', channel: 'default' });
-    clientB.send({ type: 'subscribe', deviceId: 'user-1', channel: 'default' });
-    await new Promise((r) => setTimeout(r, 50));
-
-    clientA.send({
-      type: 'push', deviceId: 'user-1', channel: 'default',
-      items: [{ table: 'notes', operation: 'create', recordId: 'n1', payload: {} }],
-    });
-
-    const ev = await clientB.waitFor('event') as { event: SyncEvent };
-
-    clientB.send({ type: 'event_ack', deviceId: 'device-b', eventIds: [ev.event.id] });
-    await new Promise((r) => setTimeout(r, 50));
-
-    const storage = (handler as any).opts.storage as SqliteSyncStorage;
-    const pending = await storage.getPendingEventsForDevice('device-b');
-    expect(pending).toHaveLength(0);
-
-    clientA.ws.close();
-    clientB.ws.close();
-  });
-
   it('should deliver events on pull_seq', async () => {
     const handler = makeHandler();
 
@@ -260,7 +232,7 @@ describe('E2E: Full sync flow', () => {
 
     await new Promise((r) => setTimeout(r, 200));
 
-    clientB.send({ type: 'pull_seq', deviceId: 'device-b', channel: 'default', from: 1, to: 2 });
+    clientB.send({ type: 'pull_seq', deviceId: 'user-1', channel: 'default', from: 1, to: 2 });
 
     const ev1 = await clientB.waitFor('event') as { event: SyncEvent };
     expect(ev1.event.seq).toBe(1);
@@ -346,7 +318,7 @@ describe('E2E: Full sync flow', () => {
     clientB.send({ type: 'subscribe', deviceId: 'user-1', channel: 'default' });
     await new Promise((r) => setTimeout(r, 50));
 
-    clientB.send({ type: 'pull_seq', deviceId: 'device-b', channel: 'default', from: 1, to: 10 });
+    clientB.send({ type: 'pull_seq', deviceId: 'user-1', channel: 'default', from: 1, to: 10 });
 
     const caughtUp = await clientB.waitFor('event') as { event: SyncEvent };
     expect(caughtUp.event.recordId).toBe('n1');

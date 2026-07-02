@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { todos } from './schema';
 import { eq } from 'drizzle-orm';
-import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Label } from '../types';
 import { rowToTodo } from './schema';
@@ -42,7 +42,7 @@ export async function renameLabel(oldName: string, newName: string): Promise<num
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(todos.id, todo.id));
-    syncLocalChange('todos', 'update', todo.id).catch(() => {});
+    notifyDbOperation('todos', 'update', todo.id).catch(() => {});
     updated++;
   }
 
@@ -67,7 +67,7 @@ export async function deleteLabel(name: string): Promise<number> {
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(todos.id, todo.id));
-    syncLocalChange('todos', 'update', todo.id).catch(() => {});
+    notifyDbOperation('todos', 'update', todo.id).catch(() => {});
     updated++;
   }
 

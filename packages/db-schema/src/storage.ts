@@ -6,7 +6,7 @@ import type {
   SyncableRecord,
 } from '@utral/sync-client';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   todos,
   todoRelations,
@@ -203,6 +203,26 @@ export function createSqliteSyncStorage(
       const value = date.toISOString();
       await db.insert(syncState).values({ key: 'last_sync_at', value })
         .onConflictDoUpdate({ target: syncState.key, set: { value } });
+    },
+
+    async getLastSeq(): Promise<number | undefined> {
+      const rows = await db.select().from(syncState).where(eq(syncState.key, 'last_seq'));
+      return rows[0]?.value != null ? Number(rows[0].value) : undefined;
+    },
+
+    async setLastSeq(seq: number): Promise<void> {
+      // last_seq must be monotonic. Do the compare-and-max in a single atomic
+      // upsert so a concurrent writer can't rewind the cursor between a read and
+      // a write. `value` is TEXT, so cast to INTEGER before comparing (otherwise
+      // "9" > "10" lexically). MAX(current, incoming) keeps the larger seq.
+      const value = String(seq);
+      await db.insert(syncState).values({ key: 'last_seq', value })
+        .onConflictDoUpdate({
+          target: syncState.key,
+          set: {
+            value: sql`CAST(MAX(CAST(${syncState.value} AS INTEGER), CAST(excluded.value AS INTEGER)) AS TEXT)`,
+          },
+        });
     },
   };
 }

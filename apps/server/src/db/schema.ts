@@ -236,6 +236,8 @@ export const syncEvent = pgTable(
     recordId: text('recordId').notNull(),
     payload: jsonb('payload'),
     deviceId: text('deviceId').notNull(),
+    seq: bigint('seq', { mode: 'number' }).notNull().default(0),
+    channel: text('channel').notNull().default(''),
     createdAt: timestamp('createdAt').notNull().defaultNow(),
     versionWall: bigint('versionWall', { mode: 'number' }).notNull().default(0),
     versionCounter: integer('versionCounter').notNull().default(0),
@@ -244,6 +246,7 @@ export const syncEvent = pgTable(
   (t) => [
     index('SyncEvent_createdAt_idx').on(t.createdAt),
     index('SyncEvent_recordId_idx').on(t.recordId),
+    index('SyncEvent_channel_seq_idx').on(t.channel, t.seq),
   ],
 );
 

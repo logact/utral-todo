@@ -18,6 +18,7 @@
     "notification:allow-request-permission",
     "notification:allow-is-permission-granted",
     "notification:allow-notify",
+    "os:allow-platform",
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",

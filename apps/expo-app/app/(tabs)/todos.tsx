@@ -34,6 +34,7 @@ export default function TodosScreen() {
 
   const query = searchQuery.trim().toLowerCase();
   const filtered = todos.filter((t) => {
+    if (t.pattern === 'timeSlot') return false;
     const matchesFilter = filter === 'all' || t.status === filter;
     const matchesSearch =
       !query ||

@@ -25,13 +25,23 @@ function createMockStorage(): ServerSyncStorage & { events: SyncEvent[] } {
   const store: ServerSyncStorage & { events: SyncEvent[] } = {
     events: [],
     async createSyncEvent(event: SyncEvent) {
-      store.events.push(event);
-      return event;
+      // Mirror the real storage: assign seq from the current max (+1) within
+      // the event's channel and persist under the caller-provided id. Return
+      // the stamped event.
+      const channel = event.channel ?? '';
+      const seq = store.events
+        .filter((e) => (e.channel ?? '') === channel)
+        .reduce((max, e) => Math.max(max, e.seq), 0) + 1;
+      const stored = { ...event, channel, seq };
+      store.events.push(stored);
+      return stored;
     },
     async getEventsSince() { return store.events; },
     async getEventsSinceHLC() { return store.events; },
-    async getEventsBySeq(from: number, to: number) {
-      return store.events.filter((e) => e.seq >= from && e.seq <= to);
+    async getEventsBySeq(from: number, to: number, channel: string) {
+      return store.events.filter(
+        (e) => (e.channel ?? '') === channel && e.seq >= from && e.seq <= to,
+      );
     },
     trackEventDelivery: vi.fn(),
     ackEventDelivery: vi.fn(),
@@ -150,6 +160,14 @@ describe('SyncHandler', () => {
       expect(storage.events[2].seq).toBe(3);
     });
 
+    it('acks the client raw id and stores the event under it', async () => {
+      const result = await handler.acceptPush('device-1', 'user-1', 'default', [
+        { id: 'queue-item-1', table: 'notes', operation: 'create', recordId: 'r1' },
+      ]);
+      expect(result.accepted).toEqual(['queue-item-1']);
+      expect(storage.events[0].id).toBe('queue-item-1');
+    });
+
     it('should track delivery for each subscribed device', async () => {
       const s1 = createMockSocket();
       const s2 = createMockSocket();
@@ -202,28 +220,15 @@ describe('SyncHandler', () => {
     });
   });
 
-  describe('event_ack', () => {
-    it('should call storage.ackEventDelivery', () => {
-      const socket = createMockSocket();
-      handler.connect('device-1', socket);
-
-      handler.handleMessage('device-1', JSON.stringify({
-        type: 'event_ack', deviceId: 'device-1', eventIds: ['ev1', 'ev2'],
-      }));
-
-      expect(storage.ackEventDelivery).toHaveBeenCalledWith('device-1', ['ev1', 'ev2']);
-    });
-  });
-
   describe('pull_seq', () => {
     it('should return events by seq range and track delivery', async () => {
       const socket = createMockSocket();
       handler.connect('device-1', socket);
 
       storage.events = [
-        { id: 'e1', seq: 1, table: 'notes', operation: 'create', recordId: 'r1', deviceId: 'd1', createdAt: { wall: 1, counter: 0, node: 'd1' } },
-        { id: 'e2', seq: 2, table: 'notes', operation: 'update', recordId: 'r2', deviceId: 'd1', createdAt: { wall: 2, counter: 0, node: 'd1' } },
-        { id: 'e3', seq: 3, table: 'notes', operation: 'delete', recordId: 'r3', deviceId: 'd1', createdAt: { wall: 3, counter: 0, node: 'd1' } },
+        { id: 'e1', seq: 1, channel: 'user-1:default', table: 'notes', operation: 'create', recordId: 'r1', deviceId: 'd1', createdAt: { wall: 1, counter: 0, node: 'd1' } },
+        { id: 'e2', seq: 2, channel: 'user-1:default', table: 'notes', operation: 'update', recordId: 'r2', deviceId: 'd1', createdAt: { wall: 2, counter: 0, node: 'd1' } },
+        { id: 'e3', seq: 3, channel: 'user-1:default', table: 'notes', operation: 'delete', recordId: 'r3', deviceId: 'd1', createdAt: { wall: 3, counter: 0, node: 'd1' } },
       ];
 
       await handler['sendEventsBySeq']('device-1', socket, 'user-1', 'default', 1, 2);

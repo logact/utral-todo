@@ -1,4 +1,6 @@
 import { eq, and } from 'drizzle-orm';
+import { Platform } from 'react-native';
+import { makeDeviceId, type EndType } from '@utral/sync-share';
 import { db, expoDb, schema } from '../db';
 import { queryClient } from './query-client';
 import type { Todo, Pluse, SyncConfig, TodoStatus, PluseTimerStatus } from '@utral/types';
@@ -62,7 +64,11 @@ export async function getHLCState(): Promise<HLCState> {
       lastSeen: Number(await getHlcValue('lastSeen') ?? 0),
     };
   }
-  const defaultState = { counter: 0, node: Math.random().toString(36).slice(2, 10), lastSeen: Date.now() };
+  // First run on this install: mint a stable `${endType}-${uuid}` device id that
+  // doubles as the HLC node. On mobile the end-type comes straight from
+  // Platform.OS (ios/android); anything else falls back to "desktop".
+  const endType: EndType = Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : 'desktop';
+  const defaultState = { counter: 0, node: makeDeviceId(endType), lastSeen: Date.now() };
   await setHLCState(defaultState);
   return defaultState;
 }

@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { pluses } from './schema';
 import { eq } from 'drizzle-orm';
-import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
 import type { Pluse } from '../types';
 import { pluseToRow, rowToPluse } from './schema';
@@ -33,7 +33,7 @@ export async function createPluse(
     isDeleted: false,
   };
   await db.insert(pluses).values(pluseToRow(pluse));
-  syncLocalChange('pluses', 'create', pluse.id).catch(() => {});
+  notifyDbOperation('pluses', 'create', pluse.id).catch(() => {});
   return pluse;
 }
 
@@ -67,7 +67,7 @@ export async function setActivePluse(id: string | null): Promise<void> {
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(pluses.id, currentActive.id));
-    syncLocalChange('pluses', 'update', currentActive.id).catch(() => {});
+    notifyDbOperation('pluses', 'update', currentActive.id).catch(() => {});
   }
 
   if (id) {
@@ -80,7 +80,7 @@ export async function setActivePluse(id: string | null): Promise<void> {
         updatedAtCounter: mergedUpdatedAt.counter,
         updatedAtNode: mergedUpdatedAt.node,
       }).where(eq(pluses.id, id));
-      syncLocalChange('pluses', 'update', id).catch(() => {});
+      notifyDbOperation('pluses', 'update', id).catch(() => {});
     }
   }
 }
@@ -97,7 +97,7 @@ export async function updatePluse(
   await db.update(pluses).set({
     ...pluseToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Pluse>),
   }).where(eq(pluses.id, id));
-  syncLocalChange('pluses', 'update', id).catch(() => {});
+  notifyDbOperation('pluses', 'update', id).catch(() => {});
 }
 
 export async function deletePluse(id: string): Promise<void> {
@@ -113,5 +113,5 @@ export async function deletePluse(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, id));
-  syncLocalChange('pluses', 'delete', id).catch(() => {});
+  notifyDbOperation('pluses', 'delete', id).catch(() => {});
 }

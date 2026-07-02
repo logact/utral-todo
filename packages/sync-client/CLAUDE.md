@@ -9,7 +9,7 @@ is specific to the client.
 - **`SyncClientHandler`** (`sync-handler.ts`) — the WebSocket client. Owns the
   connection lifecycle (connect / auto-reconnect with exponential backoff /
   disconnect), message routing, the local-change queue flush, the LWW merge
-  (`applyRemoteEvent`), and batched `event_ack`s.
+  (`applyRemoteEvent`).
 - **`ReorderBuffer`** (`reorder-buffer.ts`) — a `seq`-indexed sliding window that
   releases incoming events **in order** and requests gap backfill.
 - **Interfaces** (`types.ts`) — `SyncQueueStorage`, `SyncRecordStorage`,
@@ -34,8 +34,7 @@ from `@utral/db-schema/storage`. Expo has a parallel handler/transport under
    items when connected. `push-ack` removes accepted items and marks rejected
    ones for retry.
 2. **Inbound:** `event` → `ReorderBuffer` → `applyRemoteEvent` (LWW merge via
-   `compareHLC`) → `SyncRecordStorage` write → `emitRemoteApplied` (UI refresh)
-   → batched `event_ack`.
+   `compareHLC`) → `SyncRecordStorage` write → `emitRemoteApplied` (UI refresh).
 
 ## How to use the package
 

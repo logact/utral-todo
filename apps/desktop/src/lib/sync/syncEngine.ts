@@ -1,17 +1,9 @@
 import { TauriSyncHandler } from './sync-handler.js';
 import { getSyncConfig } from '../../db/sync.js';
+import { platform } from '@tauri-apps/plugin-os';
+import { makeDeviceId, type EndType } from '@utral/sync-share';
 
-// Table name mapping: Dexie store names → SyncEvent canonical names
-const TABLE_NAME_MAP: Record<string, string> = {
-  todos: 'todo',
-  relations: 'todoRelation',
-  todoLogs: 'todoLog',
-  actionEdges: 'actionEdge',
-  plans: 'plan',
-  pluses: 'pluse',
-  repeatOccurrences: 'repeatOccurrence',
-  timeSlots: 'timeSlot',
-};
+
 
 const TABLE_ORDER: Record<string, number> = {
   todos: 0, todo: 0,
@@ -51,6 +43,13 @@ function getWsUrl(httpUrl: string): string {
   return httpUrl.replace(/^http/, 'ws');
 }
 
+// The server mounts the sync WebSocket at this path (see apps/server/src/index.ts).
+const SYNC_WS_PATH = '/ws/sync';
+
+function withSyncPath(wsUrl: string): string {
+  return wsUrl.includes(SYNC_WS_PATH) ? wsUrl : wsUrl + SYNC_WS_PATH;
+}
+
 // --- Device ID ---
 
 const DEVICE_ID_KEY = 'syncDeviceId';
@@ -59,12 +58,16 @@ const DEVICE_ID_KEY = 'syncDeviceId';
  * Return this device's stable id, generating and persisting one on first use.
  * Used both as the HLC node id for local writes and as the sync connection's
  * deviceId, so it must be stable across launches and independent of whether sync
- * is configured.
+ * is configured. The id is `${endType}-${uuid}` (see `makeDeviceId`); on the
+ * desktop the Tauri OS plugin resolves `endType` to "linux" on Linux and
+ * "desktop" on macOS/Windows. Existing ids are never reformatted — the node id
+ * is baked into the HLC version of records this device has already written.
  */
 export async function getOrCreateDeviceId(): Promise<string> {
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
-    id = crypto.randomUUID();
+    const endType: EndType = platform() === 'linux' ? 'linux' : 'desktop';
+    id = makeDeviceId(endType);
     localStorage.setItem(DEVICE_ID_KEY, id);
   }
   return id;
@@ -77,12 +80,10 @@ async function getEngine(): Promise<TauriSyncHandler> {
       throw new Error('Sync not configured');
     }
 
-    const serverUrl = getWsUrl(normalizeServerUrl(config.serverUrl));
+    const serverUrl = withSyncPath(getWsUrl(normalizeServerUrl(config.serverUrl)));
 
     engine = new TauriSyncHandler({
       serverUrl,
-      tables: Object.values(TABLE_NAME_MAP),
-      tableOrder: TABLE_ORDER,
       deviceId: await getOrCreateDeviceId(),
       userId: config.userId || 'default',
       channel: config.channel || 'default',
@@ -96,7 +97,7 @@ async function getEngine(): Promise<TauriSyncHandler> {
 
 // --- Public API (same as before) ---
 
-export async function syncLocalChange(
+export async function notifyDbOperation(
   table: string,
   operation: 'create' | 'update' | 'delete',
   recordId: string
@@ -105,6 +106,7 @@ export async function syncLocalChange(
    window.dispatchEvent(
       new CustomEvent('db:changed', { detail: { table, operation, recordId } })
     );
+
   return engine.syncLocalChange(table, operation, recordId);
 }
 

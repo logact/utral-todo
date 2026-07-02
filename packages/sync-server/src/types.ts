@@ -60,10 +60,4 @@ export interface PullSeqMessage {
   to: number;
 }
 
-export interface DeviceEventAckMessage {
-  type: 'event_ack';
-  deviceId: string;
-  eventIds: string[];
-}
-
-export type SyncMessage = SubscribeMessage | UnsubscribeMessage | PushMessage | PullMessage | PullSeqMessage | DeviceEventAckMessage;
+export type SyncMessage = SubscribeMessage | UnsubscribeMessage | PushMessage | PullMessage | PullSeqMessage;

@@ -16,6 +16,7 @@ import {
   updateTodoSchedule,
 } from '@/lib/todos';
 import { getAllPluses } from '@/lib/pluse';
+import { extractAtSchedule, formatSchedulePreview } from '@/lib/atSchedule';
 import { getTimeSlotDefinitions, ensureTimeSlotTodo } from '@/lib/timeSlots';
 import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
 import {
@@ -638,13 +639,18 @@ export default function TodayScreen() {
   }, [timeSlotDefs, queryClient]);
 
   const createMutation = useMutation({
-    mutationFn: () => createTodo({ title: quickTitle }),
+    mutationFn: () => {
+      const { title, scheduledDate } = extractAtSchedule(quickTitle);
+      return createTodo({ title: title || quickTitle.trim(), scheduledDate });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       setQuickTitle('');
       setQuickOpen(false);
     },
   });
+
+  const quickPreview = useMemo(() => extractAtSchedule(quickTitle), [quickTitle]);
 
   const toggleStatus = useCallback(
     async (todo: Todo) => {
@@ -1054,13 +1060,32 @@ export default function TodayScreen() {
                 fontSize: 16,
                 color: '#0f172a',
               }}
-              placeholder="What needs to be done?"
+              placeholder="What needs to be done?  (try @tomorrow, @friday 3pm)"
               placeholderTextColor="#94a3b8"
               value={quickTitle}
               onChangeText={setQuickTitle}
               autoFocus
               onSubmitEditing={handleQuickCreate}
             />
+            {quickPreview.scheduledDate && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  alignSelf: 'flex-start',
+                  marginTop: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: '#eef2ff',
+                }}
+              >
+                <Ionicons name="calendar-outline" size={14} color="#6366f1" />
+                <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: '500', color: '#6366f1' }}>
+                  {formatSchedulePreview(quickPreview.scheduledDate)}
+                </Text>
+              </View>
+            )}
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
               <Pressable
                 onPress={handleQuickCreate}

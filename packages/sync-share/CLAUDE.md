@@ -100,7 +100,7 @@ interface SyncEvent {
 
 ### Wire protocol (`types.ts`)
 
-Client → server: `subscribe`, `unsubscribe`, `push`, `pull_seq`, `event_ack`.
+Client → server: `subscribe`, `unsubscribe`, `push`, `pull_seq`.
 Server → client: `event`, `push-ack`, (`pull_response`).
 
 A **channel** is keyed by `(userId, channel)`. `seq` is monotonic **per channel**.
@@ -165,9 +165,6 @@ each released event `applyRemoteEvent` runs the LWW merge:
 - `update`/`delete` → same LWW comparison; `delete` sets `isDeleted = true`.
 - On success, emit `remoteApplied(table, op, recordId)` → the desktop emitter
   dispatches `db:changed` so the UI refreshes.
-
-Applied events are ACKed back in **batches** (`event_ack`, flushed ~100 ms) so
-the server can mark per-device delivery complete.
 
 ### ReorderBuffer (`sync-client/reorder-buffer.ts`)
 

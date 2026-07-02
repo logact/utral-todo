@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { todos, todoRelations, plans as plansTable } from './schema';
 import { eq, and, or, lt, gte, isNotNull, isNull } from 'drizzle-orm';
-import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
 import { newHLC, mergeHLC } from '../types';
@@ -73,7 +73,7 @@ export async function createTodo(
   };
   const newRow = todoToRow(todo);
   await db.insert(todos).values(newRow);
-  syncLocalChange('todos', 'create', todo.id).catch(() => {});
+  notifyDbOperation('todos', 'create', todo.id).catch(() => {});
 
   return todo;
 }
@@ -173,7 +173,7 @@ export async function ensureRootGoal(): Promise<Todo> {
     isDeleted: false,
   };
   await db.insert(todos).values(todoToRow(rootGoal));
-  syncLocalChange('todos', 'create', rootGoal.id).catch(() => {});
+  notifyDbOperation('todos', 'create', rootGoal.id).catch(() => {});
 
   const plan: Plan = {
     id: crypto.randomUUID(),
@@ -187,7 +187,7 @@ export async function ensureRootGoal(): Promise<Todo> {
     isDeleted: false,
   };
   await db.insert(plansTable).values(planToRow(plan));
-  syncLocalChange('plans', 'create', plan.id).catch(() => {});
+  notifyDbOperation('plans', 'create', plan.id).catch(() => {});
 
   await db.update(todos).set({
     activePlanId: plan.id,
@@ -195,7 +195,7 @@ export async function ensureRootGoal(): Promise<Todo> {
     updatedAtCounter: hlc.counter,
     updatedAtNode: hlc.node,
   }).where(eq(todos.id, rootGoal.id));
-  syncLocalChange('todos', 'update', rootGoal.id).catch(() => {});
+  notifyDbOperation('todos', 'update', rootGoal.id).catch(() => {});
 
   return { ...rootGoal, activePlanId: plan.id };
 }
@@ -296,7 +296,7 @@ export async function reorderSubTodos(_parentId: string, orderedIds: string[]): 
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(todos.id, orderedIds[i]));
-    syncLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
+    notifyDbOperation('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -314,7 +314,7 @@ export async function reorderTodos(orderedIds: string[]): Promise<void> {
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(todos.id, orderedIds[i]));
-    syncLocalChange('todos', 'update', orderedIds[i]).catch(() => {});
+    notifyDbOperation('todos', 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -339,7 +339,7 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
   await db.update(todos).set({
     ...todoToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Todo>),
   }).where(eq(todos.id, id));
-  syncLocalChange('todos', 'update', id).catch(() => {});
+  notifyDbOperation('todos', 'update', id).catch(() => {});
 }
 
 export async function deleteTodo(id: string): Promise<void> {
@@ -369,7 +369,7 @@ export async function deleteTodo(id: string): Promise<void> {
         updatedAtCounter: mergedPlanUpdatedAt.counter,
         updatedAtNode: mergedPlanUpdatedAt.node,
       }).where(eq(plansTable.id, plan.id));
-      syncLocalChange('plans', 'delete', plan.id).catch(() => {});
+      notifyDbOperation('plans', 'delete', plan.id).catch(() => {});
     }
   } else {
     const allPlanRows = await db.select().from(plansTable) as any[];
@@ -398,7 +398,7 @@ export async function deleteTodo(id: string): Promise<void> {
           updatedAtCounter: mergedPlanUpdatedAt.counter,
           updatedAtNode: mergedPlanUpdatedAt.node,
         }).where(eq(plansTable.id, plan.id));
-        syncLocalChange('plans', 'update', plan.id).catch(() => {});
+        notifyDbOperation('plans', 'update', plan.id).catch(() => {});
       }
     }
   }
@@ -412,7 +412,7 @@ export async function deleteTodo(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  syncLocalChange('todos', 'delete', id).catch(() => {});
+  notifyDbOperation('todos', 'delete', id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
@@ -429,7 +429,7 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  syncLocalChange('todos', 'update', id).catch(() => {});
+  notifyDbOperation('todos', 'update', id).catch(() => {});
 }
 
 export async function updateTodoSchedule(
@@ -447,7 +447,7 @@ export async function updateTodoSchedule(
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  syncLocalChange('todos', 'update', id).catch(() => {});
+  notifyDbOperation('todos', 'update', id).catch(() => {});
 }
 
 // ─── Virtual Instance Computation ───
@@ -710,5 +710,5 @@ export async function updateRepeatRule(
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  syncLocalChange('todos', 'update', id).catch(() => {});
+  notifyDbOperation('todos', 'update', id).catch(() => {});
 }

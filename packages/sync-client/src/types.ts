@@ -33,6 +33,9 @@ export interface SyncStateStorage {
   setDeviceId(id: string): Promise<void>;
   getLastSyncAt(): Promise<Date | undefined>;
   setLastSyncAt(date: Date): Promise<void>;
+  /** Highest per-channel seq the client has processed in order (resume point). */
+  getLastSeq(): Promise<number | undefined>;
+  setLastSeq(seq: number): Promise<void>;
 }
 
 // --- Event emitter ---

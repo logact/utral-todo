@@ -1,7 +1,7 @@
 import { db } from './drizzle-adapter';
 import { repeatOccurrences, todos } from './schema';
 import { eq } from 'drizzle-orm';
-import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createTodo } from './todos';
 import { newHLC, mergeHLC, makeVirtualTodoId } from '../types';
 import type { RepeatOccurrence, Todo, TodoStatus } from '../types';
@@ -70,7 +70,7 @@ export async function setOccurrenceStatus(
     await db.update(repeatOccurrences).set(updateData).where(
       eq(repeatOccurrences.id, id)
     );
-    syncLocalChange('repeatOccurrences', 'update', id).catch(() => {});
+    notifyDbOperation('repeatOccurrences', 'update', id).catch(() => {});
   } else {
     const occurrence: RepeatOccurrence = {
       id,
@@ -83,7 +83,7 @@ export async function setOccurrenceStatus(
       isDeleted: false,
     };
     await db.insert(repeatOccurrences).values(repeatOccurrenceToRow(occurrence));
-    syncLocalChange('repeatOccurrences', 'create', id).catch(() => {});
+    notifyDbOperation('repeatOccurrences', 'create', id).catch(() => {});
   }
 }
 
@@ -124,7 +124,7 @@ export async function materializeInstance(
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(repeatOccurrences.id, id));
-    syncLocalChange('repeatOccurrences', 'update', id).catch(() => {});
+    notifyDbOperation('repeatOccurrences', 'update', id).catch(() => {});
   } else {
     await db.insert(repeatOccurrences).values(repeatOccurrenceToRow({
       id,
@@ -135,7 +135,7 @@ export async function materializeInstance(
       createdAt: hlc,
       updatedAt: hlc,
     }));
-    syncLocalChange('repeatOccurrences', 'create', id).catch(() => {});
+    notifyDbOperation('repeatOccurrences', 'create', id).catch(() => {});
   }
 
   return instance;
@@ -157,7 +157,7 @@ export async function deleteOccurrence(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(repeatOccurrences.id, id));
-  syncLocalChange('repeatOccurrences', 'delete', id).catch(() => {});
+  notifyDbOperation('repeatOccurrences', 'delete', id).catch(() => {});
 }
 
 export async function deleteOccurrencesForTemplate(templateId: string): Promise<void> {
@@ -174,6 +174,6 @@ export async function deleteOccurrencesForTemplate(templateId: string): Promise<
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(repeatOccurrences.id, o.id));
-    syncLocalChange('repeatOccurrences', 'delete', o.id).catch(() => {});
+    notifyDbOperation('repeatOccurrences', 'delete', o.id).catch(() => {});
   }
 }

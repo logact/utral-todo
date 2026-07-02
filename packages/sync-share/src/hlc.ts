@@ -89,4 +89,11 @@ export interface SyncEvent {
   payload?: unknown;
   deviceId: string;
   createdAt: HLCTimestamp;
+  /**
+   * Routing channel key ("userId:channel") the event belongs to. `seq` is
+   * monotonic *within* a channel, so a channel is required to interpret it.
+   * Optional on the type only for legacy/test event literals; the server always
+   * stamps it in acceptPush.
+   */
+  channel?: string;
 }

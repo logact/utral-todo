@@ -66,7 +66,7 @@ describe('SqliteSyncStorage', () => {
       await storage.createSyncEvent(e1);
       await storage.createSyncEvent(e2);
       await storage.createSyncEvent(e3);
-      const events = await storage.getEventsBySeq(1, 2);
+      const events = await storage.getEventsBySeq(1, 2, '');
       expect(events).toHaveLength(2);
       expect(events.map((e) => e.seq)).toEqual([1, 2]);
     });

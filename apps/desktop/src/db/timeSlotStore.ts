@@ -1,5 +1,5 @@
 import { db } from './drizzle-adapter';
-import { syncLocalChange, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import type { TimeSlotStore, TimeSlotEntity } from '@utral/db-schema/timeslots';
 
 // Map the engine's canonical entity names to desktop's syncLocalChange table
@@ -19,7 +19,7 @@ export function makeTimeSlotStore(nodeIdOverride?: string): TimeSlotStore {
     db,
     getDeviceId: async () => nodeIdOverride ?? (await getOrCreateDeviceId()),
     trackChange: (entity, op, id) => {
-      syncLocalChange(SYNC_ENTITY[entity], op, id).catch(() => {});
+      notifyDbOperation(SYNC_ENTITY[entity], op, id).catch(() => {});
     },
   };
 }

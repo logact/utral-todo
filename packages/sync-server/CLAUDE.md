@@ -28,7 +28,6 @@ is specific to the server.
    reorder buffer) and calls `trackEventDelivery`. The client recognizes its own
    events by `event.deviceId` and advances its buffer without re-applying them.
 3. `pull_seq { from, to }` replays a `seq` range to one device.
-4. `event_ack` marks delivery complete.
 
 Registered tables are passed in by the app (`apps/server/src/sync/setup.ts`):
 `todo, todoRelation, todoLog, actionEdge, pluse, repeatOccurrence, plan, timeSlot`.
@@ -80,7 +79,7 @@ wss.on('connection', (ws, req) => {
 ```
 
 `handleMessage` dispatches the wire protocol (`subscribe`/`unsubscribe`/`push`/
-`pull_seq`/`event_ack`) for you. To use a different backing store (e.g. Postgres),
+`pull_seq`) for you. To use a different backing store (e.g. Postgres),
 implement `ServerSyncStorage` — `SqliteSyncStorage` is the complete reference,
 and `apps/server/src/sync/pg-storage.ts` is the (incomplete) Postgres port.
 

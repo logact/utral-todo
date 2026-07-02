@@ -32,8 +32,6 @@ export class SyncHandler {
   private sockets = new Map<string, ServerSocket>();
   /** channelKey ("userId:channel") → Set of deviceIds */
   private subscriptions = new Map<string, Set<string>>();
-  /** channelKey → next sequence number */
-  private seqCounters = new Map<string, number>();
 
   constructor(opts: SyncHandlerOptions) {
     this.opts = opts;
@@ -70,9 +68,7 @@ export class SyncHandler {
       case 'pull_seq':
         this.handlePullSeq(deviceId, socket, msg.deviceId, msg.channel, msg.from, msg.to);
         break;
-      case 'event_ack':
-        this.handleEventAck(msg.deviceId, msg.eventIds);
-        break;
+
     }
   }
 
@@ -99,9 +95,10 @@ export class SyncHandler {
 
   private handlePush(deviceId: string, socket: ServerSocket, msg: PushMessage): void {
     this.acceptPush(deviceId, msg.deviceId, msg.channel, msg.items).then((result) => {
+      this.logPushResult(deviceId, channelKey(msg.deviceId, msg.channel), msg.items.length, result);
       socket.send(JSON.stringify({ type: 'push-ack', ...result }));
-    }).catch(() => {
-      // ignore push errors silently
+    }).catch((err) => {
+      console.error(`[sync] push from dev=${deviceId} failed:`, err);
     });
   }
 
@@ -113,27 +110,19 @@ export class SyncHandler {
     });
   }
 
-  private handleEventAck(deviceId: string, eventIds: string[]): void {
-    this.opts.storage.ackEventDelivery(deviceId, eventIds);
-  }
+
 
   /** Accept a push batch: persist events, return ack */
   async acceptPush(deviceId: string, userId: string, channel: string, items: unknown[]): Promise<PushResult> {
     const accepted: string[] = [];
     const rejected: Array<{ id: string; reason: string }> = [];
-    const channelKeyStr = channelKey(userId, channel);
 
     for (const item of items) {
-      const entry = item as { table?: string; operation?: string; recordId?: string; payload?: unknown; id?: string };
+      const entry = item as { table?: string; operation?: string; recordId?: string; payload?: unknown; id: string };
       const id = entry.id ?? entry.recordId ?? 'unknown';
 
       if (!entry.table || !entry.operation || !entry.recordId) {
         rejected.push({ id, reason: 'missing required fields (table, operation, recordId)' });
-        continue;
-      }
-
-      if (!this.opts.tables.includes(entry.table)) {
-        rejected.push({ id, reason: `table '${entry.table}' is not registered` });
         continue;
       }
 
@@ -142,31 +131,45 @@ export class SyncHandler {
         continue;
       }
 
+      if (!this.opts.tables.includes(entry.table)) {
+        rejected.push({ id, reason: `table '${entry.table}' not registered` });
+        continue;
+      }
+
       try {
-        const seq = this.nextSeq(channelKeyStr);
         const event: SyncEvent = {
-          id: randomUUID(),
-          seq,
+          // Persist under the client's raw queue-item id so the push-ack echoes
+          // an id the client recognizes and can remove from its write-ahead
+          // queue. Fall back to a fresh id only for legacy pushes with no id.
+          id: entry.id,
+          // Placeholder — storage assigns the real seq from the DB (MAX+1) and
+          // returns it on the stored event.
+          seq: 0,
           table: entry.table,
           operation: entry.operation,
           recordId: entry.recordId,
           payload: entry.payload,
           deviceId,
+          // The channel this event belongs to. seq is monotonic per channel
+          // (assigned by storage), so the event must carry its channel key.
+          channel: channelKey(userId, channel),
           // Preserve the writer's originating logical clock so LWW ordering
           // reflects writer logical time, not server arrival time. The record's
           // HLC travels in payload.version (see sync-client syncLocalChange).
           // Fall back to a fresh server stamp only for legacy/empty payloads.
           createdAt: extractClientHLC(entry.payload) ?? newHLC(deviceId),
         };
-        await this.opts.storage.createSyncEvent(event);
-        accepted.push(event.id);
+        const stored = await this.opts.storage.createSyncEvent(event);
+        accepted.push(stored.id);
         // Broadcast to ALL subscribers including the origin device. Echoing the
         // event back to its writer keeps every client's per-channel seq stream
         // contiguous (the reorder buffer would otherwise stall on the hole left
         // by the client's own write). The client recognizes its own events by
         // event.deviceId and advances its buffer without re-applying them.
-        this.broadcastToChannel(userId, channel, event);
-      } catch {
+        // Broadcast the *stored* event so it carries the DB-assigned seq.
+        this.broadcastToChannel(userId, channel, stored);
+      } catch (err) {
+        console.error(`[sync] storage error persisting event for ${id}:`, err);
         rejected.push({ id, reason: 'storage error' });
       }
     }
@@ -174,21 +177,24 @@ export class SyncHandler {
     return { accepted, rejected };
   }
 
-  private nextSeq(channelKey: string): number {
-    const current = this.seqCounters.get(channelKey) ?? 0;
-    const next = current + 1;
-    this.seqCounters.set(channelKey, next);
-    return next;
+  private logPushResult(deviceId: string, channelKeyStr: string, itemCount: number, result: PushResult): void {
+    console.log(
+      `[sync] push from dev=${deviceId} (${channelKeyStr}): ${itemCount} item(s), accepted=${result.accepted.length}, rejected=${result.rejected.length}`,
+    );
+    for (const r of result.rejected) {
+      console.log(`[sync]   rejected ${r.id}: ${r.reason}`);
+    }
   }
-
-  
 
   /** Send events by sequence number range */
   async sendEventsBySeq(deviceId: string, socket: ServerSocket, userId: string, channel: string, from: number, to: number): Promise<void> {
-    const events = await this.opts.storage.getEventsBySeq(from, to);
+    const events = await this.opts.storage.getEventsBySeq(from, to, channelKey(userId, channel));
     for (const event of events) {
+      console.log(
+        `[sync] send event seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId} -> ${deviceId} (${userId}:${channel}) [pull]`,
+      );
       socket.send(JSON.stringify({ type: 'event', userId, channel, event }));
-      this.opts.storage.trackEventDelivery(event.id, deviceId, channel);
+      // this.opts.storage.trackEventDelivery(event.id, deviceId, channel);
     }
   }
 
@@ -204,8 +210,11 @@ export class SyncHandler {
       if (deviceId === excludeDeviceId) continue;
       const socket = this.sockets.get(deviceId);
       if (socket) {
+        console.log(
+          `[sync] relay event seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId} -> ${deviceId} (${userId}:${channel})`,
+        );
         socket.send(payload);
-        this.opts.storage.trackEventDelivery(event.id, deviceId, channel);
+
       }
     }
 

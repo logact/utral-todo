@@ -75,9 +75,7 @@ export class SyncClientHandler {
   // Reorder buffer
   private reorderBuffer: ReorderBuffer<SyncEvent>;
 
-  // Batched ACKs
-  private pendingAckIds: string[] = [];
-  private ackTimer: ReturnType<typeof setTimeout> | null = null;
+
 
   // Subclass hooks (override in subclass)
   protected onStateChange?: (state: SyncClientState) => void;
@@ -98,10 +96,19 @@ export class SyncClientHandler {
           // The server echoes a client's own writes back so its seq stream stays
           // contiguous. Advance the buffer (this callback already does) and ack,
           // but don't re-apply our own event — the record is already local.
-          if (event.deviceId !== this.opts.deviceId) {
+          const own = event.deviceId === this.opts.deviceId;
+          console.log(
+            `[sync] recv event seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId}${own ? ' (own echo)' : ''} dev=${this.opts.deviceId}`,
+          );
+          if (!own) {
             this.applyRemoteEvent(event);
           }
-          this.enqueueAck(event.id);
+          // Record the highest contiguous seq we've processed so a
+          // reconnect/restart resumes from here instead of replaying the
+          // channel from seq 1. onReady fires for every in-order flush
+          // (including our own echoes), so event.seq is exactly the last
+          // contiguous seq applied.
+          this.opts.storage.setLastSeq(event.seq);
         },
         pullMissing: (from, to) => this.pullMissingEvents(from, to),
       },
@@ -126,9 +133,24 @@ export class SyncClientHandler {
 
     this.setState('connecting');
     try {
+      // Resume the reorder buffer from the last seq we durably processed, so a
+      // restart doesn't expect seq 1 again and stall behind a phantom gap. The
+      // constructor seeds 1 for the first-ever connect.
+      const lastSeq = await this.opts.storage.getLastSeq();
+      this.reorderBuffer.reset(lastSeq != null ? lastSeq + 1 : 1);
       await this.openSocket();
       this.reconnectAttempts = 0;
       this.setState('connected');
+
+      // Initial sync handshake, in order:
+      //  1. Push any local writes that were queued while disconnected, so the
+      //     server (and other devices) learn about them.
+      //  2. Ask the server to replay everything we missed on this channel since
+      //     the last seq we durably processed. The replayed events arrive as
+      //     `event` messages and flow through the reorder buffer + applyRemoteEvent
+      //     like any live event, so ordering/merge is unchanged.
+      await this.flushQueue();
+      await this.requestRemoteChanges(lastSeq);
     } catch (err) {
       this.setState('error');
       this.onError?.(err);
@@ -139,7 +161,7 @@ export class SyncClientHandler {
   /** Gracefully disconnect. No auto-reconnect. */
   disconnect(): void {
     this.cancelReconnect();
-    this.cancelAckTimer();
+
     this.reorderBuffer.reset();
     this.socket?.close();
     this.socket = null;
@@ -197,6 +219,8 @@ export class SyncClientHandler {
     this.on('event', (event) => this.handleEventThroughBuffer(event));
 
     this.on('push-ack', (accepted, rejected) => {
+      console.log("push-ack"+JSON.stringify(accepted));
+      
       // Remove accepted items from queue
       for (const id of accepted) {
         this.opts.storage.deleteQueueItem(id);
@@ -345,6 +369,11 @@ export class SyncClientHandler {
     const items = await this.opts.storage.getQueueItems();
     if (items.length === 0) return;
 
+    console.log(
+      `[sync] push ${items.length} item(s) dev=${this.opts.deviceId} -> ${this.opts.userId}:${this.opts.channel}` +
+        items.map((it) => ` [${it.operation} ${it.table}/${it.recordId}]`).join(''),
+    );
+
     // The server routes a push by (userId, channel): its PushMessage.deviceId
     // field carries the userId, and channel is required. Sending the device id
     // here (and omitting channel) broadcasts to a channel nobody subscribed to,
@@ -437,13 +466,43 @@ export class SyncClientHandler {
 
   // ─── Pull missing events ───────────────────────────────────────────
 
-  protected async pullMissingEvents(_from: number, _to: number): Promise<SyncEvent[]> {
-    this.send({
-      type: 'pull_request',
-      deviceId: this.opts.deviceId,
-      since: new Date(),
-    } as any);
+  /**
+   * Ask the server to replay every event on this channel after the last seq we
+   * durably processed. Called once per (re)connect. The replayed events come
+   * back as ordinary `event` messages, so they pass through the reorder buffer
+   * and applyRemoteEvent exactly like live events.
+   */
+  private async requestRemoteChanges(lastSeq?: number): Promise<void> {
+    const seq = lastSeq ?? (await this.opts.storage.getLastSeq());
+    const from = seq != null ? seq + 1 : 1;
+    // Open-ended upper bound: we don't know the server's max seq, and the
+    // server clamps to whatever exists.
+    this.sendPullSeq(from, Number.MAX_SAFE_INTEGER);
+  }
+
+  protected async pullMissingEvents(from: number, to: number): Promise<SyncEvent[]> {
+    // Backfill a gap the reorder buffer detected. The server replies with
+    // `event` messages routed back through handleEventThroughBuffer, so we
+    // don't return the events synchronously here — returning [] lets the buffer
+    // keep waiting for them to arrive over the socket.
+    this.sendPullSeq(from, to);
     return [];
+  }
+
+  /**
+   * Send a `pull_seq` catch-up request. The server routes a pull by
+   * (userId, channel): the message's `deviceId` field carries the userId and
+   * `channel` is required — mirroring the push convention in flushQueue. The
+   * requesting socket is identified server-side from the connection.
+   */
+  private sendPullSeq(from: number, to: number): void {
+    this.send({
+      type: 'pull_seq',
+      deviceId: this.opts.userId,
+      channel: this.opts.channel,
+      from,
+      to,
+    } as any);
   }
 
   // ─── Reorder buffer integration ────────────────────────────────────
@@ -454,31 +513,9 @@ export class SyncClientHandler {
 
   // ─── Batched ACKs ─────────────────────────────────────────────────
 
-  private enqueueAck(eventId: string): void {
-    this.pendingAckIds.push(eventId);
-    if (!this.ackTimer) {
-      this.ackTimer = setTimeout(() => this.flushAcks(), 100);
-    }
-  }
 
-  private flushAcks(): void {
-    this.ackTimer = null;
-    if (this.pendingAckIds.length === 0) return;
 
-    const eventIds = this.pendingAckIds.splice(0);
-    this.send({
-      type: 'event_ack',
-      deviceId: this.opts.deviceId,
-      eventIds,
-    });
-  }
 
-  private cancelAckTimer(): void {
-    if (this.ackTimer) {
-      clearTimeout(this.ackTimer);
-      this.ackTimer = null;
-    }
-  }
 
   // ─── State management ──────────────────────────────────────────────
 

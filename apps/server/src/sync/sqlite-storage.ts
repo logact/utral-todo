@@ -83,6 +83,7 @@ export class DrizzleSqliteSyncStorage implements ServerSyncStorage {
     return rows.map((row) => ({
       id: row.id,
       seq: row.seq,
+      channel: row.channel,
       table: row.tableName,
       operation: row.operation as SyncEvent['operation'],
       recordId: row.recordId,
@@ -123,6 +124,7 @@ export class DrizzleSqliteSyncStorage implements ServerSyncStorage {
     return rows.map((row) => ({
       id: row.id,
       seq: row.seq,
+      channel: row.channel,
       table: row.tableName,
       operation: row.operation as SyncEvent['operation'],
       recordId: row.recordId,
@@ -149,6 +151,7 @@ export class DrizzleSqliteSyncStorage implements ServerSyncStorage {
     return rows.map((row) => ({
       id: row.id,
       seq: row.seq,
+      channel: row.channel,
       table: row.tableName,
       operation: row.operation as SyncEvent['operation'],
       recordId: row.recordId,
@@ -213,6 +216,7 @@ export class DrizzleSqliteSyncStorage implements ServerSyncStorage {
     return rows.map((row) => ({
       id: row.id,
       seq: row.seq,
+      channel: row.channel,
       table: row.tableName,
       operation: row.operation as SyncEvent['operation'],
       recordId: row.recordId,
