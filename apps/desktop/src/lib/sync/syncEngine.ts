@@ -3,19 +3,6 @@ import { getSyncConfig } from '../../db/sync.js';
 import { platform } from '@tauri-apps/plugin-os';
 import { makeDeviceId, type EndType } from '@utral/sync-share';
 
-
-
-const TABLE_ORDER: Record<string, number> = {
-  todos: 0, todo: 0,
-  relations: 1, todoRelation: 1,
-  todoLogs: 2, todoLog: 2,
-  actionEdges: 3, actionEdge: 3,
-  pluses: 4, pluse: 4,
-  repeatOccurrences: 5, repeatOccurrence: 5,
-  plans: 6, plan: 6,
-  timeSlots: 7, timeSlot: 7,
-};
-
 // --- Window Event Emitter ---
 
 class WindowEventEmitter {
@@ -103,9 +90,9 @@ export async function notifyDbOperation(
   recordId: string
 ): Promise<void> {
   const engine = await getEngine();
-   window.dispatchEvent(
-      new CustomEvent('db:changed', { detail: { table, operation, recordId } })
-    );
+  window.dispatchEvent(
+    new CustomEvent('db:changed', { detail: { table, operation, recordId } })
+  );
 
   return engine.syncLocalChange(table, operation, recordId);
 }

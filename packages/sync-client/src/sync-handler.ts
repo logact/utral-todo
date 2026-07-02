@@ -5,7 +5,7 @@ import type {
   SyncableRecord,
   HLCTimestamp,
 } from '@utral/sync-share';
-import { compareHLC } from '@utral/sync-share';
+import { compareHLC, generateUUID } from '@utral/sync-share';
 
 const MIN_HLC: HLCTimestamp = { wall: 0, counter: 0, node: '' };
 import type {
@@ -29,6 +29,8 @@ export interface SyncHandlerOptions extends SyncEngineConfig {
   deviceId: string;
   userId: string;
   channel: string;
+  /** Optional bearer token appended as a `token` query param for WebSocket auth. */
+  apiToken?: string;
   /** Reconnection config. Set to null to disable auto-reconnect. */
   reconnect?: ReconnectConfig | null;
   reorderBufferSize?: number;
@@ -197,7 +199,7 @@ export class SyncClientHandler {
     // an empty payload would relay an envelope with no data.
     const record = await this.opts.storage.getRecord(table, recordId);
     await this.opts.storage.addToQueue({
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       table,
       operation,
       recordId,
@@ -255,16 +257,25 @@ export class SyncClientHandler {
       deviceId: this.opts.deviceId,
       userId: this.opts.userId,
       channel: this.opts.channel,
-    }).toString();
+    });
+    if (this.opts.apiToken) {
+      params.set('token', this.opts.apiToken);
+    }
+    const paramsString = params.toString();
     const base = this.opts.serverUrl;
-    return base + (base.includes('?') ? '&' : '?') + params;
+    return base + (base.includes('?') ? '&' : '?') + paramsString;
   }
 
   private openSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const socket = this.opts.transport.connect(this.buildConnectionUrl());
+      const url = this.buildConnectionUrl();
+      const safeUrl = url.replace(/token=[^&]*/, 'token=***');
+      console.log(`[sync] connecting to ${safeUrl}`);
+
+      const socket = this.opts.transport.connect(url);
 
       socket.onOpen(() => {
+        console.log(`[sync] connected to ${safeUrl}`);
         this.socket = socket;
         resolve();
       });
@@ -277,6 +288,7 @@ export class SyncClientHandler {
       });
 
       socket.onError((err) => {
+        console.error(`[sync] connection error for ${safeUrl}:`, err);
         if (this._state === 'connecting') {
           reject(err);
         } else {
@@ -364,8 +376,9 @@ export class SyncClientHandler {
   // ─── Queue flush ───────────────────────────────────────────────────
 
   protected async flushQueue(): Promise<void> {
+    debugger
     if (this._state !== 'connected') return;
-
+    
     const items = await this.opts.storage.getQueueItems();
     if (items.length === 0) return;
 

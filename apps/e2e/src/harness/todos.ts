@@ -77,12 +77,20 @@ export function softDeleteTodo(db: Db, id: string, node: string): HLCTimestamp {
 export interface TodoRow {
   id: string;
   title: string;
+  pattern: string | null;
+  isSystemTask: boolean | null;
   isDeleted: boolean;
 }
 
 export function getTodo(db: Db, id: string): TodoRow | undefined {
   const rows = db
-    .select({ id: todos.id, title: todos.title, isDeleted: todos.isDeleted })
+    .select({
+      id: todos.id,
+      title: todos.title,
+      pattern: todos.pattern,
+      isSystemTask: todos.isSystemTask,
+      isDeleted: todos.isDeleted,
+    })
     .from(todos)
     .where(eq(todos.id, id))
     .all();

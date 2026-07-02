@@ -7,11 +7,7 @@ import { WsTransport } from './ws-transport.js';
 import type { Db } from './todos.js';
 
 // Canonical table names + write order — mirrors the desktop `syncEngine.ts`.
-const TABLES = ['todo', 'todoRelation', 'todoLog', 'actionEdge', 'pluse', 'repeatOccurrence', 'plan', 'timeSlot'];
-const TABLE_ORDER: Record<string, number> = {
-  todo: 0, todoRelation: 1, todoLog: 2, actionEdge: 3,
-  pluse: 4, repeatOccurrence: 5, plan: 6, timeSlot: 7,
-};
+// (The client handler no longer takes a table list; the server validates table names.)
 
 export interface AppliedEvent {
   table: string;
@@ -67,8 +63,6 @@ export function createTestClient(args: CreateTestClientArgs): TestClient {
   // exercises the same wiring the real desktop/expo apps rely on.
   const handler = new SyncClientHandler({
     serverUrl: args.wsUrl,
-    tables: TABLES,
-    tableOrder: TABLE_ORDER,
     deviceId,
     userId: args.userId,
     channel: args.channel,

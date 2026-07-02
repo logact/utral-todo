@@ -623,7 +623,9 @@ export default function TodayScreen() {
   // DB-driven slot definitions, falling back to the shared defaults until they load.
   const slots: TimeSlotConfig[] = timeSlotDefs.length > 0 ? timeSlotDefs : DEFAULT_TIME_SLOTS;
 
-  // Ensure the boundary milestone todos exist for the current definitions.
+  // Ensure boundary milestone todos exist for the current definitions and that
+  // their scheduledDate is anchored to today. The initial creation already
+  // happened in bootstrapApp; this effect handles the daily refresh.
   useEffect(() => {
     if (timeSlotDefs.length === 0) return;
     let cancelled = false;

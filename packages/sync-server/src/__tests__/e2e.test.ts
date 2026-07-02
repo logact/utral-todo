@@ -145,7 +145,7 @@ const activeHandlers: SyncHandler[] = [];
 function makeHandler(): SyncHandler {
   const storage = new SqliteSyncStorage(db);
   storage.init();
-  const handler = new SyncHandler({ storage, tables: ['notes', 'tasks'] });
+  const handler = new SyncHandler({ storage });
   activeHandlers.push(handler);
   return handler;
 }
@@ -165,11 +165,11 @@ describe('E2E: Full sync flow', () => {
       type: 'push',
       deviceId: 'user-1',
       channel: 'default',
-      items: [{ table: 'notes', operation: 'create', recordId: 'note-1', payload: { title: 'Hello' } }],
+      items: [{ table: 'todo', operation: 'create', recordId: 'note-1', payload: { title: 'Hello' } }],
     });
 
     const event = await clientB.waitFor('event') as { event: SyncEvent };
-    expect(event.event.table).toBe('notes');
+    expect(event.event.table).toBe('todo');
     expect(event.event.operation).toBe('create');
     expect(event.event.recordId).toBe('note-1');
     expect(event.event.payload).toEqual({ title: 'Hello' });
@@ -195,8 +195,8 @@ describe('E2E: Full sync flow', () => {
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
       items: [
-        { table: 'notes', operation: 'create', recordId: 'n1', payload: { title: 'one' } },
-        { table: 'notes', operation: 'create', recordId: 'n2', payload: { title: 'two' } },
+        { table: 'todo', operation: 'create', recordId: 'n1', payload: { title: 'one' } },
+        { table: 'todo', operation: 'create', recordId: 'n2', payload: { title: 'two' } },
       ],
     });
 
@@ -224,9 +224,9 @@ describe('E2E: Full sync flow', () => {
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
       items: [
-        { table: 'notes', operation: 'create', recordId: 'n1' },
-        { table: 'notes', operation: 'create', recordId: 'n2' },
-        { table: 'notes', operation: 'create', recordId: 'n3' },
+        { table: 'todo', operation: 'create', recordId: 'n1' },
+        { table: 'todo', operation: 'create', recordId: 'n2' },
+        { table: 'todo', operation: 'create', recordId: 'n3' },
       ],
     });
 
@@ -241,7 +241,7 @@ describe('E2E: Full sync flow', () => {
     clientB.ws.close();
   });
 
-  it('should reject push with unregistered table', async () => {
+  it('should reject push with an unknown table', async () => {
     const handler = makeHandler();
 
     const clientA = await connectClient(handler, 'device-a');
@@ -254,7 +254,7 @@ describe('E2E: Full sync flow', () => {
     const ack = await clientA.waitFor('push-ack') as { accepted: string[]; rejected: Array<{ reason: string }> };
     expect(ack.accepted).toHaveLength(0);
     expect(ack.rejected).toHaveLength(1);
-    expect(ack.rejected[0].reason).toContain('not registered');
+    expect(ack.rejected[0].reason).toContain('unknown table');
 
     clientA.ws.close();
   });
@@ -273,7 +273,7 @@ describe('E2E: Full sync flow', () => {
 
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'ch-a',
-      items: [{ table: 'notes', operation: 'create', recordId: 'n1' }],
+      items: [{ table: 'todo', operation: 'create', recordId: 'n1' }],
     });
 
     const evC = await clientC.waitFor('event');
@@ -300,7 +300,7 @@ describe('E2E: Full sync flow', () => {
 
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
-      items: [{ table: 'notes', operation: 'create', recordId: 'n1' }],
+      items: [{ table: 'todo', operation: 'create', recordId: 'n1' }],
     });
     await clientB.waitFor('event');
     await new Promise((r) => setTimeout(r, 50));
@@ -310,7 +310,7 @@ describe('E2E: Full sync flow', () => {
 
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
-      items: [{ table: 'notes', operation: 'create', recordId: 'n2' }],
+      items: [{ table: 'todo', operation: 'create', recordId: 'n2' }],
     });
     await new Promise((r) => setTimeout(r, 200));
 

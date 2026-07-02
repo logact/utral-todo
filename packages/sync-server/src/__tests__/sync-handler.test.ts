@@ -56,7 +56,7 @@ describe('SyncHandler', () => {
 
   beforeEach(() => {
     storage = createMockStorage();
-    handler = new SyncHandler({ storage, tables: ['notes', 'tasks'] });
+    handler = new SyncHandler({ storage });
   });
 
   describe('connect / disconnect', () => {
@@ -83,14 +83,14 @@ describe('SyncHandler', () => {
       handler.subscribe('device-2', 'user-1', 'default');
 
       const result = await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1', payload: { title: 'hi' } },
+        { table: 'todo', operation: 'create', recordId: 'r1', payload: { title: 'hi' } },
       ]);
 
       expect(result.accepted).toHaveLength(1);
       expect(s2.messages).toHaveLength(1);
       const eventMsg = JSON.parse(s2.messages[0]);
       expect(eventMsg.type).toBe('event');
-      expect(eventMsg.event.table).toBe('notes');
+      expect(eventMsg.event.table).toBe('todo');
       // The origin device is echoed its own event too, so its seq stream stays
       // contiguous for the client reorder buffer.
       expect(s1.messages).toHaveLength(1);
@@ -107,7 +107,7 @@ describe('SyncHandler', () => {
       handler.unsubscribe('device-2', 'user-1', 'default');
 
       await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1', payload: {} },
+        { table: 'todo', operation: 'create', recordId: 'r1', payload: {} },
       ]);
 
       expect(s2.messages).toHaveLength(0);
@@ -117,8 +117,8 @@ describe('SyncHandler', () => {
   describe('push', () => {
     it('should accept valid items', async () => {
       const result = await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1', payload: { title: 'a' } },
-        { table: 'tasks', operation: 'update', recordId: 'r2', payload: { done: true } },
+        { table: 'todo', operation: 'create', recordId: 'r1', payload: { title: 'a' } },
+        { table: 'plan', operation: 'update', recordId: 'r2', payload: { done: true } },
       ]);
       expect(result.accepted).toHaveLength(2);
       expect(result.rejected).toHaveLength(0);
@@ -127,23 +127,23 @@ describe('SyncHandler', () => {
 
     it('should reject items with missing fields', async () => {
       const result = await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes' },
+        { table: 'todo' },
       ]);
       expect(result.rejected).toHaveLength(1);
       expect(result.rejected[0].reason).toContain('missing required fields');
     });
 
-    it('should reject items with unregistered table', async () => {
+    it('should accept items for any registered table', async () => {
       const result = await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'unknown', operation: 'create', recordId: 'r1' },
+        { table: 'timeSlot', operation: 'create', recordId: 'r1' },
       ]);
-      expect(result.rejected).toHaveLength(1);
-      expect(result.rejected[0].reason).toContain('not registered');
+      expect(result.accepted).toHaveLength(1);
+      expect(result.rejected).toHaveLength(0);
     });
 
     it('should reject items with invalid operation', async () => {
       const result = await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'patch', recordId: 'r1' },
+        { table: 'todo', operation: 'patch', recordId: 'r1' },
       ]);
       expect(result.rejected).toHaveLength(1);
       expect(result.rejected[0].reason).toContain('invalid operation');
@@ -151,9 +151,9 @@ describe('SyncHandler', () => {
 
     it('should assign sequential seq numbers', async () => {
       await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1' },
-        { table: 'notes', operation: 'create', recordId: 'r2' },
-        { table: 'notes', operation: 'create', recordId: 'r3' },
+        { table: 'todo', operation: 'create', recordId: 'r1' },
+        { table: 'todo', operation: 'create', recordId: 'r2' },
+        { table: 'todo', operation: 'create', recordId: 'r3' },
       ]);
       expect(storage.events[0].seq).toBe(1);
       expect(storage.events[1].seq).toBe(2);
@@ -162,7 +162,7 @@ describe('SyncHandler', () => {
 
     it('acks the client raw id and stores the event under it', async () => {
       const result = await handler.acceptPush('device-1', 'user-1', 'default', [
-        { id: 'queue-item-1', table: 'notes', operation: 'create', recordId: 'r1' },
+        { id: 'queue-item-1', table: 'todo', operation: 'create', recordId: 'r1' },
       ]);
       expect(result.accepted).toEqual(['queue-item-1']);
       expect(storage.events[0].id).toBe('queue-item-1');
@@ -177,7 +177,7 @@ describe('SyncHandler', () => {
       handler.subscribe('device-2', 'user-1', 'default');
 
       await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1' },
+        { table: 'todo', operation: 'create', recordId: 'r1' },
       ]);
 
       expect(storage.trackEventDelivery).toHaveBeenCalledWith(
@@ -196,7 +196,7 @@ describe('SyncHandler', () => {
       const writerHLC = { wall: 5000, counter: 3, node: 'writer-device' };
       await handler.acceptPush('device-1', 'user-1', 'default', [
         {
-          table: 'notes',
+          table: 'todo',
           operation: 'update',
           recordId: 'r1',
           payload: { id: 'r1', version: writerHLC, title: 'hi' },
@@ -208,9 +208,9 @@ describe('SyncHandler', () => {
 
     it('falls back to newHLC(deviceId) when payload has no valid version', async () => {
       await handler.acceptPush('device-1', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1', payload: {} },
-        { table: 'notes', operation: 'create', recordId: 'r2', payload: { version: { wall: 1 } } },
-        { table: 'notes', operation: 'create', recordId: 'r3' },
+        { table: 'todo', operation: 'create', recordId: 'r1', payload: {} },
+        { table: 'todo', operation: 'create', recordId: 'r2', payload: { version: { wall: 1 } } },
+        { table: 'todo', operation: 'create', recordId: 'r3' },
       ]);
       expect(storage.events).toHaveLength(3);
       // node falls back to the origin deviceId, not the writer's node
@@ -226,9 +226,9 @@ describe('SyncHandler', () => {
       handler.connect('device-1', socket);
 
       storage.events = [
-        { id: 'e1', seq: 1, channel: 'user-1:default', table: 'notes', operation: 'create', recordId: 'r1', deviceId: 'd1', createdAt: { wall: 1, counter: 0, node: 'd1' } },
-        { id: 'e2', seq: 2, channel: 'user-1:default', table: 'notes', operation: 'update', recordId: 'r2', deviceId: 'd1', createdAt: { wall: 2, counter: 0, node: 'd1' } },
-        { id: 'e3', seq: 3, channel: 'user-1:default', table: 'notes', operation: 'delete', recordId: 'r3', deviceId: 'd1', createdAt: { wall: 3, counter: 0, node: 'd1' } },
+        { id: 'e1', seq: 1, channel: 'user-1:default', table: 'todo', operation: 'create', recordId: 'r1', deviceId: 'd1', createdAt: { wall: 1, counter: 0, node: 'd1' } },
+        { id: 'e2', seq: 2, channel: 'user-1:default', table: 'todo', operation: 'update', recordId: 'r2', deviceId: 'd1', createdAt: { wall: 2, counter: 0, node: 'd1' } },
+        { id: 'e3', seq: 3, channel: 'user-1:default', table: 'todo', operation: 'delete', recordId: 'r3', deviceId: 'd1', createdAt: { wall: 3, counter: 0, node: 'd1' } },
       ];
 
       await handler['sendEventsBySeq']('device-1', socket, 'user-1', 'default', 1, 2);
@@ -253,7 +253,7 @@ describe('SyncHandler', () => {
       handler.subscribe('device-2', 'user-1', 'default');
 
       const event: SyncEvent = {
-        id: 'ev-1', seq: 1, table: 'notes', operation: 'create',
+        id: 'ev-1', seq: 1, table: 'todo', operation: 'create',
         recordId: 'r1', deviceId: 'device-1', createdAt: { wall: 1, counter: 0, node: 'd1' },
       };
 
@@ -265,14 +265,14 @@ describe('SyncHandler', () => {
 
     it('should call onBroadcast hook', () => {
       const onBroadcast = vi.fn();
-      const h = new SyncHandler({ storage, tables: ['notes'], onBroadcast });
+      const h = new SyncHandler({ storage, onBroadcast });
 
       const s1 = createMockSocket();
       h.connect('device-1', s1);
       h.subscribe('device-1', 'user-1', 'default');
 
       const event: SyncEvent = {
-        id: 'ev-1', seq: 1, table: 'notes', operation: 'create',
+        id: 'ev-1', seq: 1, table: 'todo', operation: 'create',
         recordId: 'r1', deviceId: 'd1', createdAt: { wall: 1, counter: 0, node: 'd1' },
       };
 
@@ -294,7 +294,7 @@ describe('SyncHandler', () => {
       handler.subscribe('device-2', 'user-1', 'default');
 
       const result = await handler.acceptPush('device-2', 'user-1', 'default', [
-        { table: 'notes', operation: 'create', recordId: 'r1' },
+        { table: 'todo', operation: 'create', recordId: 'r1' },
       ]);
 
       expect(result.accepted).toHaveLength(1);

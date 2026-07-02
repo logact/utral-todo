@@ -3,17 +3,11 @@ import { Platform } from 'react-native';
 import { makeDeviceId, type EndType } from '@utral/sync-share';
 import { db, expoDb, schema } from '../db';
 import { queryClient } from './query-client';
-import type { Todo, Pluse, SyncConfig, TodoStatus, PluseTimerStatus } from '@utral/types';
+import { notifyDbOperation } from './sync';
+import { bootstrapApp, type BootstrapStore } from '@utral/db-schema/bootstrap';
+import type { Todo, Pluse, SyncConfig, TodoStatus } from '@utral/types';
 
 export type { Todo, Pluse, SyncConfig, TodoStatus };
-
-function scheduleSyncPush() {
-  import('./auto-sync').then((m) => m.scheduleSyncPush()).catch(() => {});
-}
-
-function addPendingChange(table: string, operation: 'create' | 'update' | 'delete', recordId: string, payload?: Record<string, unknown> | null) {
-  import('./auto-sync').then((m) => m.addPendingChange(table, operation, recordId, payload)).catch(() => {});
-}
 
 export interface HLCState {
   counter: number;
@@ -111,8 +105,7 @@ export async function startPluseTimer(pluseId: string): Promise<Pluse> {
       updatedAtNode: deviceId,
     })
     .where(eq(schema.pluses.id, pluseId));
-  addPendingChange('pluse', 'update', pluseId);
-  scheduleSyncPush();
+  notifyDbOperation('pluse', 'update', pluseId);
   const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
   return updated[0] as unknown as Pluse;
 }
@@ -131,8 +124,7 @@ export async function pausePluseTimer(pluseId: string, accumulatedSeconds: numbe
       updatedAtNode: deviceId,
     })
     .where(eq(schema.pluses.id, pluseId));
-  addPendingChange('pluse', 'update', pluseId);
-  scheduleSyncPush();
+  notifyDbOperation('pluse', 'update', pluseId);
   const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
   return updated[0] as unknown as Pluse;
 }
@@ -149,8 +141,7 @@ export async function resumePluseTimer(pluseId: string): Promise<Pluse> {
       updatedAtNode: deviceId,
     })
     .where(eq(schema.pluses.id, pluseId));
-  addPendingChange('pluse', 'update', pluseId);
-  scheduleSyncPush();
+  notifyDbOperation('pluse', 'update', pluseId);
   const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
   return updated[0] as unknown as Pluse;
 }
@@ -169,8 +160,7 @@ export async function stopPluseTimer(pluseId: string): Promise<void> {
       updatedAtNode: deviceId,
     })
     .where(eq(schema.pluses.id, pluseId));
-  addPendingChange('pluse', 'update', pluseId);
-  scheduleSyncPush();
+  notifyDbOperation('pluse', 'update', pluseId);
 }
 
 export async function advancePluseTimer(pluseId: string, currentIntervalIndex: number): Promise<Pluse> {
@@ -186,8 +176,7 @@ export async function advancePluseTimer(pluseId: string, currentIntervalIndex: n
       updatedAtNode: deviceId,
     })
     .where(eq(schema.pluses.id, pluseId));
-  addPendingChange('pluse', 'update', pluseId);
-  scheduleSyncPush();
+  notifyDbOperation('pluse', 'update', pluseId);
   const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
   return updated[0] as unknown as Pluse;
 }
@@ -227,9 +216,62 @@ export async function getActivePluseTimer(): Promise<Pluse | null> {
   return paused.length > 0 ? (paused[0] as unknown as Pluse) : null;
 }
 
+export async function initDatabase(): Promise<void> {
+  const store: BootstrapStore = {
+    db,
+    getDeviceId,
+    trackChange: (entity, op, id) => {
+      notifyDbOperation(entity, op, id);
+    },
+    onComplete: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+      queryClient.invalidateQueries({ queryKey: ['pluses'] });
+    },
+  };
+
+  await bootstrapApp(store);
+}
+
 export async function clearAllData(): Promise<void> {
   expoDb.execSync('DELETE FROM todos');
+  expoDb.execSync('DELETE FROM todo_relations');
+  expoDb.execSync('DELETE FROM todo_logs');
+  expoDb.execSync('DELETE FROM action_edges');
+  expoDb.execSync('DELETE FROM plans');
   expoDb.execSync('DELETE FROM pluses');
+  expoDb.execSync('DELETE FROM repeat_occurrences');
+  expoDb.execSync('DELETE FROM time_slots');
   expoDb.execSync('DELETE FROM sync_config');
   expoDb.execSync('DELETE FROM hlc_state');
+  expoDb.execSync('DELETE FROM sync_queue');
+  expoDb.execSync('DELETE FROM sync_state');
+}
+
+export async function resetAllData(): Promise<void> {
+  // Stop sync first so no queued operations are sent while we wipe.
+  const { stopSync } = await import('./sync');
+  stopSync();
+
+  // Clear every local table (domain + sync infra).
+  await clearAllData();
+
+  // Clear React Query cache so stale data doesn't reappear in the UI.
+  queryClient.clear();
+
+  // // Recreate the default dataset so the app is usable immediately.
+  // const store: BootstrapStore = {
+  //   db,
+  //   getDeviceId,
+  //   trackChange: (entity, op, id) => {
+  //     notifyDbOperation(entity, op, id);
+  //   },
+  //   onComplete: () => {
+  //     queryClient.invalidateQueries({ queryKey: ['todos'] });
+  //     queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+  //     queryClient.invalidateQueries({ queryKey: ['pluses'] });
+  //   },
+  // };
+
+  // await bootstrapApp(store);
 }

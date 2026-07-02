@@ -2,12 +2,15 @@ import { db } from './drizzle-adapter';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import type { TimeSlotStore, TimeSlotEntity } from '@utral/db-schema/timeslots';
 
+import { TABLE_NAME_MAP } from '@utral/sync-share';
+
 // Map the engine's canonical entity names to desktop's syncLocalChange table
-// naming (which uses the drizzle table names).
+// naming. The values are already canonical sync names; the map is used so a
+// legacy local name, if ever introduced, is normalized before reaching sync.
 const SYNC_ENTITY: Record<TimeSlotEntity, string> = {
-  todo: 'todos',
-  todoLog: 'todoLogs',
-  timeSlot: 'timeSlot',
+  todo: TABLE_NAME_MAP.todo,
+  todoLog: TABLE_NAME_MAP.todoLog,
+  timeSlot: TABLE_NAME_MAP.timeSlot,
 };
 
 /**

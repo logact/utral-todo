@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { getDeviceId } from './database';
-import { addPendingChange, scheduleSyncPush } from './auto-sync';
+import { notifyDbOperation } from './sync';
 import {
   seedDefaultTimeSlots as engineSeedDefaultTimeSlots,
   getTimeSlotDefinitions as engineGetTimeSlotDefinitions,
@@ -18,19 +18,13 @@ import type { TimeSlotDefinition, TimeSlotConfig, Todo } from '@utral/types';
 
 export type { TimeSlotDefinition, TimeSlotConfig };
 
-// The engine's canonical entity names already match expo's sync table naming.
-const SYNC_ENTITY: Record<TimeSlotEntity, string> = {
-  todo: 'todo',
-  todoLog: 'todoLog',
-  timeSlot: 'timeSlot',
-};
+
 
 const timeSlotStore: TimeSlotStore = {
   db,
   getDeviceId,
   trackChange: (entity, op, id) => {
-    addPendingChange(SYNC_ENTITY[entity], op, id);
-    scheduleSyncPush();
+    notifyDbOperation(entity, op, id);
   },
 };
 

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { syncAll, getSyncConfig, setSyncConfig } from '@/lib/sync';
-import { clearAllData } from '@/lib/database';
+import { resetAllData } from '@/lib/database';
 import {
   getTimeSlotDefinitions,
   updateTimeSlotDefinition,
@@ -124,6 +124,8 @@ export default function SettingsScreen() {
   const [syncError, setSyncError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [timeSlots, setTimeSlots] = useState<TimeSlotDefinition[]>([]);
+  const [resetState, setResetState] = useState<'idle' | 'confirm' | 'resetting' | 'done' | 'error'>('idle');
+  const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -187,18 +189,50 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleClearData = () => {
-    Alert.alert('Clear All Data', 'This will permanently delete all local data. Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        style: 'destructive',
-        onPress: async () => {
-          await clearAllData();
-          Alert.alert('Done', 'All data has been cleared');
-        },
-      },
-    ]);
+  const handleResetAllData = async () => {
+    if (resetState === 'idle') {
+      setResetState('confirm');
+      return;
+    }
+    if (resetState !== 'confirm') return;
+
+    setResetState('resetting');
+    setResetError('');
+
+    const config = await getSyncConfig();
+    const serverUrl = config?.serverUrl;
+
+    try {
+      // Notify the server to wipe global data first (fail-safe: if this fails,
+      // local data is left untouched so the user can retry).
+      if (serverUrl) {
+        const headers: Record<string, string> = {};
+        if (config.apiToken) {
+          headers['Authorization'] = `Bearer ${config.apiToken}`;
+        }
+        const res = await fetch(`${serverUrl}/api/all-data`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status}`);
+        }
+      }
+
+      // Stop sync, clear every local table, clear React Query cache, and recreate root goal.
+      await resetAllData();
+
+      // Reset UI state so it matches a fresh install.
+      setServerUrl('');
+      setApiToken('');
+      setSyncStatus('idle');
+
+      setResetState('done');
+      setTimeout(() => setResetState('idle'), 3000);
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : 'Reset failed');
+      setResetState('error');
+    }
   };
 
   return (
@@ -388,10 +422,60 @@ export default function SettingsScreen() {
 
         {/* Danger Zone */}
         <View style={{ backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#fecdd3', overflow: 'hidden' }}>
-          <Pressable onPress={handleClearData} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 }}>
-            <Ionicons name="trash-outline" size={20} color="#f43f5e" />
-            <Text style={{ flex: 1, fontSize: 15, color: '#f43f5e' }}>Clear All Data</Text>
+          {resetState === 'confirm' && (
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#fecdd3', backgroundColor: '#fff1f2' }}>
+              <Text style={{ fontSize: 13, color: '#be123c', lineHeight: 18 }}>
+                Are you sure? This will permanently delete all local data, all server data, and
+                reset sync configuration. This action cannot be undone.
+              </Text>
+            </View>
+          )}
+          {resetState === 'error' && resetError ? (
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#fecdd3', backgroundColor: '#fff1f2' }}>
+              <Text style={{ fontSize: 13, color: '#be123c' }}>{resetError}</Text>
+            </View>
+          ) : null}
+          <Pressable
+            onPress={handleResetAllData}
+            disabled={resetState === 'resetting'}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              opacity: resetState === 'resetting' ? 0.5 : 1,
+            }}
+          >
+            <Ionicons
+              name={
+                resetState === 'done'
+                  ? 'checkmark-circle-outline'
+                  : resetState === 'resetting'
+                  ? 'refresh'
+                  : 'trash-outline'
+              }
+              size={20}
+              color={resetState === 'done' ? '#16a34a' : '#f43f5e'}
+            />
+            <Text style={{ flex: 1, fontSize: 15, color: resetState === 'done' ? '#16a34a' : '#f43f5e' }}>
+              {resetState === 'resetting'
+                ? 'Resetting...'
+                : resetState === 'done'
+                ? 'Reset Complete'
+                : resetState === 'confirm'
+                ? 'Confirm Reset All Data'
+                : 'Reset All Data'}
+            </Text>
           </Pressable>
+          {resetState === 'confirm' && (
+            <Pressable
+              onPress={() => setResetState('idle')}
+              style={{ paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#fecdd3' }}
+            >
+              <Text style={{ fontSize: 14, color: '#64748b' }}>Cancel</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* About */}

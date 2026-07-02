@@ -6,8 +6,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { db } from '../src/db';
-import { ensureRootGoal } from '../src/db/seed';
-import { seedDefaultTimeSlots } from '../src/lib/timeSlots';
+import { initDatabase } from '../src/lib/database';
 import { startSync, stopSync } from '../src/lib/sync';
 import { queryClient } from '../src/lib/query-client';
 import migrations from '../drizzle/migrations';
@@ -19,9 +18,11 @@ export default function RootLayout() {
     if (!success) return;
 
     let cancelled = false;
-    Promise.all([ensureRootGoal(), seedDefaultTimeSlots()])
+    initDatabase()
       .then(() => {
-        if (!cancelled) startSync();
+        if (!cancelled) {
+          startSync();
+        }
       })
       .catch((err) => console.error('[seed] init failed:', err));
 

@@ -13,9 +13,10 @@ import {
   WifiOff,
   Zap,
   Clock,
+  CheckCircle,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { clearAllData } from '../db/database';
+import { resetAllData } from '../db/database';
 import { db } from '../db/drizzle-adapter';
 import { todos, todoRelations, todoLogs, actionEdges, pluses } from '../db/schema';
 import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
@@ -94,11 +95,8 @@ function TimeSlotEditor({
 
 export function Settings() {
   const [saved, setSaved] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [cleared, setCleared] = useState(false);
-  const [confirmClearServer, setConfirmClearServer] = useState(false);
-  const [clearedServer, setClearedServer] = useState(false);
-  const [clearServerError, setClearServerError] = useState('');
+  const [resetState, setResetState] = useState<'idle' | 'confirm' | 'resetting' | 'done' | 'error'>('idle');
+  const [resetError, setResetError] = useState('');
   const { theme, toggleTheme } = useTheme();
 
   // Sync & Backup state
@@ -151,47 +149,51 @@ export function Settings() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  async function handleClear() {
-    if (!confirmClear) {
-      setConfirmClear(true);
+  async function handleResetAllData() {
+    if (resetState === 'idle') {
+      setResetState('confirm');
       return;
     }
-    await clearAllData();
-    setConfirmClear(false);
-    setCleared(true);
-    setTimeout(() => setCleared(false), 2000);
-  }
+    if (resetState !== 'confirm') return;
 
-  async function handleClearServer() {
-    if (!confirmClearServer) {
-      setConfirmClearServer(true);
-      return;
-    }
-    setClearServerError('');
+    setResetState('resetting');
+    setResetError('');
+
     const config = getSyncConfig();
-    if (!config?.serverUrl) {
-      setClearServerError('No server URL configured. Set one in Sync & Backup first.');
-      setConfirmClearServer(false);
-      return;
-    }
+    const serverUrl = config?.serverUrl;
+
     try {
-      const headers: Record<string, string> = {};
-      if (config.apiToken) {
-        headers['Authorization'] = `Bearer ${config.apiToken}`;
+      // Notify the server to wipe global data first (fail-safe: if this fails,
+      // local data is left untouched so the user can retry).
+      if (serverUrl) {
+        const headers: Record<string, string> = {};
+        if (config.apiToken) {
+          headers['Authorization'] = `Bearer ${config.apiToken}`;
+        }
+        const res = await fetch(`${serverUrl}/api/all-data`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status}`);
+        }
       }
-      const res = await fetch(`${config.serverUrl}/api/all-data`, {
-        method: 'DELETE',
-        headers,
-      });
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-      setConfirmClearServer(false);
-      setClearedServer(true);
-      setTimeout(() => setClearedServer(false), 2000);
+
+      // Stop sync, clear every local table, wipe cached config, and recreate root goal.
+      await resetAllData();
+
+      // Reset UI state so it matches a fresh install.
+      setServerUrl('http://localhost:3001');
+      setApiToken('');
+      setLastSync(undefined);
+      setPendingCount(0);
+      setSyncStatus('idle');
+
+      setResetState('done');
+      setTimeout(() => setResetState('idle'), 3000);
     } catch (err) {
-      setClearServerError(err instanceof Error ? err.message : 'Failed to clear server data');
-      setConfirmClearServer(false);
+      setResetError(err instanceof Error ? err.message : 'Reset failed');
+      setResetState('error');
     }
   }
 
@@ -522,67 +524,70 @@ export function Settings() {
           </div>
           <div>
             <h2 className="font-medium text-slate-900 dark:text-slate-100">Data Management</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Manage your local data</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Reset all data everywhere</p>
           </div>
         </div>
 
-        {confirmClear && (
+        {resetState === 'confirm' && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <p>Are you sure? This will permanently delete all todos, relations, and logs. This action cannot be undone.</p>
+            <p>
+              Are you sure? This will permanently delete all local data, all server data, and reset
+              sync configuration. This action cannot be undone.
+            </p>
           </div>
         )}
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleClear}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              confirmClear
-                ? 'bg-red-600 text-white hover:bg-red-700'
-                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20'
-            }`}
-          >
-            <Trash2 className="w-4 h-4" />
-            {cleared ? 'Cleared!' : confirmClear ? 'Confirm Clear All Data' : 'Clear All Data'}
-          </button>
-          {confirmClear && (
-            <button
-              onClick={() => setConfirmClear(false)}
-              className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleClearServer}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              confirmClearServer
-                ? 'bg-red-600 text-white hover:bg-red-700'
-                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20'
-            }`}
-          >
-            <Trash2 className="w-4 h-4" />
-            {clearedServer ? 'Server Cleared!' : confirmClearServer ? 'Confirm Clear Server Data' : 'Clear Server Data'}
-          </button>
-          {confirmClearServer && (
-            <button
-              onClick={() => setConfirmClearServer(false)}
-              className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-
-        {clearServerError && (
+        {resetState === 'error' && resetError && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <p>{clearServerError}</p>
+            <p>{resetError}</p>
           </div>
         )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleResetAllData}
+            disabled={resetState === 'resetting'}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              resetState === 'confirm'
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : resetState === 'done'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20'
+            }`}
+          >
+            {resetState === 'resetting' ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Resetting...
+              </>
+            ) : resetState === 'done' ? (
+              <>
+                <CheckCircle className="w-4 h-4" />
+                Reset Complete
+              </>
+            ) : resetState === 'confirm' ? (
+              <>
+                <AlertTriangle className="w-4 h-4" />
+                Confirm Reset All Data
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-4 h-4" />
+                Reset All Data
+              </>
+            )}
+          </button>
+          {resetState === 'confirm' && (
+            <button
+              onClick={() => setResetState('idle')}
+              className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

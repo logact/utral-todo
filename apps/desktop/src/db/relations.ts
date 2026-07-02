@@ -3,6 +3,7 @@ import { todoRelations, todos } from './schema';
 import { eq, and } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import type { Todo, TodoRelation, TodoRelationType } from '../types';
 import { rowToTodo, rowToRelation, relationToRow } from './schema';
 
@@ -23,7 +24,7 @@ export async function createRelation(
     isDeleted: false,
   };
   await db.insert(todoRelations).values(relationToRow(relation));
-  notifyDbOperation('relations', 'create', relation.id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todoRelations, 'create', relation.id).catch(() => {});
   return relation;
 }
 
@@ -212,7 +213,7 @@ export async function updateRelation(
   await db.update(todoRelations).set({
     ...relationToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<TodoRelation>),
   }).where(eq(todoRelations.id, id));
-  notifyDbOperation('relations', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todoRelations, 'update', id).catch(() => {});
 }
 
 export async function deleteRelation(id: string): Promise<void> {
@@ -229,7 +230,7 @@ export async function deleteRelation(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todoRelations.id, id));
-  notifyDbOperation('relations', 'delete', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todoRelations, 'delete', id).catch(() => {});
 }
 
 export async function deleteRelationsInvolvingTodo(todoId: string): Promise<void> {

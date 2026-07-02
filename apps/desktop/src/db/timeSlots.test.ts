@@ -17,6 +17,7 @@ vi.mock('./drizzle-adapter', () => {
 });
 
 vi.mock('../lib/sync/syncEngine', () => ({
+  notifyDbOperation: vi.fn().mockResolvedValue(undefined),
   syncLocalChange: vi.fn().mockResolvedValue(undefined),
   getOrCreateDeviceId: vi.fn().mockResolvedValue('test-node'),
 }));
@@ -24,6 +25,11 @@ vi.mock('../lib/sync/syncEngine', () => ({
 vi.mock('@utral/sync-share', () => ({
   newHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 0, node: 'test-node' }),
   mergeHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 1, node: 'test-node' }),
+  TABLE_NAME_MAP: {
+    todo: 'todo',
+    todoLog: 'todoLog',
+    timeSlot: 'timeSlot',
+  },
 }));
 
 vi.mock('./timeSlotDefinitions', () => ({

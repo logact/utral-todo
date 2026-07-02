@@ -24,7 +24,7 @@ export type EndType = 'desktop' | 'ios' | 'android' | 'linux';
  * A device id only needs to be unique per install, so the non-crypto fallback
  * is acceptable — it is never used as a security token.
  */
-function generateUUID(): string {
+export function generateUUID(): string {
   const c: Crypto | undefined = typeof crypto !== 'undefined' ? crypto : undefined;
   if (c?.randomUUID) return c.randomUUID();
 

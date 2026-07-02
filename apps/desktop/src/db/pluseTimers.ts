@@ -3,6 +3,7 @@ import { pluses } from './schema';
 import { eq } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import type { Pluse } from '../types';
 import { rowToPluse } from './schema';
 
@@ -30,7 +31,7 @@ export async function startPluseTimer(pluseId: string): Promise<Pluse> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, pluseId));
-  notifyDbOperation('pluses', 'update', pluseId).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -52,7 +53,7 @@ export async function pausePluseTimer(pluseId: string, accumulatedSeconds: numbe
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, pluseId));
-  notifyDbOperation('pluses', 'update', pluseId).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -72,7 +73,7 @@ export async function resumePluseTimer(pluseId: string): Promise<Pluse> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, pluseId));
-  notifyDbOperation('pluses', 'update', pluseId).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }
@@ -94,7 +95,7 @@ export async function stopPluseTimer(pluseId: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, pluseId));
-  notifyDbOperation('pluses', 'update', pluseId).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', pluseId).catch(() => {});
 }
 
 export async function advancePluseTimer(pluseId: string, currentIntervalIndex: number): Promise<Pluse> {
@@ -113,7 +114,7 @@ export async function advancePluseTimer(pluseId: string, currentIntervalIndex: n
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, pluseId));
-  notifyDbOperation('pluses', 'update', pluseId).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', pluseId).catch(() => {});
   const updated = await db.select().from(pluses).where(eq(pluses.id, pluseId)) as any[];
   return rowToPluse(updated[0]);
 }

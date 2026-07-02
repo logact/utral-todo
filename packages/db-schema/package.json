@@ -17,6 +17,10 @@
     "./timeslots": {
       "types": "./src/timeSlotEngine.ts",
       "default": "./src/timeSlotEngine.ts"
+    },
+    "./bootstrap": {
+      "types": "./src/bootstrap.ts",
+      "default": "./src/bootstrap.ts"
     }
   },
   "scripts": {

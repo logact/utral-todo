@@ -3,6 +3,7 @@ import { todoLogs } from './schema';
 import { eq } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import type { TodoLog, TodoLogType } from '../types';
 import { todoLogToRow, rowToTodoLog } from './schema';
 
@@ -26,7 +27,7 @@ export async function createTodoLog(
     isDeleted: false,
   };
   await db.insert(todoLogs).values(todoLogToRow(log));
-  notifyDbOperation('todoLogs', 'create', log.id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todoLogs, 'create', log.id).catch(() => {});
   return log;
 }
 
@@ -51,7 +52,7 @@ export async function deleteTodoLog(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todoLogs.id, id));
-  notifyDbOperation('todoLogs', 'delete', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todoLogs, 'delete', id).catch(() => {});
 }
 
 export async function deleteTodoLogsForTodo(todoId: string): Promise<void> {

@@ -1,6 +1,6 @@
 import type { SyncHandlerOptions, ServerSocket, PushResult, PushMessage, SyncMessage } from './types.js';
 import type { HLCTimestamp, SyncEvent } from '@utral/sync-share';
-import { newHLC } from '@utral/sync-share';
+import { newHLC, SYNC_TABLE_SET } from '@utral/sync-share';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -131,8 +131,8 @@ export class SyncHandler {
         continue;
       }
 
-      if (!this.opts.tables.includes(entry.table)) {
-        rejected.push({ id, reason: `table '${entry.table}' not registered` });
+      if (!SYNC_TABLE_SET.has(entry.table as any)) {
+        rejected.push({ id, reason: `unknown table '${entry.table}'` });
         continue;
       }
 
@@ -141,7 +141,7 @@ export class SyncHandler {
           // Persist under the client's raw queue-item id so the push-ack echoes
           // an id the client recognizes and can remove from its write-ahead
           // queue. Fall back to a fresh id only for legacy pushes with no id.
-          id: entry.id,
+          id,
           // Placeholder — storage assigns the real seq from the DB (MAX+1) and
           // returns it on the stored event.
           seq: 0,
@@ -194,7 +194,7 @@ export class SyncHandler {
         `[sync] send event seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId} -> ${deviceId} (${userId}:${channel}) [pull]`,
       );
       socket.send(JSON.stringify({ type: 'event', userId, channel, event }));
-      // this.opts.storage.trackEventDelivery(event.id, deviceId, channel);
+      this.opts.storage.trackEventDelivery(event.id, deviceId, channel);
     }
   }
 
@@ -214,7 +214,7 @@ export class SyncHandler {
           `[sync] relay event seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId} -> ${deviceId} (${userId}:${channel})`,
         );
         socket.send(payload);
-
+        this.opts.storage.trackEventDelivery(event.id, deviceId, channel);
       }
     }
 

@@ -8,6 +8,7 @@ vi.mock('./drizzle-adapter', () => ({
 }));
 
 vi.mock('../lib/sync/syncEngine', () => ({
+  notifyDbOperation: vi.fn().mockResolvedValue(undefined),
   syncLocalChange: vi.fn().mockResolvedValue(undefined),
   getOrCreateDeviceId: vi.fn().mockResolvedValue('test-node'),
 }));

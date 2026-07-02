@@ -25,7 +25,6 @@ import { createTodoLog, getTodoLogs, deleteTodoLog } from '../db/todoLogs';
 import { traceSourceChain } from '../db/relations';
 import {
   ensureTimeSlotTodo,
-  migrateLegacySlotTodos,
 } from '../db/timeSlots';
 import { getTimeSlotDefinitions } from '../db/timeSlotDefinitions';
 import {
@@ -905,10 +904,10 @@ export function Today() {
     return () => window.removeEventListener('db:changed', handleDbChanged);
   }, []);
 
-  // Load milestone notes for all time slots on mount
+  // Load milestone notes for all time slots on mount. Boundary todos are
+  // ensured at app startup by bootstrapApp; this effect just reads their notes.
   useEffect(() => {
     (async () => {
-      await migrateLegacySlotTodos();
       const notesMap: Record<string, { content: string; id: string }[]> = {};
       for (const slot of timeSlots) {
         try {

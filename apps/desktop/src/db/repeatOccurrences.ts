@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createTodo } from './todos';
 import { newHLC, mergeHLC, makeVirtualTodoId } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import type { RepeatOccurrence, Todo, TodoStatus } from '../types';
 import { repeatOccurrenceToRow, rowToRepeatOccurrence, rowToTodo } from './schema';
 
@@ -70,7 +71,7 @@ export async function setOccurrenceStatus(
     await db.update(repeatOccurrences).set(updateData).where(
       eq(repeatOccurrences.id, id)
     );
-    notifyDbOperation('repeatOccurrences', 'update', id).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.repeatOccurrences, 'update', id).catch(() => {});
   } else {
     const occurrence: RepeatOccurrence = {
       id,
@@ -83,7 +84,7 @@ export async function setOccurrenceStatus(
       isDeleted: false,
     };
     await db.insert(repeatOccurrences).values(repeatOccurrenceToRow(occurrence));
-    notifyDbOperation('repeatOccurrences', 'create', id).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.repeatOccurrences, 'create', id).catch(() => {});
   }
 }
 
@@ -124,7 +125,7 @@ export async function materializeInstance(
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(repeatOccurrences.id, id));
-    notifyDbOperation('repeatOccurrences', 'update', id).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.repeatOccurrences, 'update', id).catch(() => {});
   } else {
     await db.insert(repeatOccurrences).values(repeatOccurrenceToRow({
       id,
@@ -135,7 +136,7 @@ export async function materializeInstance(
       createdAt: hlc,
       updatedAt: hlc,
     }));
-    notifyDbOperation('repeatOccurrences', 'create', id).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.repeatOccurrences, 'create', id).catch(() => {});
   }
 
   return instance;
@@ -157,7 +158,7 @@ export async function deleteOccurrence(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(repeatOccurrences.id, id));
-  notifyDbOperation('repeatOccurrences', 'delete', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.repeatOccurrences, 'delete', id).catch(() => {});
 }
 
 export async function deleteOccurrencesForTemplate(templateId: string): Promise<void> {
@@ -174,6 +175,6 @@ export async function deleteOccurrencesForTemplate(templateId: string): Promise<
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(repeatOccurrences.id, o.id));
-    notifyDbOperation('repeatOccurrences', 'delete', o.id).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.repeatOccurrences, 'delete', o.id).catch(() => {});
   }
 }

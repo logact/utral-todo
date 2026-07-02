@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Shared, hoisted mock plumbing for the query builders ensureRootGoal uses.
-// ensureRootGoal runs statements directly on `db` (no transaction, because the
-// Tauri SQL plugin can't span one across pooled connections), so we mock
+// The shared bootstrap runs statements directly on `db`, so we mock
 // db.select / db.insert / db.update chains here and assert on their calls.
 const H = vi.hoisted(() => {
   const selectRows = { current: [] as any[] };
@@ -12,7 +11,11 @@ const H = vi.hoisted(() => {
   const updateSet = vi.fn(() => ({ where: updateWhere }));
   const update = vi.fn(() => ({ set: updateSet }));
   const selectWhere = vi.fn(() => Promise.resolve(selectRows.current));
-  const select = vi.fn(() => ({ from: vi.fn(() => ({ where: selectWhere })) }));
+  const select = vi.fn(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({ limit: selectWhere })),
+    })),
+  }));
   return {
     selectRows,
     insertValues,
@@ -29,25 +32,22 @@ vi.mock('./drizzle-adapter', () => ({
   db: { select: H.select, insert: H.insert, update: H.update },
 }));
 
-vi.mock('../lib/sync/syncEngine', () => ({
-  syncLocalChange: vi.fn().mockResolvedValue(undefined),
-  getOrCreateDeviceId: vi.fn().mockResolvedValue('test-node'),
+vi.mock('@utral/sync-share', () => ({
+  newHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 0, node: 'test-node' }),
+  mergeHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 1, node: 'test-node' }),
 }));
 
-vi.mock('../types', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../types')>();
-  return {
-    ...actual,
-    newHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 0, node: 'test-node' }),
-    mergeHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 1, node: 'test-node' }),
-  };
-});
-
-import { ensureRootGoal, ROOT_GOAL_ID } from './todos';
-import { todos, plans as plansTable, todoToRow } from './schema';
-import type { Todo } from '../types';
+import { ensureRootGoal, ROOT_GOAL_ID, ROOT_PLAN_ID } from '@utral/db-schema/bootstrap';
+import { todos, plans as plansTable } from './schema';
 
 describe('ensureRootGoal', () => {
+  const trackChange = vi.fn();
+  const store = {
+    db: { select: H.select, insert: H.insert, update: H.update },
+    getDeviceId: vi.fn().mockResolvedValue('test-node'),
+    trackChange,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     H.selectRows.current = [];
@@ -55,7 +55,7 @@ describe('ensureRootGoal', () => {
 
   describe('when no root goal exists', () => {
     it('inserts a root goal with isRootGoal and goal nodeType', async () => {
-      await ensureRootGoal();
+      await ensureRootGoal(store);
 
       // First insert is the root goal into the todos table.
       expect(H.insert).toHaveBeenNthCalledWith(1, todos);
@@ -64,58 +64,42 @@ describe('ensureRootGoal', () => {
       expect(goalRow.nodeType).toBe('goal');
       expect(goalRow.isRootGoal).toBe(true);
       expect(goalRow.goalStatus).toBe('active');
+      expect(trackChange).toHaveBeenCalledWith('todo', 'create', ROOT_GOAL_ID);
     });
 
     it('inserts a system plan linked to the root goal', async () => {
-      await ensureRootGoal();
+      await ensureRootGoal(store);
 
       // Second insert is the plan into the plans table.
       expect(H.insert).toHaveBeenNthCalledWith(2, plansTable);
       const planRow = H.insertValues.mock.calls[1][0];
       expect(planRow.goalTodoId).toBe(ROOT_GOAL_ID);
       expect(planRow.isSystemPlan).toBe(true);
-      expect(planRow.id).toBeTruthy();
+      expect(planRow.id).toBe(ROOT_PLAN_ID);
+      expect(trackChange).toHaveBeenCalledWith('plan', 'create', ROOT_PLAN_ID);
     });
 
     it('sets the created plan as the root goal activePlanId', async () => {
-      const result = await ensureRootGoal();
+      await ensureRootGoal(store);
 
       const planRow = H.insertValues.mock.calls[1][0];
       expect(H.update).toHaveBeenCalledWith(todos);
       expect(H.updateSet).toHaveBeenCalledWith(
         expect.objectContaining({ activePlanId: planRow.id }),
       );
-      expect(result.activePlanId).toBe(planRow.id);
-      expect(result.id).toBe(ROOT_GOAL_ID);
-      expect(result.isRootGoal).toBe(true);
+      expect(trackChange).toHaveBeenCalledWith('todo', 'update', ROOT_GOAL_ID);
     });
   });
 
   describe('when a root goal already exists', () => {
-    it('returns the existing goal without inserting', async () => {
-      const existing: Todo = {
-        id: ROOT_GOAL_ID,
-        nodeType: 'goal',
-        title: 'Root Goal',
-        description: '',
-        isRootGoal: true,
-        goalStatus: 'active',
-        tags: [],
-        order: 0,
-        activePlanId: 'existing-plan',
-        createdAt: { wall: 5, counter: 0, node: 'n' },
-        updatedAt: { wall: 5, counter: 0, node: 'n' },
-        isDeleted: false,
-      };
-      H.selectRows.current = [todoToRow(existing)];
+    it('returns without inserting', async () => {
+      H.selectRows.current = [{ id: ROOT_GOAL_ID }];
 
-      const result = await ensureRootGoal();
+      await ensureRootGoal(store);
 
-      expect(result.id).toBe(ROOT_GOAL_ID);
-      expect(result.isRootGoal).toBe(true);
-      expect(result.activePlanId).toBe('existing-plan');
       expect(H.insert).not.toHaveBeenCalled();
       expect(H.update).not.toHaveBeenCalled();
+      expect(trackChange).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,6 +3,7 @@ import { pluses } from './schema';
 import { eq } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import type { Pluse } from '../types';
 import { pluseToRow, rowToPluse } from './schema';
 
@@ -33,7 +34,7 @@ export async function createPluse(
     isDeleted: false,
   };
   await db.insert(pluses).values(pluseToRow(pluse));
-  notifyDbOperation('pluses', 'create', pluse.id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'create', pluse.id).catch(() => {});
   return pluse;
 }
 
@@ -67,7 +68,7 @@ export async function setActivePluse(id: string | null): Promise<void> {
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(pluses.id, currentActive.id));
-    notifyDbOperation('pluses', 'update', currentActive.id).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', currentActive.id).catch(() => {});
   }
 
   if (id) {
@@ -80,7 +81,7 @@ export async function setActivePluse(id: string | null): Promise<void> {
         updatedAtCounter: mergedUpdatedAt.counter,
         updatedAtNode: mergedUpdatedAt.node,
       }).where(eq(pluses.id, id));
-      notifyDbOperation('pluses', 'update', id).catch(() => {});
+      notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', id).catch(() => {});
     }
   }
 }
@@ -97,7 +98,7 @@ export async function updatePluse(
   await db.update(pluses).set({
     ...pluseToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Pluse>),
   }).where(eq(pluses.id, id));
-  notifyDbOperation('pluses', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'update', id).catch(() => {});
 }
 
 export async function deletePluse(id: string): Promise<void> {
@@ -113,5 +114,5 @@ export async function deletePluse(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(pluses.id, id));
-  notifyDbOperation('pluses', 'delete', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.pluses, 'delete', id).catch(() => {});
 }

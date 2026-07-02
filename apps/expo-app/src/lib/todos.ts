@@ -1,7 +1,8 @@
 import { eq, asc } from 'drizzle-orm';
 import { db, schema } from '../db';
 import type { Todo } from '@utral/types';
-import { scheduleSyncPush, addPendingChange } from './auto-sync';
+import { notifyDbOperation } from './sync';
+import { getDeviceId } from './database';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -90,8 +91,7 @@ export async function updateTodoStatus(id: string, status: Todo['status']): Prom
   if (status === 'done') updates.completedAt = new Date();
 
   await db.update(schema.todos).set(updates).where(eq(schema.todos.id, id));
-  addPendingChange('todo', 'update', id);
-  scheduleSyncPush();
+  notifyDbOperation('todo', 'update', id);
   return getTodo(id);
 }
 
@@ -102,13 +102,13 @@ export async function updateTodoSchedule(id: string, scheduledDate: Date | null)
     .update(schema.todos)
     .set({ scheduledDate, updatedAtWall: Date.now() })
     .where(eq(schema.todos.id, id));
-  addPendingChange('todo', 'update', id);
-  scheduleSyncPush();
+  notifyDbOperation('todo', 'update', id);
   return getTodo(id);
 }
 
 export async function createTodo(data: Partial<Todo>): Promise<Todo> {
   const id = generateId();
+  const deviceId = await getDeviceId();
   const now = Date.now();
   const todo = {
     id,
@@ -136,14 +136,13 @@ export async function createTodo(data: Partial<Todo>): Promise<Todo> {
     completedAt: data.completedAt || null,
     createdAtWall: now,
     createdAtCounter: 0,
-    createdAtNode: '',
+    createdAtNode: deviceId,
     updatedAtWall: now,
     updatedAtCounter: 0,
-    updatedAtNode: '',
+    updatedAtNode: deviceId,
   };
   await db.insert(schema.todos).values(todo);
-  addPendingChange('todo', 'create', id);
-  scheduleSyncPush();
+  notifyDbOperation('todo', 'create', id);
   return todo as unknown as Todo;
 }
 
@@ -156,8 +155,7 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<To
     .update(schema.todos)
     .set({ ...updateFields, updatedAtWall: now })
     .where(eq(schema.todos.id, id));
-  addPendingChange('todo', 'update', id);
-  scheduleSyncPush();
+  notifyDbOperation('todo', 'update', id);
   return getTodo(id);
 }
 
@@ -169,7 +167,6 @@ export async function deleteTodo(id: string): Promise<void> {
       .update(schema.todos)
       .set({ isDeleted: true, updatedAtWall: now })
       .where(eq(schema.todos.id, id));
-    addPendingChange('todo', 'update', id);
-    scheduleSyncPush();
+    notifyDbOperation('todo', 'delete', id);
   }
 }

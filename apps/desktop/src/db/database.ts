@@ -1,13 +1,26 @@
 import { db, initDatabase as runMigrations } from './drizzle-adapter';
-import { todos, todoRelations, todoLogs, actionEdges, plans, pluses, repeatOccurrences, hlcState, syncConfig } from './schema';
+import {
+  todos, todoRelations, todoLogs, actionEdges, plans, pluses, repeatOccurrences,
+  hlcState, syncConfig, syncQueue, syncState,
+} from './schema';
 import { eq } from 'drizzle-orm';
-import { ensureRootGoal } from './todos';
+import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { bootstrapApp, type BootstrapStore } from '@utral/db-schema/bootstrap';
 
 export { db };
 
 export async function initDatabase(): Promise<void> {
   await runMigrations();
-  await ensureRootGoal();
+
+  const store: BootstrapStore = {
+    db,
+    getDeviceId: getOrCreateDeviceId,
+    trackChange: (entity, op, id) => {
+      notifyDbOperation(entity, op, id).catch(() => {});
+    },
+  };
+
+  await bootstrapApp(store);
 }
 
 export async function clearAllData(): Promise<void> {
@@ -20,6 +33,37 @@ export async function clearAllData(): Promise<void> {
   await db.delete(repeatOccurrences);
   await db.delete(hlcState);
   await db.delete(syncConfig);
+  await db.delete(syncQueue);
+  await db.delete(syncState);
+}
+
+export async function resetAllData(): Promise<void> {
+  // Stop sync first so no queued operations are sent while we wipe.
+  const { stop } = await import('../lib/sync/syncEngine');
+  stop();
+
+  // Clear every local table (domain + sync infra).
+  await clearAllData();
+
+  // Wipe cached sync identity and configuration from localStorage.
+  localStorage.removeItem('syncDeviceId');
+  localStorage.removeItem('syncServerUrl');
+  localStorage.removeItem('syncApiToken');
+  localStorage.removeItem('syncRemoteOpsEnabled');
+  localStorage.removeItem('lastSyncAt');
+
+  // Recreate the default dataset so the app is usable immediately, not just on relaunch.
+  await runMigrations();
+
+  const store: BootstrapStore = {
+    db,
+    getDeviceId: getOrCreateDeviceId,
+    trackChange: (entity, op, id) => {
+      notifyDbOperation(entity, op, id).catch(() => {});
+    },
+  };
+
+  await bootstrapApp(store);
 }
 
 export async function garbageCollectTombstones(): Promise<void> {

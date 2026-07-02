@@ -3,18 +3,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import Database from 'better-sqlite3';
 import { SyncHandler, SqliteSyncStorage, type ServerSocket } from '@utral/sync-server';
 
-/** Canonical syncable table names — mirrors `apps/server/src/sync/setup.ts`. */
-const TABLES = [
-  'todo',
-  'todoRelation',
-  'todoLog',
-  'actionEdge',
-  'pluse',
-  'repeatOccurrence',
-  'plan',
-  'timeSlot',
-];
-
 export interface TestServer {
   port: number;
   /** ws://127.0.0.1:<port>/ws/sync */
@@ -37,7 +25,7 @@ export async function startTestServer(): Promise<TestServer> {
   const storage = new SqliteSyncStorage(db);
   storage.init();
 
-  const handler = new SyncHandler({ storage, tables: TABLES });
+  const handler = new SyncHandler({ storage });
 
   const httpServer = http.createServer();
   const wss = new WebSocketServer({ server: httpServer, path: '/ws/sync' });

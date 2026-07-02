@@ -18,7 +18,6 @@ export interface PushResult {
 /** Server sync handler options */
 export interface SyncHandlerOptions {
   storage: ServerSyncStorage;
-  tables: string[];
   /** Called after an event is persisted — for external broadcast hooks */
   onBroadcast?: (event: SyncEvent, excludeDeviceId?: string) => void;
 }

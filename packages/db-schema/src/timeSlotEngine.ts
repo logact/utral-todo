@@ -60,12 +60,25 @@ export async function seedDefaultTimeSlots(ctx: TimeSlotStore): Promise<void> {
 
   for (let i = 0; i < DEFAULT_TIME_SLOTS.length; i++) {
     const slot = DEFAULT_TIME_SLOTS[i];
+
+    // Skip already-seeded slots so we don't emit redundant sync events on every
+    // app restart.
+    const existing = await ctx.db
+      .select()
+      .from(timeSlots)
+      .where(eq(timeSlots.id, slot.id))
+      .limit(1);
+
+    if (existing.length > 0) continue;
+
     const definition = slotConfigToDefinition(slot, i, nodeId);
 
     await ctx.db
       .insert(timeSlots)
       .values(timeSlotDefinitionToRow(definition))
       .onConflictDoNothing({ target: timeSlots.id });
+
+    ctx.trackChange('timeSlot', 'create', slot.id);
   }
 }
 

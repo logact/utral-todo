@@ -49,7 +49,18 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.delete('/api/all-data', async (_req, res) => {
+  // Wipe every data table. Child/dependent tables are cleared before their
+  // parents to stay safe if Postgres-level foreign keys are added later.
   await db.delete(schema.syncEvent);
+  await db.delete(schema.todoRelation);
+  await db.delete(schema.todoLog);
+  await db.delete(schema.actionEdge);
+  await db.delete(schema.plan);
+  await db.delete(schema.pluse);
+  await db.delete(schema.repeatOccurrence);
+  await db.delete(schema.timeSlot);
+  await db.delete(schema.todo);
+  await db.delete(schema.device);
   res.status(204).send();
 });
 

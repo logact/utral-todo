@@ -5,16 +5,14 @@ import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
 import { newHLC, mergeHLC } from '../types';
-import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern, Plan } from '../types';
+import type { Todo, TodoStatus, Priority, RepeatRule, NodeType, GoalStatus, TaskPattern } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import {
   todoToRow,
   rowToTodo,
-  planToRow,
   rowToPlan,
   rowToRelation,
 } from './schema';
-
-export const ROOT_GOAL_ID = 'system:root-goal';
 
 export async function createTodo(
   title: string,
@@ -73,7 +71,7 @@ export async function createTodo(
   };
   const newRow = todoToRow(todo);
   await db.insert(todos).values(newRow);
-  notifyDbOperation('todos', 'create', todo.id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todos, 'create', todo.id).catch(() => {});
 
   return todo;
 }
@@ -145,59 +143,6 @@ export async function getRootGoal(): Promise<Todo | undefined> {
   const rows = await db.select().from(todos).where(eq(todos.isRootGoal, true)) as any[];
   const row = rows[0];
   return row ? rowToTodo(row) : undefined;
-}
-
-export async function ensureRootGoal(): Promise<Todo> {
-  // No db.transaction here: the Tauri SQL plugin runs each statement on a
-  // separate pooled connection, so a proxy-driver transaction's `begin` and
-  // the following writes land on different connections and deadlock. This runs
-  // once at startup and is idempotent on the root goal id, so sequential
-  // statements are sufficient.
-  const rows = await db.select().from(todos).where(eq(todos.id, ROOT_GOAL_ID)) as any[];
-  const existing = rows[0];
-  if (existing) return rowToTodo(existing);
-
-  const nodeId = await getOrCreateDeviceId();
-  const hlc = newHLC(nodeId);
-  const rootGoal: Todo = {
-    id: ROOT_GOAL_ID,
-    nodeType: 'goal',
-    title: 'Root Goal',
-    description: '',
-    isRootGoal: true,
-    goalStatus: 'active',
-    tags: [],
-    order: 0,
-    createdAt: hlc,
-    updatedAt: hlc,
-    isDeleted: false,
-  };
-  await db.insert(todos).values(todoToRow(rootGoal));
-  notifyDbOperation('todos', 'create', rootGoal.id).catch(() => {});
-
-  const plan: Plan = {
-    id: crypto.randomUUID(),
-    goalTodoId: rootGoal.id,
-    title: 'Root Road',
-    nodeIds: [],
-    edgeIds: [],
-    isSystemPlan: true,
-    createdAt: hlc,
-    updatedAt: hlc,
-    isDeleted: false,
-  };
-  await db.insert(plansTable).values(planToRow(plan));
-  notifyDbOperation('plans', 'create', plan.id).catch(() => {});
-
-  await db.update(todos).set({
-    activePlanId: plan.id,
-    updatedAtWall: hlc.wall,
-    updatedAtCounter: hlc.counter,
-    updatedAtNode: hlc.node,
-  }).where(eq(todos.id, rootGoal.id));
-  notifyDbOperation('todos', 'update', rootGoal.id).catch(() => {});
-
-  return { ...rootGoal, activePlanId: plan.id };
 }
 
 export async function getSubTodos(parentId: string): Promise<Todo[]> {
@@ -296,7 +241,7 @@ export async function reorderSubTodos(_parentId: string, orderedIds: string[]): 
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(todos.id, orderedIds[i]));
-    notifyDbOperation('todos', 'update', orderedIds[i]).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.todos, 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -314,7 +259,7 @@ export async function reorderTodos(orderedIds: string[]): Promise<void> {
       updatedAtCounter: mergedUpdatedAt.counter,
       updatedAtNode: mergedUpdatedAt.node,
     }).where(eq(todos.id, orderedIds[i]));
-    notifyDbOperation('todos', 'update', orderedIds[i]).catch(() => {});
+    notifyDbOperation(TABLE_NAME_MAP.todos, 'update', orderedIds[i]).catch(() => {});
   }
 }
 
@@ -339,7 +284,7 @@ export async function updateTodo(id: string, updates: Partial<Todo>): Promise<vo
   await db.update(todos).set({
     ...todoToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<Todo>),
   }).where(eq(todos.id, id));
-  notifyDbOperation('todos', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todos, 'update', id).catch(() => {});
 }
 
 export async function deleteTodo(id: string): Promise<void> {
@@ -369,7 +314,7 @@ export async function deleteTodo(id: string): Promise<void> {
         updatedAtCounter: mergedPlanUpdatedAt.counter,
         updatedAtNode: mergedPlanUpdatedAt.node,
       }).where(eq(plansTable.id, plan.id));
-      notifyDbOperation('plans', 'delete', plan.id).catch(() => {});
+      notifyDbOperation(TABLE_NAME_MAP.plans, 'delete', plan.id).catch(() => {});
     }
   } else {
     const allPlanRows = await db.select().from(plansTable) as any[];
@@ -398,7 +343,7 @@ export async function deleteTodo(id: string): Promise<void> {
           updatedAtCounter: mergedPlanUpdatedAt.counter,
           updatedAtNode: mergedPlanUpdatedAt.node,
         }).where(eq(plansTable.id, plan.id));
-        notifyDbOperation('plans', 'update', plan.id).catch(() => {});
+        notifyDbOperation(TABLE_NAME_MAP.plans, 'update', plan.id).catch(() => {});
       }
     }
   }
@@ -412,7 +357,7 @@ export async function deleteTodo(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  notifyDbOperation('todos', 'delete', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todos, 'delete', id).catch(() => {});
 }
 
 export async function updateTodoStatus(id: string, status: TodoStatus): Promise<void> {
@@ -429,7 +374,7 @@ export async function updateTodoStatus(id: string, status: TodoStatus): Promise<
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  notifyDbOperation('todos', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todos, 'update', id).catch(() => {});
 }
 
 export async function updateTodoSchedule(
@@ -447,7 +392,7 @@ export async function updateTodoSchedule(
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  notifyDbOperation('todos', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todos, 'update', id).catch(() => {});
 }
 
 // ─── Virtual Instance Computation ───
@@ -710,5 +655,5 @@ export async function updateRepeatRule(
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(todos.id, id));
-  notifyDbOperation('todos', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.todos, 'update', id).catch(() => {});
 }

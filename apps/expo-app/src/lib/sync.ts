@@ -1,6 +1,4 @@
 import { ExpoSyncHandler } from './sync/sync-handler';
-import * as SQLite from 'expo-sqlite';
-import { db, schema } from '../db';
 import { queryClient } from './query-client';
 import {
   getSyncConfigData,
@@ -20,28 +18,6 @@ export async function setSyncConfig(config: SyncConfig): Promise<void> {
 }
 
 // --- Sync Engine ---
-
-const TABLE_NAME_MAP: Record<string, string> = {
-  todos: 'todo',
-  relations: 'todoRelation',
-  todoLogs: 'todoLog',
-  actionEdges: 'actionEdge',
-  plans: 'plan',
-  pluses: 'pluse',
-  repeatOccurrences: 'repeatOccurrence',
-  timeSlots: 'timeSlot',
-};
-
-const TABLE_ORDER: Record<string, number> = {
-  todos: 0, todo: 0,
-  relations: 1, todoRelation: 1,
-  todoLogs: 2, todoLog: 2,
-  actionEdges: 3, actionEdge: 3,
-  pluses: 4, pluse: 4,
-  repeatOccurrences: 5, repeatOccurrence: 5,
-  plans: 6, plan: 6,
-  timeSlots: 7, timeSlot: 7,
-};
 
 function normalizeServerUrl(url: string): string {
   let normalized = url.trim();
@@ -78,11 +54,10 @@ async function getEngine(): Promise<ExpoSyncHandler> {
 
     engine = new ExpoSyncHandler({
       serverUrl,
-      tables: Object.values(TABLE_NAME_MAP),
-      tableOrder: TABLE_ORDER,
       deviceId,
       userId: (config as any).userId || 'default',
       channel: (config as any).channel || 'default',
+      apiToken: config.apiToken,
       emitter: {
         emitRemoteApplied: (table: string, operation: string, recordId: string) => {
           // Invalidate react-query caches so the UI refreshes
@@ -103,12 +78,27 @@ async function getEngine(): Promise<ExpoSyncHandler> {
   return engine;
 }
 
+export async function notifyDbOperation(
+  table: string,
+  operation: 'create' | 'update' | 'delete',
+  recordId: string,
+): Promise<void> {
+  try {
+    const engine = await getEngine();
+    await engine.syncLocalChange(table, operation, recordId);
+  } catch (err) {
+    // Sync may not be configured yet; don't let sync failures break local writes.
+    console.log('[sync] notifyDbOperation skipped:', err);
+  }
+}
+
 // --- Public API ---
 
 export async function syncAll(): Promise<void> {
   console.log('[sync] syncAll');
   const engine = await getEngine();
-  await engine.connect();
+  engine.forceSync();
+
 }
 
 let started = false;

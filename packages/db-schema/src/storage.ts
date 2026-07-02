@@ -19,6 +19,8 @@ import {
 } from './schema.js';
 import { syncQueue, syncState } from './infra.js';
 
+import { SYNC_TABLES } from '@utral/sync-share';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared SQLite sync storage for Utral Todo clients (desktop + mobile).
 //
@@ -30,17 +32,33 @@ import { syncQueue, syncState } from './infra.js';
 // Tauri sqlite-proxy and the Expo expo-sqlite instances can share this code.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Entity-name → drizzle table. Mirrors the outbound TABLE_NAME_MAP.
+// Entity-name → drizzle table. Mirrors the outbound TABLE_NAME_MAP and the
+// canonical SYNC_TABLES list from @utral/sync-share.
 const SYNC_TABLE_MAP: Record<string, any> = {
-  todo:             todos,
-  todoRelation:     todoRelations,
-  todoLog:          todoLogs,
-  actionEdge:       actionEdges,
-  plan:             plans,
-  pluse:            pluses,
-  repeatOccurrence: repeatOccurrences,
-  timeSlot:         timeSlots,
+  [SYNC_TABLES[0]]: todos,
+  [SYNC_TABLES[1]]: todoRelations,
+  [SYNC_TABLES[2]]: todoLogs,
+  [SYNC_TABLES[3]]: actionEdges,
+  [SYNC_TABLES[4]]: plans,
+  [SYNC_TABLES[5]]: pluses,
+  [SYNC_TABLES[6]]: repeatOccurrences,
+  [SYNC_TABLES[7]]: timeSlots,
 };
+
+// Columns that Drizzle stores as integer timestamps but exposes as Date objects.
+// After a JSON round-trip through the sync wire, these arrive as ISO strings and
+// must be revived to Date instances before insertion.
+const TIMESTAMP_FIELDS: Record<string, Set<string>> = {
+  [SYNC_TABLES[0]]: new Set(['scheduledDate', 'scheduledEndDate', 'dueDate', 'startedAt', 'completedAt', 'targetDate']),
+  [SYNC_TABLES[5]]: new Set(['startedAt']),
+  [SYNC_TABLES[6]]: new Set(['date', 'completedAt']),
+};
+
+function normalizeTimestamp(value: unknown): unknown {
+  if (value == null || value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
+  return value;
+}
 
 export type SqliteSyncStorage = SyncQueueStorage &
   SyncRecordStorage &
@@ -89,10 +107,11 @@ export function createSqliteSyncStorage(
       const version = r.version as { wall?: number; counter?: number; node?: string } | undefined;
       const createdAt = r.createdAt as { wall?: number; counter?: number; node?: string } | undefined;
 
+      const dateFields = TIMESTAMP_FIELDS[table];
       const values: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(r)) {
         if (key === 'version' || key === 'createdAt' || key === 'updatedAt') continue;
-        values[key] = value;
+        values[key] = dateFields?.has(key) ? normalizeTimestamp(value) : value;
       }
       values.createdAtWall = createdAt?.wall ?? version?.wall ?? null;
       values.createdAtCounter = createdAt?.counter ?? version?.counter ?? 0;

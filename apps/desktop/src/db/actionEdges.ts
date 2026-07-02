@@ -3,6 +3,7 @@ import { actionEdges } from './schema';
 import { eq } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { newHLC, mergeHLC } from '../types';
+import { TABLE_NAME_MAP } from '@utral/sync-share';
 import type { ActionEdge, ActionEdgeType } from '../types';
 import { actionEdgeToRow, rowToActionEdge } from './schema';
 
@@ -23,7 +24,7 @@ export async function createActionEdge(
     isDeleted: false,
   };
   await db.insert(actionEdges).values(actionEdgeToRow(edge));
-  notifyDbOperation('actionEdges', 'create', edge.id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.actionEdges, 'create', edge.id).catch(() => {});
   return edge;
 }
 
@@ -77,7 +78,7 @@ export async function updateActionEdge(
   await db.update(actionEdges).set({
     ...actionEdgeToRow({ ...updates, updatedAt: mergedUpdatedAt } as Partial<ActionEdge>),
   }).where(eq(actionEdges.id, id));
-  notifyDbOperation('actionEdges', 'update', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.actionEdges, 'update', id).catch(() => {});
 }
 
 export async function deleteActionEdge(id: string): Promise<void> {
@@ -94,7 +95,7 @@ export async function deleteActionEdge(id: string): Promise<void> {
     updatedAtCounter: mergedUpdatedAt.counter,
     updatedAtNode: mergedUpdatedAt.node,
   }).where(eq(actionEdges.id, id));
-  notifyDbOperation('actionEdges', 'delete', id).catch(() => {});
+  notifyDbOperation(TABLE_NAME_MAP.actionEdges, 'delete', id).catch(() => {});
 }
 
 export async function deleteActionEdgesForTodo(todoId: string): Promise<void> {

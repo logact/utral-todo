@@ -18,6 +18,7 @@ vi.mock('./drizzle-adapter', () => {
 });
 
 vi.mock('../lib/sync/syncEngine', () => ({
+  notifyDbOperation: vi.fn().mockResolvedValue(undefined),
   syncLocalChange: vi.fn().mockResolvedValue(undefined),
   getOrCreateDeviceId: vi.fn().mockResolvedValue('test-node'),
 }));
@@ -25,6 +26,11 @@ vi.mock('../lib/sync/syncEngine', () => ({
 vi.mock('@utral/sync-share', () => ({
   newHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 0, node: 'test-node' }),
   mergeHLC: vi.fn().mockReturnValue({ wall: 1000, counter: 1, node: 'test-node' }),
+  TABLE_NAME_MAP: {
+    todo: 'todo',
+    todoLog: 'todoLog',
+    timeSlot: 'timeSlot',
+  },
 }));
 
 import {
@@ -36,6 +42,7 @@ import {
 } from './timeSlotDefinitions';
 import { db } from './drizzle-adapter';
 import { timeSlots } from './schema';
+import { notifyDbOperation } from '../lib/sync/syncEngine';
 
 const mockedDb = db as unknown as {
   insert: ReturnType<typeof vi.fn>;
@@ -67,6 +74,8 @@ describe('timeSlotDefinitions', () => {
     const insertCall = mockedDb.insert.mock.results[0].value.values.mock.calls[0];
     expect(insertCall[0].id).toBe('slot-morning');
     expect(insertCall[0].startHour).toBe(6);
+
+    expect(notifyDbOperation).toHaveBeenCalledWith('timeSlot', 'create', 'slot-morning');
   });
 
   it('loads time slot definitions ordered by order', async () => {
