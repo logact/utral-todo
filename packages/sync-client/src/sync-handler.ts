@@ -509,6 +509,7 @@ export class SyncClientHandler {
    * requesting socket is identified server-side from the connection.
    */
   private sendPullSeq(from: number, to: number): void {
+    console.log(`[sync] pull_seq from=${from} to=${to} dev=${this.opts.deviceId} -> ${this.opts.userId}:${this.opts.channel}`);
     this.send({
       type: 'pull_seq',
       deviceId: this.opts.userId,
