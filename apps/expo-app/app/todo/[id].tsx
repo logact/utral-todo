@@ -4,8 +4,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getTodo, updateTodo, updateTodoStatus, deleteTodo } from '@/lib/todos';
+import { getTodo, updateTodo, updateTodoStatus, deleteTodo } from '@utral/db-schema/todo-ops';
 import { hapticImpact, scheduleNotification, cancelAllNotifications, requestNotificationPermission } from '@/lib/native';
+import { dbStore } from '@/lib/db-store';
+import type { Todo } from '@utral/types';
 
 export default function TodoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,7 +23,7 @@ export default function TodoDetailScreen() {
 
   const { data: todo, isLoading } = useQuery({
     queryKey: ['todo', id],
-    queryFn: () => getTodo(id!),
+    queryFn: () => getTodo(dbStore, id!),
     enabled: !!id,
   });
 
@@ -48,7 +50,7 @@ export default function TodoDetailScreen() {
   const toggleStatus = useCallback(async () => {
     if (!todo) return;
     const newStatus = todo.status === 'done' ? 'pending' : 'done';
-    await updateTodoStatus(todo.id, newStatus);
+    await updateTodoStatus(dbStore, todo.id, newStatus);
     hapticImpact();
     queryClient.invalidateQueries({ queryKey: ['todo', id] });
     queryClient.invalidateQueries({ queryKey: ['todos'] });
@@ -62,7 +64,7 @@ export default function TodoDetailScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteTodo(todo.id);
+          await deleteTodo(dbStore, todo.id);
           hapticImpact();
           queryClient.invalidateQueries({ queryKey: ['todos'] });
           router.back();
@@ -74,7 +76,7 @@ export default function TodoDetailScreen() {
   const saveSchedule = useCallback(async () => {
     if (!todo) return;
     const scheduledDate = scheduleInput ? new Date(scheduleInput) : undefined;
-    await updateTodo(todo.id, { scheduledDate });
+    await updateTodo(dbStore, todo.id, { scheduledDate });
 
     if (scheduledDate && scheduledDate > new Date() && reminderEnabled) {
       const permitted = await requestNotificationPermission();
@@ -94,7 +96,7 @@ export default function TodoDetailScreen() {
 
   const clearSchedule = useCallback(async () => {
     if (!todo) return;
-    await updateTodo(todo.id, { scheduledDate: undefined });
+    await updateTodo(dbStore, todo.id, { scheduledDate: undefined });
     await cancelAllNotifications();
     hapticImpact();
     queryClient.invalidateQueries({ queryKey: ['todo', id] });
@@ -104,7 +106,7 @@ export default function TodoDetailScreen() {
   const saveDueDate = useCallback(async () => {
     if (!todo) return;
     const dueDate = dueInput ? new Date(dueInput) : undefined;
-    await updateTodo(todo.id, { dueDate });
+    await updateTodo(dbStore, todo.id, { dueDate });
     hapticImpact();
     queryClient.invalidateQueries({ queryKey: ['todo', id] });
     setShowDuePicker(false);
@@ -112,7 +114,7 @@ export default function TodoDetailScreen() {
 
   const clearDueDate = useCallback(async () => {
     if (!todo) return;
-    await updateTodo(todo.id, { dueDate: undefined });
+    await updateTodo(dbStore, todo.id, { dueDate: undefined });
     hapticImpact();
     queryClient.invalidateQueries({ queryKey: ['todo', id] });
     setShowDuePicker(false);

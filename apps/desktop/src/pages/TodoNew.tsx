@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, GitBranch, Repeat, Target, CheckSquare } from 'lucide-react';
-import { createTodo, createGoal, getTodo, getAllTodos } from '../db/todos';
-import { createRelation } from '../db/relations';
 import { LabelPicker } from '../components/LabelPicker';
 import type { Todo, RepeatRule, GoalStatus, TaskPattern } from '../types';
+import { dbStore } from '../db/store';
+import { createRelation } from '@utral/db-schema/relation-ops';
+import { createGoal, createTodo, getAllTodos, getTodo } from '@utral/db-schema/todo-ops';
 
 export function TodoNew() {
   const navigate = useNavigate();
@@ -43,12 +44,12 @@ export function TodoNew() {
   const [goalStatus, setGoalStatus] = useState<GoalStatus>('active');
 
   useEffect(() => {
-    getAllTodos().then(setAllTodos);
+    getAllTodos(dbStore).then(setAllTodos);
   }, []);
 
   useEffect(() => {
     if (sourceTodoId) {
-      getTodo(sourceTodoId).then((t) => {
+      getTodo(dbStore, sourceTodoId).then((t) => {
         if (t) {
           setSourceTodo(t);
         }
@@ -74,7 +75,7 @@ export function TodoNew() {
     }
 
     const todo = isGoal
-      ? await createGoal(title.trim(), {
+      ? await createGoal(dbStore, title.trim(), {
           description: description.trim(),
           parentId: parentId || undefined,
           tags,
@@ -83,7 +84,7 @@ export function TodoNew() {
           targetDate: targetDate ? new Date(targetDate) : undefined,
           goalStatus,
         })
-      : await createTodo(title.trim(), {
+      : await createTodo(dbStore, title.trim(), {
           nodeType,
           description: description.trim(),
           parentId: parentId || undefined,
@@ -98,7 +99,7 @@ export function TodoNew() {
         });
 
     if (sourceTodoId) {
-      await createRelation(sourceTodoId, todo.id, 'source_from');
+      await createRelation(dbStore, sourceTodoId, todo.id, 'source_from');
     }
 
     navigate('/');

@@ -16,8 +16,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react';
-import { getTodo, updateTodo, updateTodoStatus, traceGoalChain } from '../db/todos';
-import { getSpawnedTodos, getTemplateForInstance, createRelation, updateRelation, deleteRelation } from '../db/relations';
 import { formatDuration, formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
 import { TraceView } from '../components/TraceView';
@@ -25,6 +23,9 @@ import { LabelPicker } from '../components/LabelPicker';
 import { useTodoLogs } from '../hooks/useTodoLogs';
 import { GoalDetail } from './GoalDetail';
 import type { Todo, RepeatRule, Priority, TaskPattern, TodoRelationType } from '../types';
+import { dbStore } from '../db/store';
+import { createRelation, deleteRelation, getSpawnedTodos, getTemplateForInstance, updateRelation } from '@utral/db-schema/relation-ops';
+import { getTodo, traceGoalChain, updateTodo, updateTodoStatus } from '@utral/db-schema/todo-ops';
 
 export function TodoDetail() {
   const { id } = useParams<{ id: string }>();
@@ -69,18 +70,18 @@ export function TodoDetail() {
   const loadTodo = useCallback(async () => {
     if (!id) return;
     setIsLoadingTodo(true);
-    const t = await getTodo(id);
+    const t = await getTodo(dbStore, id);
     if (t) {
       setTodo(t);
 
       const [spawned, tmpl] = await Promise.all([
-        getSpawnedTodos(t.id),
-        getTemplateForInstance(t.id),
+        getSpawnedTodos(dbStore, t.id),
+        getTemplateForInstance(dbStore, t.id),
       ]);
       setSpawnedTodos(spawned);
       setTemplateTodo(tmpl ?? null);
 
-      const goalChain = await traceGoalChain(t.id);
+      const goalChain = await traceGoalChain(dbStore, t.id);
       setParentGoal(goalChain[goalChain.length - 1] ?? null);
 
     }
@@ -101,7 +102,7 @@ export function TodoDetail() {
 
   async function markDone() {
     if (!id) return;
-    await updateTodoStatus(id, 'done');
+    await updateTodoStatus(dbStore, id, 'done');
     setTodo((prev) =>
       prev
         ? { ...prev, status: 'done', completedAt: new Date() }
@@ -111,7 +112,7 @@ export function TodoDetail() {
 
   async function markUndone() {
     if (!id) return;
-    await updateTodoStatus(id, 'pending');
+    await updateTodoStatus(dbStore, id, 'pending');
     setTodo((prev) =>
       prev ? { ...prev, status: 'pending', completedAt: undefined } : prev
     );
@@ -215,7 +216,7 @@ export function TodoDetail() {
       repeatRule,
     };
 
-    await updateTodo(id, updates);
+    await updateTodo(dbStore, id, updates);
 
     setTodo((prev) =>
       prev
@@ -236,15 +237,15 @@ export function TodoDetail() {
   }
 
   async function handleCreateRelation(fromTodoId: string, toTodoId: string, type: TodoRelationType) {
-    await createRelation(fromTodoId, toTodoId, type);
+    await createRelation(dbStore, fromTodoId, toTodoId, type);
   }
 
   async function handleDeleteRelation(relationId: string) {
-    await deleteRelation(relationId);
+    await deleteRelation(dbStore, relationId);
   }
 
   async function handleUpdateRelation(relationId: string, type: TodoRelationType) {
-    await updateRelation(relationId, { type });
+    await updateRelation(dbStore, relationId, { type });
   }
 
   if (isLoadingTodo) {

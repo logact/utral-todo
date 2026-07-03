@@ -62,11 +62,11 @@ async function getEngine(): Promise<ExpoSyncHandler> {
       emitter: {
         emitRemoteApplied: (table: string, operation: string, recordId: string) => {
           // Invalidate react-query caches so the UI refreshes
-          if (table === 'todo') {
+          if (table === 'todos') {
             queryClient.invalidateQueries({ queryKey: ['todos'] });
-          } else if (table === 'pluse') {
+          } else if (table === 'pluses') {
             queryClient.invalidateQueries({ queryKey: ['pluses'] });
-          } else if (table === 'timeSlot') {
+          } else if (table === 'timeSlots') {
             queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
             queryClient.invalidateQueries({ queryKey: ['todos'] });
           }

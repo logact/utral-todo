@@ -10,14 +10,9 @@ import {
   CornerDownRight,
   ArrowUpRight,
 } from 'lucide-react';
-import {
-  getSubGoals,
-  traceGoalChain,
-  createGoal,
-  deleteTodo,
-  updateTodo,
-} from '../db/todos';
 import type { Todo, GoalStatus } from '../types';
+import { dbStore } from '../db/store';
+import { createGoal, deleteTodo, getSubGoals, traceGoalChain, updateTodo } from '@utral/db-schema/todo-ops';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -114,7 +109,7 @@ function GoalNode({ todo, depth, isCurrent, onChange }: GoalNodeProps) {
 
   const loadChildren = useCallback(async () => {
     setIsLoadingChildren(true);
-    const subs = await getSubGoals(todo.id);
+    const subs = await getSubGoals(dbStore, todo.id);
     setChildren(subs);
     setIsLoadingChildren(false);
   }, [todo.id]);
@@ -142,7 +137,7 @@ function GoalNode({ todo, depth, isCurrent, onChange }: GoalNodeProps) {
 
   async function handleStatusClick() {
     const newStatus = nextStatus(todo.goalStatus);
-    await updateTodo(todo.id, { goalStatus: newStatus });
+    await updateTodo(dbStore, todo.id, { goalStatus: newStatus });
     onChange();
   }
 
@@ -153,14 +148,14 @@ function GoalNode({ todo, depth, isCurrent, onChange }: GoalNodeProps) {
       setEditTitle(todo.title);
       return;
     }
-    await updateTodo(todo.id, { title: trimmed });
+    await updateTodo(dbStore, todo.id, { title: trimmed });
     setIsEditingTitle(false);
     onChange();
   }
 
   async function handleAddChild() {
     if (!newChildTitle.trim()) return;
-    await createGoal(newChildTitle.trim(), { parentId: todo.id });
+    await createGoal(dbStore, newChildTitle.trim(), { parentId: todo.id });
     setNewChildTitle('');
     setIsAddingChild(false);
     await loadChildren();
@@ -169,7 +164,7 @@ function GoalNode({ todo, depth, isCurrent, onChange }: GoalNodeProps) {
   }
 
   async function handleDelete() {
-    await deleteTodo(todo.id);
+    await deleteTodo(dbStore, todo.id);
     setIsDeleting(false);
     onChange();
   }
@@ -468,7 +463,7 @@ export function GoalTree({ goal, onChange }: GoalTreeProps) {
     let cancelled = false;
     async function load() {
       setIsLoading(true);
-      const chain = await traceGoalChain(goal.id);
+      const chain = await traceGoalChain(dbStore, goal.id);
       if (!cancelled) {
         // Remove the current goal from the chain (it's the last one)
         setParentChain(chain.slice(0, -1));

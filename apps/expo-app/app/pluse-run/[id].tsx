@@ -1,20 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import { getPluse } from '@/lib/pluse';
-import {
-  startPluseTimer,
-  pausePluseTimer,
-  resumePluseTimer,
-  stopPluseTimer,
-  advancePluseTimer,
-  getElapsedSeconds,
-  getActivePluseTimer,
-} from '@/lib/database';
+import { getPluse, startPluseTimer, pausePluseTimer, resumePluseTimer, stopPluseTimer, advancePluseTimer, getElapsedSeconds, getActivePluseTimer } from '@utral/db-schema/pluse-ops';
 import {
   hapticImpact,
   hapticNotification,
@@ -22,7 +12,8 @@ import {
   cancelAllNotifications,
   requestNotificationPermission,
 } from '@/lib/native';
-import type { Pluse } from '@/lib/database';
+import { dbStore } from '@/lib/db-store';
+import type { Pluse } from '@utral/types';
 import * as Notifications from 'expo-notifications';
 
 Notifications.setNotificationHandler({
@@ -128,8 +119,8 @@ export default function PluseRunScreen() {
   // Reconstruct local state from the persisted pluse row (authoritative).
   const syncFromDb = useCallback(async () => {
     if (!id) return;
-    const p = await getPluse(id);
-    setPluse(p);
+    const p = await getPluse(dbStore, id);
+    setPluse(p ?? null);
     if (!p) {
       setIsLoading(false);
       return;
@@ -137,7 +128,7 @@ export default function PluseRunScreen() {
     const intervals = expandIntervals(p.intervals, p.repeatCount);
     const total = intervals.length;
 
-    const active = await getActivePluseTimer();
+    const active = await getActivePluseTimer(dbStore);
     if (!active || active.id !== id) {
       setIsRunning(false);
       setIsCompleted(false);
@@ -167,7 +158,7 @@ export default function PluseRunScreen() {
         setIsRunning(false);
         setIsCompleted(true);
         setStartTime(null);
-        await stopPluseTimer(id);
+        await stopPluseTimer(dbStore, id);
       } else {
         setCurrentIndex(idx);
         if (idx === active.currentIntervalIndex) {
@@ -250,7 +241,7 @@ export default function PluseRunScreen() {
         setCurrentIndex(nextIndex);
         setElapsedSeconds(0);
         setStartTime(null);
-        pausePluseTimer(pluse.id, 0, nextIndex).catch(() => {});
+        pausePluseTimer(dbStore, pluse.id, 0, nextIndex).catch(() => {});
 
         scheduleNotification(
           `${pluse.name} — Interval ${currentIndex + 1} complete`,
@@ -263,7 +254,7 @@ export default function PluseRunScreen() {
           timeoutRef.current = setTimeout(() => {
             setIsRunning(true);
             setStartTime(Date.now());
-            resumePluseTimer(pluse.id).catch(() => {});
+            resumePluseTimer(dbStore, pluse.id).catch(() => {});
             hapticImpact();
           }, 2000);
         }
@@ -271,7 +262,7 @@ export default function PluseRunScreen() {
         setIsRunning(false);
         setIsCompleted(true);
         setStartTime(null);
-        stopPluseTimer(pluse.id).catch(() => {});
+        stopPluseTimer(dbStore, pluse.id).catch(() => {});
         scheduleNotification(`${pluse.name} — Complete!`, 'All intervals finished. Great work!', 1);
       }
     }
@@ -291,7 +282,7 @@ export default function PluseRunScreen() {
       setElapsedSeconds(0);
       setIsRunning(true);
       setStartTime(Date.now());
-      await startPluseTimer(pluse.id);
+      await startPluseTimer(dbStore, pluse.id);
       return;
     }
 
@@ -300,14 +291,14 @@ export default function PluseRunScreen() {
       setIsRunning(false);
       setElapsedSeconds(total);
       setStartTime(null);
-      await pausePluseTimer(pluse.id, total, currentIndex);
+      await pausePluseTimer(dbStore, pluse.id, total, currentIndex);
     } else {
       setIsRunning(true);
       setStartTime(Date.now());
       if (pluse.timerStatus === 'idle' && elapsedSeconds === 0 && currentIndex === 0) {
-        await startPluseTimer(pluse.id);
+        await startPluseTimer(dbStore, pluse.id);
       } else {
-        await resumePluseTimer(pluse.id);
+        await resumePluseTimer(dbStore, pluse.id);
       }
     }
   }, [isRunning, isCompleted, elapsedSeconds, startTime, currentIndex, pluse]);
@@ -325,14 +316,14 @@ export default function PluseRunScreen() {
     setElapsedSeconds(0);
     setStartTime(null);
     hapticImpact();
-    await advancePluseTimer(pluse.id, nextIndex);
+    await advancePluseTimer(dbStore, pluse.id, nextIndex);
   }, [currentIndex, totalItems, pluse]);
 
   const restart = useCallback(async () => {
     if (!pluse) return;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     cancelAllNotifications();
-    await stopPluseTimer(pluse.id);
+    await stopPluseTimer(dbStore, pluse.id);
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setIsRunning(false);

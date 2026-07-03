@@ -1,13 +1,13 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { Platform } from 'react-native';
 import { makeDeviceId, type EndType } from '@utral/sync-share';
 import { db, expoDb, schema } from '../db';
 import { queryClient } from './query-client';
-import { notifyDbOperation } from './sync';
+import { initDbStore, getDbStore } from './db-store';
 import { bootstrapApp, type BootstrapStore } from '@utral/db-schema/bootstrap';
-import type { Todo, Pluse, SyncConfig, TodoStatus } from '@utral/types';
+import type { SyncConfig, Todo, Pluse, TodoStatus } from '@utral/types';
 
-export type { Todo, Pluse, SyncConfig, TodoStatus };
+export type { Todo, Pluse, TodoStatus, SyncConfig };
 
 export interface HLCState {
   counter: number;
@@ -53,6 +53,7 @@ export function getDatabasePath(): string {
 }
 
 export async function getHLCState(): Promise<HLCState> {
+  debugger
   const node = await getHlcValue('node');
   if (node !== undefined && node !== '') {
     return {
@@ -75,10 +76,17 @@ export async function setHLCState(state: HLCState): Promise<void> {
   await setHlcValue('counter', String(state.counter));
   await setHlcValue('lastSeen', String(state.lastSeen));
 }
-
+let _cacheDeviceId: string  = '';
 export async function getDeviceId(): Promise<string> {
   const state = await getHLCState();
+  _cacheDeviceId = state.node;
   return state.node;
+}
+export  function getDeviceIdSync(): string {
+  if (!_cacheDeviceId) {
+    throw new Error('Device ID not initialized yet. Call getDeviceId() first.');
+  }
+  return _cacheDeviceId;
 }
 
 export async function getLastSyncAt(): Promise<Date | undefined> {
@@ -92,140 +100,12 @@ export async function setLastSyncAt(date: Date): Promise<void> {
   await setHLCState({ ...state, lastSeen: date.getTime() });
 }
 
-export async function startPluseTimer(pluseId: string): Promise<Pluse> {
-  const now = Date.now();
-  const deviceId = await getDeviceId();
-  const existing = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
-  if (existing.length === 0) throw new Error('Pluse not found');
-  await db
-    .update(schema.pluses)
-    .set({
-      timerStatus: 'running',
-      startedAt: new Date(),
-      accumulatedSeconds: 0,
-      currentIntervalIndex: 0,
-      updatedAtWall: now,
-      updatedAtNode: deviceId,
-    })
-    .where(eq(schema.pluses.id, pluseId));
-  notifyDbOperation('pluse', 'update', pluseId);
-  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
-  return updated[0] as unknown as Pluse;
-}
-
-export async function pausePluseTimer(pluseId: string, accumulatedSeconds: number, currentIntervalIndex: number): Promise<Pluse> {
-  const now = Date.now();
-  const deviceId = await getDeviceId();
-  await db
-    .update(schema.pluses)
-    .set({
-      timerStatus: 'paused',
-      startedAt: null,
-      accumulatedSeconds,
-      currentIntervalIndex,
-      updatedAtWall: now,
-      updatedAtNode: deviceId,
-    })
-    .where(eq(schema.pluses.id, pluseId));
-  notifyDbOperation('pluse', 'update', pluseId);
-  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
-  return updated[0] as unknown as Pluse;
-}
-
-export async function resumePluseTimer(pluseId: string): Promise<Pluse> {
-  const now = Date.now();
-  const deviceId = await getDeviceId();
-  await db
-    .update(schema.pluses)
-    .set({
-      timerStatus: 'running',
-      startedAt: new Date(),
-      updatedAtWall: now,
-      updatedAtNode: deviceId,
-    })
-    .where(eq(schema.pluses.id, pluseId));
-  notifyDbOperation('pluse', 'update', pluseId);
-  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
-  return updated[0] as unknown as Pluse;
-}
-
-export async function stopPluseTimer(pluseId: string): Promise<void> {
-  const now = Date.now();
-  const deviceId = await getDeviceId();
-  await db
-    .update(schema.pluses)
-    .set({
-      timerStatus: 'idle',
-      startedAt: null,
-      accumulatedSeconds: 0,
-      currentIntervalIndex: 0,
-      updatedAtWall: now,
-      updatedAtNode: deviceId,
-    })
-    .where(eq(schema.pluses.id, pluseId));
-  notifyDbOperation('pluse', 'update', pluseId);
-}
-
-export async function advancePluseTimer(pluseId: string, currentIntervalIndex: number): Promise<Pluse> {
-  const now = Date.now();
-  const deviceId = await getDeviceId();
-  await db
-    .update(schema.pluses)
-    .set({
-      currentIntervalIndex,
-      accumulatedSeconds: 0,
-      startedAt: new Date(),
-      updatedAtWall: now,
-      updatedAtNode: deviceId,
-    })
-    .where(eq(schema.pluses.id, pluseId));
-  notifyDbOperation('pluse', 'update', pluseId);
-  const updated = await db.select().from(schema.pluses).where(eq(schema.pluses.id, pluseId)).limit(1);
-  return updated[0] as unknown as Pluse;
-}
-
-export function getElapsedSeconds(pluse: Pluse): number {
-  if (pluse.timerStatus === 'running' && pluse.startedAt) {
-    const now = Date.now();
-    const started = pluse.startedAt instanceof Date ? pluse.startedAt.getTime() : new Date(pluse.startedAt).getTime();
-    return pluse.accumulatedSeconds + Math.floor((now - started) / 1000);
-  }
-  return pluse.accumulatedSeconds;
-}
-
-export async function getActivePluseTimer(): Promise<Pluse | null> {
-  const rows = await db
-    .select()
-    .from(schema.pluses)
-    .where(
-      and(
-        eq(schema.pluses.isDeleted, false),
-        eq(schema.pluses.timerStatus, 'running')
-      )
-    )
-    .limit(1);
-  if (rows.length > 0) return rows[0] as unknown as Pluse;
-
-  const paused = await db
-    .select()
-    .from(schema.pluses)
-    .where(
-      and(
-        eq(schema.pluses.isDeleted, false),
-        eq(schema.pluses.timerStatus, 'paused')
-      )
-    )
-    .limit(1);
-  return paused.length > 0 ? (paused[0] as unknown as Pluse) : null;
-}
-
 export async function initDatabase(): Promise<void> {
+  const deviceId = await getDeviceId();
+  initDbStore(deviceId);
+
   const store: BootstrapStore = {
-    db,
-    getDeviceId,
-    trackChange: (entity, op, id) => {
-      notifyDbOperation(entity, op, id);
-    },
+    ...getDbStore(),
     onComplete: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
@@ -261,20 +141,4 @@ export async function resetAllData(): Promise<void> {
 
   // Clear React Query cache so stale data doesn't reappear in the UI.
   queryClient.clear();
-
-  // // Recreate the default dataset so the app is usable immediately.
-  // const store: BootstrapStore = {
-  //   db,
-  //   getDeviceId,
-  //   trackChange: (entity, op, id) => {
-  //     notifyDbOperation(entity, op, id);
-  //   },
-  //   onComplete: () => {
-  //     queryClient.invalidateQueries({ queryKey: ['todos'] });
-  //     queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
-  //     queryClient.invalidateQueries({ queryKey: ['pluses'] });
-  //   },
-  // };
-
-  // await bootstrapApp(store);
 }

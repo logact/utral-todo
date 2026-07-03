@@ -150,7 +150,7 @@ The server does **no merging**. For each pushed item it:
 5. Replies to the origin with `push-ack { accepted, rejected }`.
 
 Registered tables (server `setup.ts`):
-`todo, todoRelation, todoLog, actionEdge, pluse, repeatOccurrence, plan, timeSlot`.
+`todos, todoRelations, todoLogs, actionEdges, pluses, repeatOccurrences, plans, timeSlots`.
 
 ### 3. Receive + merge (client) — `SyncClientHandler`
 
@@ -189,19 +189,6 @@ This is how a device that missed events while offline catches up.
 unexpected socket close it auto-reconnects with exponential backoff
 (`initialDelayMs * multiplier^attempt`, capped at `maxDelayMs`, up to `maxRetries`).
 `disconnect()` is a clean shutdown with no retry.
-
-## Table-name mapping (desktop)
-
-Local Drizzle store names differ from the canonical `SyncEvent` table names.
-`apps/desktop/src/lib/sync/syncEngine.ts` maps them:
-
-```
-todos → todo   relations → todoRelation   todoLogs → todoLog
-actionEdges → actionEdge   plans → plan   pluses → pluse
-repeatOccurrences → repeatOccurrence   timeSlots → timeSlot
-```
-
-Keep both directions consistent when adding a table.
 
 ## Storage contracts
 

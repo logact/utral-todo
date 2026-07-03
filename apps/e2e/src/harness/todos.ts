@@ -18,7 +18,7 @@ export interface InsertTodoArgs {
  * Insert a todo row directly into the client's local `todos` table with its HLC
  * version columns populated — the same split-column layout that
  * `createSqliteSyncStorage` reads/writes. This models a local UI write; the test
- * then calls `handler.syncLocalChange('todo', 'create', id)` to enqueue + push it.
+ * then calls `handler.syncLocalChange('todos', 'create', id)` to enqueue + push it.
  */
 export function insertTodo(db: Db, args: InsertTodoArgs): HLCTimestamp {
   const hlc = args.hlc ?? newHLC(args.node);

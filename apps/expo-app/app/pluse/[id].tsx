@@ -4,9 +4,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getPluse, updatePluse, deletePluse } from '@/lib/pluse';
+import { getPluse, updatePluse, deletePluse } from '@utral/db-schema/pluse-ops';
 import { hapticImpact } from '@/lib/native';
-import type { Pluse } from '@/lib/database';
+import { dbStore } from '@/lib/db-store';
+import type { Pluse } from '@utral/types';
 
 function formatSeconds(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -27,7 +28,7 @@ export default function PluseDetailScreen() {
 
   const { data: pluse, isLoading } = useQuery({
     queryKey: ['pluse', id],
-    queryFn: () => getPluse(id!),
+    queryFn: () => getPluse(dbStore, id!),
     enabled: !!id,
   });
 
@@ -48,7 +49,7 @@ export default function PluseDetailScreen() {
   }, [pluse, initialized]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<Pluse>) => updatePluse(id!, data),
+    mutationFn: (data: Partial<Pluse>) => updatePluse(dbStore, id!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
       queryClient.invalidateQueries({ queryKey: ['pluse', id] });
@@ -58,7 +59,7 @@ export default function PluseDetailScreen() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deletePluse(id!),
+    mutationFn: () => deletePluse(dbStore, id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
       hapticImpact();

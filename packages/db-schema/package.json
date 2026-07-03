@@ -10,6 +10,14 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./store": {
+      "types": "./src/store.ts",
+      "default": "./src/store.ts"
+    },
+    "./id": {
+      "types": "./src/id.ts",
+      "default": "./src/id.ts"
+    },
     "./storage": {
       "types": "./src/storage.ts",
       "default": "./src/storage.ts"
@@ -21,6 +29,38 @@
     "./bootstrap": {
       "types": "./src/bootstrap.ts",
       "default": "./src/bootstrap.ts"
+    },
+    "./todo-ops": {
+      "types": "./src/todoOps.ts",
+      "default": "./src/todoOps.ts"
+    },
+    "./pluse-ops": {
+      "types": "./src/pluseOps.ts",
+      "default": "./src/pluseOps.ts"
+    },
+    "./plan-ops": {
+      "types": "./src/planOps.ts",
+      "default": "./src/planOps.ts"
+    },
+    "./relation-ops": {
+      "types": "./src/relationOps.ts",
+      "default": "./src/relationOps.ts"
+    },
+    "./action-edge-ops": {
+      "types": "./src/actionEdgeOps.ts",
+      "default": "./src/actionEdgeOps.ts"
+    },
+    "./todo-log-ops": {
+      "types": "./src/todoLogOps.ts",
+      "default": "./src/todoLogOps.ts"
+    },
+    "./repeat-occurrence-ops": {
+      "types": "./src/repeatOccurrenceOps.ts",
+      "default": "./src/repeatOccurrenceOps.ts"
+    },
+    "./label-ops": {
+      "types": "./src/labelOps.ts",
+      "default": "./src/labelOps.ts"
     }
   },
   "scripts": {

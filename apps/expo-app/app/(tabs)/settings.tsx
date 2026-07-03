@@ -10,8 +10,9 @@ import {
   getTimeSlotDefinitions,
   updateTimeSlotDefinition,
   ensureTimeSlotTodo,
-  type TimeSlotDefinition,
-} from '@/lib/timeSlots';
+} from '@utral/db-schema/timeslots';
+import { dbStore } from '@/lib/db-store';
+import type { TimeSlotDefinition } from '@utral/types';
 import { queryClient } from '@/lib/query-client';
 
 const SYNC_VERSION = 'v5-safe-dates';
@@ -136,12 +137,12 @@ export default function SettingsScreen() {
   }, []);
 
   const loadTimeSlots = async () => {
-    setTimeSlots(await getTimeSlotDefinitions());
+    setTimeSlots(await getTimeSlotDefinitions(dbStore));
   };
 
   const handleSlotCommit = async (slot: TimeSlotDefinition, changes: SlotChanges) => {
-    await updateTimeSlotDefinition(slot.id, changes);
-    await ensureTimeSlotTodo({ ...slot, ...changes });
+    await updateTimeSlotDefinition(dbStore, slot.id, changes);
+    await ensureTimeSlotTodo(dbStore, { ...slot, ...changes });
     await loadTimeSlots();
     queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
     queryClient.invalidateQueries({ queryKey: ['todos'] });

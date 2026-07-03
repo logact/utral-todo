@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Flag, MapPin, Circle, CheckCircle2, Target, ListTodo,
 } from 'lucide-react';
-import { getSubTodos } from '../db/todos';
-import { getOrderedSuccessors, getOrderedPredecessors, getTasksForGoal } from '../db/relations';
 import { formatDuration } from '../utils/date';
 import type { Todo } from '../types';
+import { dbStore } from '../db/store';
+import { getOrderedPredecessors, getOrderedSuccessors, getTasksForGoal } from '@utral/db-schema/relation-ops';
+import { getSubTodos } from '@utral/db-schema/todo-ops';
 
 interface GoalPathProps {
   chain: Todo[];
@@ -60,19 +61,19 @@ export function GoalPath({ chain, currentId, onNodeClick }: GoalPathProps) {
     const tasksMap = new Map<string, Todo[]>();
 
     for (const todo of chain) {
-      const subs = await getSubTodos(todo.id);
+      const subs = await getSubTodos(dbStore, todo.id);
       const filtered = subs.filter((s) => !chainIds.has(s.id));
       if (filtered.length > 0) subMap.set(todo.id, filtered);
 
       if (todo.nodeType === 'goal') {
-        const successors = await getOrderedSuccessors(todo.id);
-        const predecessors = await getOrderedPredecessors(todo.id);
+        const successors = await getOrderedSuccessors(dbStore, todo.id);
+        const predecessors = await getOrderedPredecessors(dbStore, todo.id);
         const ordered = [...predecessors, ...successors].filter(
           (g, i, arr) => !chainIds.has(g.id) && arr.findIndex((x) => x.id === g.id) === i
         );
         if (ordered.length > 0) orderedMap.set(todo.id, ordered);
 
-        const tasks = await getTasksForGoal(todo.id);
+        const tasks = await getTasksForGoal(dbStore, todo.id);
         if (tasks.length > 0) tasksMap.set(todo.id, tasks);
       }
     }

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createTodo } from '@/lib/todos';
+import { createTodo } from '@utral/db-schema/todo-ops';
+import { dbStore } from '@/lib/db-store';
 
 export function QuickAdd() {
   const [visible, setVisible] = useState(false);
@@ -10,7 +11,7 @@ export function QuickAdd() {
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
-    mutationFn: () => createTodo({ title }),
+    mutationFn: () => createTodo(dbStore, title.trim()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
       setTitle('');

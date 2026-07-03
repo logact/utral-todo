@@ -16,10 +16,9 @@ export async function initDatabase(): Promise<void> {
 
   const store: BootstrapStore = {
     db,
-    getDeviceId: getOrCreateDeviceId,
-    trackChange: (entity, op, id) => {
+    deviceId: getOrCreateDeviceId(),
+    notifyDbOperation: (entity, op, id) => {
       notifyDbOperation(entity, op, id).catch((e) => {
-        debugger
         console.error('Failed to notify DB operation:', e);
       });
     },
@@ -59,8 +58,8 @@ export async function resetAllData(): Promise<void> {
 
   const store: BootstrapStore = {
     db,
-    getDeviceId: getOrCreateDeviceId,
-    trackChange: (entity, op, id) => {
+    deviceId: getOrCreateDeviceId(),
+    notifyDbOperation: (entity, op, id) => {
       notifyDbOperation(entity, op, id).catch((e) => {console.error('Failed to notify DB operation:', e);});
     },
   };

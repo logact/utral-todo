@@ -4,9 +4,10 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllTodos, updateTodoStatus } from '@/lib/todos';
+import { getAllTodos, updateTodoStatus } from '@utral/db-schema/todo-ops';
 import { hapticImpact } from '@/lib/native';
-import type { Todo, TodoStatus } from '@/lib/database';
+import { dbStore } from '@/lib/db-store';
+import type { Todo, TodoStatus } from '@utral/types';
 
 type FilterStatus = TodoStatus | 'all';
 
@@ -19,13 +20,13 @@ export default function TodosScreen() {
 
   const { data: todos = [] } = useQuery({
     queryKey: ['todos'],
-    queryFn: getAllTodos,
+    queryFn: () => getAllTodos(dbStore),
   });
 
   const toggleStatus = useCallback(
     async (todo: Todo) => {
       const newStatus: TodoStatus = todo.status === 'done' ? 'pending' : 'done';
-      await updateTodoStatus(todo.id, newStatus);
+      await updateTodoStatus(dbStore, todo.id, newStatus);
       hapticImpact();
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     },

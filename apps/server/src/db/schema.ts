@@ -14,10 +14,10 @@ import { relations } from 'drizzle-orm';
 
 // ── Todo ────────────────────────────────────────────────────────────────────
 
-export const todo = pgTable('Todo', {
+export const todos = pgTable('Todo', {
   id: uuid('id').primaryKey().defaultRandom(),
   nodeType: text('nodeType').notNull().default('task'),
-  pattern: text('pattern').notNull().default('task'), // 'task' | 'cognitive' | 'timeSlot'
+  pattern: text('pattern').notNull().default('task'), // 'task' | 'cognitive' | 'timeSlots'
   parentId: uuid('parentId'),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
@@ -48,21 +48,21 @@ export const todo = pgTable('Todo', {
   isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
-export const todoRelations = relations(todo, ({ one, many }) => ({
-  parent: one(todo, {
-    fields: [todo.parentId],
-    references: [todo.id],
+export const todosRelations = relations(todos, ({ one, many }) => ({
+  parent: one(todos, {
+    fields: [todos.parentId],
+    references: [todos.id],
     relationName: 'TodoChildren',
   }),
-  children: many(todo, { relationName: 'TodoChildren' }),
-  outgoingRelations: many(todoRelation, { relationName: 'FromTodo' }),
-  incomingRelations: many(todoRelation, { relationName: 'ToTodo' }),
-  logs: many(todoLog),
+  children: many(todos, { relationName: 'TodoChildren' }),
+  outgoingRelations: many(todoRelations, { relationName: 'FromTodo' }),
+  incomingRelations: many(todoRelations, { relationName: 'ToTodo' }),
+  logs: many(todoLogs),
 }));
 
 // ── TodoRelation ────────────────────────────────────────────────────────────
 
-export const todoRelation = pgTable('TodoRelation', {
+export const todoRelations = pgTable('TodoRelation', {
   id: uuid('id').primaryKey().defaultRandom(),
   fromTodoId: uuid('fromTodoId').notNull(),
   toTodoId: uuid('toTodoId').notNull(),
@@ -76,22 +76,22 @@ export const todoRelation = pgTable('TodoRelation', {
   isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
-export const todoRelationRelations = relations(todoRelation, ({ one }) => ({
-  fromTodo: one(todo, {
-    fields: [todoRelation.fromTodoId],
-    references: [todo.id],
+export const todoRelationsRelations = relations(todoRelations, ({ one }) => ({
+  fromTodo: one(todos, {
+    fields: [todoRelations.fromTodoId],
+    references: [todos.id],
     relationName: 'FromTodo',
   }),
-  toTodo: one(todo, {
-    fields: [todoRelation.toTodoId],
-    references: [todo.id],
+  toTodo: one(todos, {
+    fields: [todoRelations.toTodoId],
+    references: [todos.id],
     relationName: 'ToTodo',
   }),
 }));
 
 // ── TodoLog ─────────────────────────────────────────────────────────────────
 
-export const todoLog = pgTable('TodoLog', {
+export const todoLogs = pgTable('TodoLog', {
   id: uuid('id').primaryKey().defaultRandom(),
   todoId: uuid('todoId').notNull(),
   type: text('type').notNull(),
@@ -107,16 +107,16 @@ export const todoLog = pgTable('TodoLog', {
   isDeleted: boolean('isDeleted').notNull().default(false),
 });
 
-export const todoLogRelations = relations(todoLog, ({ one }) => ({
-  todo: one(todo, {
-    fields: [todoLog.todoId],
-    references: [todo.id],
+export const todoLogsRelations = relations(todoLogs, ({ one }) => ({
+  todos: one(todos, {
+    fields: [todoLogs.todoId],
+    references: [todos.id],
   }),
 }));
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
-export const plan = pgTable(
+export const plans = pgTable(
   'Plan',
   {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -138,7 +138,7 @@ export const plan = pgTable(
 
 // ── ActionEdge ──────────────────────────────────────────────────────────────
 
-export const actionEdge = pgTable('ActionEdge', {
+export const actionEdges = pgTable('ActionEdge', {
   id: uuid('id').primaryKey().defaultRandom(),
   fromTodoId: text('fromTodoId').notNull(),
   toTodoId: text('toTodoId').notNull(),
@@ -154,7 +154,7 @@ export const actionEdge = pgTable('ActionEdge', {
 
 // ── Pluse ───────────────────────────────────────────────────────────────────
 
-export const pluse = pgTable('Pluse', {
+export const pluses = pgTable('Pluse', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
@@ -177,7 +177,7 @@ export const pluse = pgTable('Pluse', {
 
 // ── RepeatOccurrence ────────────────────────────────────────────────────────
 
-export const repeatOccurrence = pgTable(
+export const repeatOccurrences = pgTable(
   'RepeatOccurrence',
   {
     id: text('id').primaryKey(),
@@ -202,7 +202,7 @@ export const repeatOccurrence = pgTable(
 
 // ── TimeSlot ────────────────────────────────────────────────────────────────
 
-export const timeSlot = pgTable(
+export const timeSlots = pgTable(
   'TimeSlot',
   {
     id: text('id').primaryKey(),

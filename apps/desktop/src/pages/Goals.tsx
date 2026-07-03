@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Target, Loader2 } from 'lucide-react';
-import { getAllTodos } from '../db/todos';
-import { createGoal } from '../db/todos';
 import type { Todo } from '../types';
+import { dbStore } from '../db/store';
+import { createGoal, getAllTodos } from '@utral/db-schema/todo-ops';
 
 export function Goals() {
   const navigate = useNavigate();
@@ -12,7 +12,7 @@ export function Goals() {
 
   useEffect(() => {
     async function load() {
-      const allTodos = await getAllTodos();
+      const allTodos = await getAllTodos(dbStore);
       const goalTodos = allTodos.filter((t) => t.nodeType === 'goal');
       setGoals(goalTodos);
       setLoading(false);
@@ -23,7 +23,7 @@ export function Goals() {
   async function handleCreateGoal() {
     const title = prompt('Goal title:');
     if (!title) return;
-    const goal = await createGoal(title.trim());
+    const goal = await createGoal(dbStore, title.trim());
     navigate(`/goals/${goal.id}`);
   }
 

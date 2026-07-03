@@ -68,15 +68,15 @@ Then wire it up in the app (desktop `syncEngine.ts` is the model):
 ```ts
 const engine = new MySyncHandler({
   serverUrl: 'ws://localhost:3001/ws/sync',
-  tables: ['todo', 'todoRelation', /* …canonical names… */],
+  tables: ['todos', 'todoRelations', /* …canonical names… */],
   tableOrder: TABLE_ORDER,
   deviceId, userId, channel,
   emitter: { emitRemoteApplied: (t, op, id) =>
     window.dispatchEvent(new CustomEvent('db:changed', { detail: { table: t, operation: op, recordId: id } })) },
 });
 
-await engine.connect();                                 // opens the socket, auto-reconnects
-await engine.syncLocalChange('todo', 'update', todoId); // queue + push a local write
+await engine.connect();                                  // opens the socket, auto-reconnects
+await engine.syncLocalChange('todos', 'update', todoId); // queue + push a local write
 // inbound events apply themselves via applyRemoteEvent and emit remoteApplied
 ```
 
@@ -118,9 +118,9 @@ storage interfaces from `types.ts`. The critical one is **`SyncRecordStorage`**.
 canonical name like `todo`) and your **real schema** (columns, split HLC
 timestamp columns, real table objects). The bridge has three responsibilities:
 
-1. **Map canonical name → real table.** Keep a lookup so `'todo'` resolves to your
-   `todos` table, `'todoRelation'` → `todoRelations`, etc. (mirror of the
-   `TABLE_NAME_MAP` used on the outbound side).
+1. **Map canonical name → real table.** Keep a lookup so `'todos'` resolves to your
+   `todos` table, `'todoRelations'` → `todoRelations`, etc. (the canonical names
+   now match the real Drizzle table object names).
 2. **Map `SyncableRecord.version` ↔ the row's `updatedAt` HLC.** The event's clock
    *is* the record's version. On read, expose `version = { wall, counter, node }`
    built from the row's `updatedAtWall/Counter/Node` columns. On write, split the

@@ -165,11 +165,11 @@ describe('E2E: Full sync flow', () => {
       type: 'push',
       deviceId: 'user-1',
       channel: 'default',
-      items: [{ table: 'todo', operation: 'create', recordId: 'note-1', payload: { title: 'Hello' } }],
+      items: [{ table: 'todos', operation: 'create', recordId: 'note-1', payload: { title: 'Hello' } }],
     });
 
     const event = await clientB.waitFor('event') as { event: SyncEvent };
-    expect(event.event.table).toBe('todo');
+    expect(event.event.table).toBe('todos');
     expect(event.event.operation).toBe('create');
     expect(event.event.recordId).toBe('note-1');
     expect(event.event.payload).toEqual({ title: 'Hello' });
@@ -195,8 +195,8 @@ describe('E2E: Full sync flow', () => {
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
       items: [
-        { table: 'todo', operation: 'create', recordId: 'n1', payload: { title: 'one' } },
-        { table: 'todo', operation: 'create', recordId: 'n2', payload: { title: 'two' } },
+        { table: 'todos', operation: 'create', recordId: 'n1', payload: { title: 'one' } },
+        { table: 'todos', operation: 'create', recordId: 'n2', payload: { title: 'two' } },
       ],
     });
 
@@ -224,9 +224,9 @@ describe('E2E: Full sync flow', () => {
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
       items: [
-        { table: 'todo', operation: 'create', recordId: 'n1' },
-        { table: 'todo', operation: 'create', recordId: 'n2' },
-        { table: 'todo', operation: 'create', recordId: 'n3' },
+        { table: 'todos', operation: 'create', recordId: 'n1' },
+        { table: 'todos', operation: 'create', recordId: 'n2' },
+        { table: 'todos', operation: 'create', recordId: 'n3' },
       ],
     });
 
@@ -273,7 +273,7 @@ describe('E2E: Full sync flow', () => {
 
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'ch-a',
-      items: [{ table: 'todo', operation: 'create', recordId: 'n1' }],
+      items: [{ table: 'todos', operation: 'create', recordId: 'n1' }],
     });
 
     const evC = await clientC.waitFor('event');
@@ -300,7 +300,7 @@ describe('E2E: Full sync flow', () => {
 
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
-      items: [{ table: 'todo', operation: 'create', recordId: 'n1' }],
+      items: [{ table: 'todos', operation: 'create', recordId: 'n1' }],
     });
     await clientB.waitFor('event');
     await new Promise((r) => setTimeout(r, 50));
@@ -310,7 +310,7 @@ describe('E2E: Full sync flow', () => {
 
     clientA.send({
       type: 'push', deviceId: 'user-1', channel: 'default',
-      items: [{ table: 'todo', operation: 'create', recordId: 'n2' }],
+      items: [{ table: 'todos', operation: 'create', recordId: 'n2' }],
     });
     await new Promise((r) => setTimeout(r, 200));
 

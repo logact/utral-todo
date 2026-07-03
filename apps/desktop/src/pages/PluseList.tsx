@@ -15,10 +15,11 @@ import {
   Zap,
 } from 'lucide-react';
 import type { Pluse, Todo } from '../types';
-import { getAllPluses, createPluse, deletePluse, updatePluse } from '../db/pluse';
-import { getAllTodos } from '../db/todos';
 import { useDbChangeRefresh } from '../hooks/useDbChangeRefresh';
 import { formatSeconds } from '../utils/date';
+import { dbStore } from '../db/store';
+import { createPluse, deletePluse, getAllPluses, updatePluse } from '@utral/db-schema/pluse-ops';
+import { getAllTodos } from '@utral/db-schema/todo-ops';
 
 /* ---------- Helpers ---------- */
 function calcTotalSeconds(intervals: number[], repeatCount: number): number {
@@ -539,7 +540,7 @@ export function PluseList() {
   const [newAutoAdvance, setNewAutoAdvance] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [allPluses, allTodos] = await Promise.all([getAllPluses(), getAllTodos()]);
+    const [allPluses, allTodos] = await Promise.all([getAllPluses(dbStore), getAllTodos(dbStore)]);
     setPluses(allPluses);
     setTodos(allTodos);
     setIsLoading(false);
@@ -549,7 +550,7 @@ export function PluseList() {
 
   async function handleCreate() {
     if (!newName.trim() || newIntervals.length === 0) return;
-    await createPluse(
+    await createPluse(dbStore, 
       newName.trim(),
       [...newIntervals],
       newRepeatCount,
@@ -568,7 +569,7 @@ export function PluseList() {
   }
 
   async function handleDelete(id: string) {
-    await deletePluse(id);
+    await deletePluse(dbStore, id);
     await loadData();
   }
 
@@ -576,7 +577,7 @@ export function PluseList() {
     id: string,
     updates: Partial<Pick<Pluse, 'name' | 'description' | 'intervals' | 'repeatCount' | 'intervalTodos' | 'autoAdvance'>>
   ) {
-    await updatePluse(id, updates);
+    await updatePluse(dbStore, id, updates);
     await loadData();
   }
 

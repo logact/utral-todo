@@ -19,23 +19,8 @@ import {
   Flag,
 } from 'lucide-react';
 import { useTodayData } from '../hooks/useTodos';
-import { getInProgressTodos, getAllTodos } from '../db/todos';
-import { getAllPluses, getActivePluse, setActivePluse as setActivePluseInDb } from '../db/pluse';
-import { createTodoLog, getTodoLogs, deleteTodoLog } from '../db/todoLogs';
-import { traceSourceChain } from '../db/relations';
-import {
-  ensureTimeSlotTodo,
-} from '../db/timeSlots';
-import { getTimeSlotDefinitions } from '../db/timeSlotDefinitions';
-import {
-  getActivePluseTimer,
-  startPluseTimer,
-  pausePluseTimer,
-  resumePluseTimer,
-  stopPluseTimer,
-  advancePluseTimer,
-  getElapsedSeconds,
-} from '../db/pluseTimers';
+import { ensureTimeSlotTodo, getTimeSlotDefinitions } from '@utral/db-schema/timeslots';
+import { dbStore } from '../db/store';
 import { TodoExecutionPanel } from '../components/TodoExecutionPanel';
 import {
   formatDuration,
@@ -46,6 +31,10 @@ import {
 import type { Todo, TodoStatus, Priority, Pluse } from '../types';
 import { DEFAULT_TIME_SLOTS, getTimeSlotForTodo } from '../types';
 import type { TimeSlotConfig as SharedTimeSlotConfig } from '../types';
+import { advancePluseTimer, getActivePluse, getActivePluseTimer, getAllPluses, getElapsedSeconds, pausePluseTimer, resumePluseTimer, setActivePluse as setActivePluseInDb, startPluseTimer, stopPluseTimer } from '@utral/db-schema/pluse-ops';
+import { traceSourceChain } from '@utral/db-schema/relation-ops';
+import { createTodoLog, deleteTodoLog, getTodoLogs } from '@utral/db-schema/todo-log-ops';
+import { getAllTodos, getInProgressTodos } from '@utral/db-schema/todo-ops';
 
 function isTauriApp(): boolean {
   return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
@@ -146,13 +135,13 @@ function PluseMiniTimer({
 
   // Load todos for interval bindings
   useEffect(() => {
-    getAllTodos().then(setTodos);
+    getAllTodos(dbStore).then(setTodos);
   }, []);
 
   // Sync local state with the persisted pluse row
   useEffect(() => {
     const sync = async () => {
-      const active = await getActivePluseTimer();
+      const active = await getActivePluseTimer(dbStore);
       if (!active || active.id !== pluse.id) {
         setIsRunning(false);
         setIsCompleted(false);
@@ -181,7 +170,7 @@ function PluseMiniTimer({
           setIsRunning(false);
           setIsCompleted(true);
           setStartTime(null);
-          await stopPluseTimer(pluse.id);
+          await stopPluseTimer(dbStore, pluse.id);
         } else {
           setCurrentIndex(idx);
           if (idx === active.currentIntervalIndex) {
@@ -206,7 +195,7 @@ function PluseMiniTimer({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { table?: string; recordId?: string } | undefined;
       if (detail?.table !== 'pluses') return;
-      getActivePluseTimer().then((active) => {
+      getActivePluseTimer(dbStore).then((active) => {
         if (!active || active.id !== pluse.id) {
           setIsRunning(false);
           setStartTime(null);
@@ -289,7 +278,7 @@ function PluseMiniTimer({
         setCurrentIndex(nextIndex);
         setElapsedSeconds(0);
         setStartTime(null);
-        pausePluseTimer(pluse.id, 0, nextIndex).catch(() => {});
+        pausePluseTimer(dbStore, pluse.id, 0, nextIndex).catch(() => {});
 
         showBrowserNotification(
           `${pluse.name} — Interval ${currentIndex + 1} complete`,
@@ -301,14 +290,14 @@ function PluseMiniTimer({
           timeoutRef.current = setTimeout(() => {
             setIsRunning(true);
             setStartTime(Date.now());
-            resumePluseTimer(pluse.id).catch(() => {});
+            resumePluseTimer(dbStore, pluse.id).catch(() => {});
           }, 2000);
         }
       } else {
         setIsRunning(false);
         setIsCompleted(true);
         setStartTime(null);
-        stopPluseTimer(pluse.id).catch(() => {});
+        stopPluseTimer(dbStore, pluse.id).catch(() => {});
 
         showBrowserNotification(
           `${pluse.name} — Complete!`,
@@ -329,7 +318,7 @@ function PluseMiniTimer({
       setElapsedSeconds(0);
       setIsRunning(true);
       setStartTime(Date.now());
-      await startPluseTimer(pluse.id);
+      await startPluseTimer(dbStore, pluse.id);
       return;
     }
 
@@ -338,11 +327,11 @@ function PluseMiniTimer({
       setIsRunning(false);
       setElapsedSeconds(total);
       setStartTime(null);
-      await pausePluseTimer(pluse.id, total, currentIndex);
+      await pausePluseTimer(dbStore, pluse.id, total, currentIndex);
     } else {
       setIsRunning(true);
       setStartTime(Date.now());
-      await resumePluseTimer(pluse.id);
+      await resumePluseTimer(dbStore, pluse.id);
     }
   }, [isRunning, isCompleted, elapsedSeconds, startTime, currentIndex, pluse.id]);
 
@@ -357,7 +346,7 @@ function PluseMiniTimer({
     setCurrentIndex(nextIndex);
     setElapsedSeconds(0);
     setStartTime(null);
-    await advancePluseTimer(pluse.id, nextIndex);
+    await advancePluseTimer(dbStore, pluse.id, nextIndex);
   }, [currentIndex, totalItems, pluse.id]);
 
   const restart = useCallback(async () => {
@@ -365,7 +354,7 @@ function PluseMiniTimer({
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    await stopPluseTimer(pluse.id);
+    await stopPluseTimer(dbStore, pluse.id);
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setIsRunning(false);
@@ -843,7 +832,7 @@ export function Today() {
 
   useEffect(() => {
     (async () => {
-      const [all, active] = await Promise.all([getAllPluses(), getActivePluse()]);
+      const [all, active] = await Promise.all([getAllPluses(dbStore), getActivePluse(dbStore)]);
       setPluses(all);
       if (all.length > 0) {
         setActivePluse(active && all.find((p) => p.id === active.id) ? active : all[0]);
@@ -856,7 +845,7 @@ export function Today() {
   useEffect(() => {
     (async () => {
       try {
-        const definitions = await getTimeSlotDefinitions();
+        const definitions = await getTimeSlotDefinitions(dbStore);
         if (definitions.length > 0) {
           setTimeSlots(
             definitions.map((slot) => ({
@@ -877,11 +866,11 @@ export function Today() {
       const detail = (event as CustomEvent).detail as
         | { table?: string; operation?: string; recordId?: string }
         | undefined;
-      if (detail?.table !== 'timeSlot') return;
+      if (detail?.table !== 'timeSlots') return;
 
       (async () => {
         try {
-          const definitions = await getTimeSlotDefinitions();
+          const definitions = await getTimeSlotDefinitions(dbStore);
           if (definitions.length > 0) {
             const nextSlots = definitions.map((slot) => ({
               ...slot,
@@ -891,7 +880,7 @@ export function Today() {
 
             const changedSlot = nextSlots.find((s) => s.id === detail?.recordId);
             if (changedSlot) {
-              await ensureTimeSlotTodo(changedSlot);
+              await ensureTimeSlotTodo(dbStore,changedSlot);
             }
           }
         } catch (err) {
@@ -911,8 +900,8 @@ export function Today() {
       const notesMap: Record<string, { content: string; id: string }[]> = {};
       for (const slot of timeSlots) {
         try {
-          const todoId = await ensureTimeSlotTodo(slot);
-          const logs = await getTodoLogs(todoId);
+          const todoId = await ensureTimeSlotTodo(dbStore,slot);
+          const logs = await getTodoLogs(dbStore, todoId);
           notesMap[slot.id] = logs.map((log) => ({ content: log.content, id: log.id }));
         } catch (err) {
           console.error('Failed to load notes for slot', slot.id, err);
@@ -958,7 +947,7 @@ export function Today() {
 
     // Always fetch fresh in-progress todos from the DB — the React state
     // may be stale if a todo was started from the execution panel directly.
-    const freshInProgress = await getInProgressTodos();
+    const freshInProgress = await getInProgressTodos(dbStore);
     const otherInProgress = freshInProgress.filter((t) => t.id !== todoId);
 
     // Pause other in-progress todos and log their time
@@ -967,7 +956,7 @@ export function Today() {
       if (startedAt) {
         const elapsedMs = Date.now() - startedAt.getTime();
         const elapsedMinutes = Math.max(1, Math.round(elapsedMs / 60000));
-        await createTodoLog(todo.id, 'system', `Paused — worked ${elapsedMinutes} min`, {
+        await createTodoLog(dbStore, todo.id, 'system', `Paused — worked ${elapsedMinutes} min`, {
           minutesSpent: elapsedMinutes,
           metadata: { action: 'auto_pause', from: 'in_progress', to: 'pending' },
         });
@@ -991,7 +980,7 @@ export function Today() {
   }
 
   async function handleNodeClick(todoId: string) {
-    const chain = await traceSourceChain(todoId);
+    const chain = await traceSourceChain(dbStore, todoId);
     const clickedIndex = chain.findIndex((t) => t.id === todoId);
     const closestGoal = clickedIndex > 0 ? chain[clickedIndex - 1] : chain[0];
     setPanelTodoId(todoId);
@@ -1020,8 +1009,8 @@ export function Today() {
     setPanelTodoId(null);
     setSelectedMilestoneId(slotId);
 
-    const todoId = await ensureTimeSlotTodo(slot);
-    const logs = await getTodoLogs(todoId);
+    const todoId = await ensureTimeSlotTodo(dbStore,slot);
+    const logs = await getTodoLogs(dbStore, todoId);
     setMilestoneNotes((prev) => ({
       ...prev,
       [slotId]: logs.map((log) => ({ content: log.content, id: log.id })),
@@ -1032,11 +1021,11 @@ export function Today() {
     const trimmed = milestoneNoteInput.trim();
     if (!trimmed) return;
 
-    const todoId = await ensureTimeSlotTodo(slot);
-    await createTodoLog(todoId, 'thought', trimmed);
+    const todoId = await ensureTimeSlotTodo(dbStore,slot);
+    await createTodoLog(dbStore, todoId, 'thought', trimmed);
     setMilestoneNoteInput('');
 
-    const logs = await getTodoLogs(todoId);
+    const logs = await getTodoLogs(dbStore, todoId);
     setMilestoneNotes((prev) => ({
       ...prev,
       [slotId]: logs.map((log) => ({ content: log.content, id: log.id })),
@@ -1044,10 +1033,10 @@ export function Today() {
   }
 
   async function handleDeleteMilestoneNote(slotId: string, slot: typeof TIME_SLOTS[number], logId: string) {
-    await deleteTodoLog(logId);
+    await deleteTodoLog(dbStore, logId);
 
-    const todoId = await ensureTimeSlotTodo(slot);
-    const logs = await getTodoLogs(todoId);
+    const todoId = await ensureTimeSlotTodo(dbStore,slot);
+    const logs = await getTodoLogs(dbStore, todoId);
     setMilestoneNotes((prev) => ({
       ...prev,
       [slotId]: logs.map((log) => ({ content: log.content, id: log.id })),
@@ -1137,7 +1126,7 @@ export function Today() {
               pluse={activePluse}
               onClose={() => {
                 setActivePluse(null);
-                setActivePluseInDb(null);
+                setActivePluseInDb(dbStore, null);
               }}
               onIntervalTodo={(todoId) => {
                 if (todoId) setSelectedTodoId(todoId);
@@ -1180,7 +1169,7 @@ export function Today() {
                 activeId={activePluse.id}
                 onSelect={(pluse) => {
                   setActivePluse(pluse);
-                  setActivePluseInDb(pluse.id);
+                  setActivePluseInDb(dbStore, pluse.id);
                 }}
               />
             </div>

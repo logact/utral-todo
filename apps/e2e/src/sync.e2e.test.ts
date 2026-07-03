@@ -48,23 +48,23 @@ describe('desktop ⇄ expo sync', () => {
     const id = 'todo-create-1';
     insertTodo(desktop.db, { id, title: 'Write e2e test', node: desktop.deviceId });
 
-    await desktop.handler.syncLocalChange('todo', 'create', id);
+    await desktop.handler.syncLocalChange('todos', 'create', id);
 
     const row = await waitFor(() => getTodo(expo.db, id), { label: 'todo on expo' });
     expect(row.title).toBe('Write e2e test');
-    expect(expo.applied).toContainEqual({ table: 'todo', operation: 'create', recordId: id });
+    expect(expo.applied).toContainEqual({ table: 'todos', operation: 'create', recordId: id });
   });
 
   it('propagates an update from expo to desktop', async () => {
     const id = 'todo-update-1';
     // Seed the record on both sides via a create from desktop.
     insertTodo(desktop.db, { id, title: 'original', node: desktop.deviceId });
-    await desktop.handler.syncLocalChange('todo', 'create', id);
+    await desktop.handler.syncLocalChange('todos', 'create', id);
     await waitFor(() => getTodo(expo.db, id), { label: 'seed on expo' });
 
     // Expo edits the title (bumps its HLC so it wins LWW) and pushes.
     updateTodoTitle(expo.db, id, 'edited on expo', expo.deviceId);
-    await expo.handler.syncLocalChange('todo', 'update', id);
+    await expo.handler.syncLocalChange('todos', 'update', id);
 
     const row = await waitFor(
       () => {
@@ -79,11 +79,11 @@ describe('desktop ⇄ expo sync', () => {
   it('propagates a delete as a tombstone', async () => {
     const id = 'todo-delete-1';
     insertTodo(desktop.db, { id, title: 'to be deleted', node: desktop.deviceId });
-    await desktop.handler.syncLocalChange('todo', 'create', id);
+    await desktop.handler.syncLocalChange('todos', 'create', id);
     await waitFor(() => getTodo(expo.db, id), { label: 'seed on expo' });
 
     softDeleteTodo(desktop.db, id, desktop.deviceId);
-    await desktop.handler.syncLocalChange('todo', 'delete', id);
+    await desktop.handler.syncLocalChange('todos', 'delete', id);
 
     const row = await waitFor(
       () => {

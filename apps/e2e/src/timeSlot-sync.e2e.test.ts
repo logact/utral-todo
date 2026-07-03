@@ -35,7 +35,7 @@ describe('timeSlot todo sync', () => {
     expo.disconnect();
   });
 
-  it('syncs a timeSlot boundary todo via the shared engine (awaited trackChange)', async () => {
+  it('syncs a timeSlot boundary todo via the shared engine (awaited notifyDbOperation)', async () => {
     const slot = {
       id: 'slot-morning',
       milestoneId: 'system:morning',
@@ -49,8 +49,8 @@ describe('timeSlot todo sync', () => {
 
     const store: TimeSlotStore = {
       db: desktop.db,
-      getDeviceId: async () => desktop.deviceId,
-      trackChange: async (entity, op, id) => {
+      deviceId: desktop.deviceId,
+      notifyDbOperation: async (entity, op, id) => {
         await desktop.handler.syncLocalChange(entity, op, id);
       },
     };
@@ -63,7 +63,7 @@ describe('timeSlot todo sync', () => {
     expect(row.isSystemTask).toBe(true);
   });
 
-  it('syncs a timeSlot boundary todo with fire-and-forget trackChange (expo behavior)', async () => {
+  it('syncs a timeSlot boundary todo with fire-and-forget notifyDbOperation (expo behavior)', async () => {
     const slot = {
       id: 'slot-evening',
       milestoneId: 'system:evening',
@@ -77,8 +77,8 @@ describe('timeSlot todo sync', () => {
 
     const store: TimeSlotStore = {
       db: desktop.db,
-      getDeviceId: async () => desktop.deviceId,
-      trackChange: (entity, op, id) => {
+      deviceId: desktop.deviceId,
+      notifyDbOperation: (entity, op, id) => {
         // Mirrors apps/expo-app/src/lib/timeSlots.ts: not awaited.
         desktop.handler.syncLocalChange(entity, op, id).catch(() => {});
       },

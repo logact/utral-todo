@@ -50,7 +50,7 @@ const DEVICE_ID_KEY = 'syncDeviceId';
  * "desktop" on macOS/Windows. Existing ids are never reformatted — the node id
  * is baked into the HLC version of records this device has already written.
  */
-export async function getOrCreateDeviceId(): Promise<string> {
+export function getOrCreateDeviceId(): string {
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
     const endType: EndType = platform() === 'linux' ? 'linux' : 'desktop';
@@ -69,7 +69,7 @@ async function getEngine(): Promise<TauriSyncHandler> {
 
     engine = new TauriSyncHandler({
       serverUrl,
-      deviceId: await getOrCreateDeviceId(),
+      deviceId: getOrCreateDeviceId(),
       userId: config.userId || 'default',
       channel: config.channel || 'default',
       emitter: new WindowEventEmitter(),
@@ -93,7 +93,6 @@ export async function notifyDbOperation(
   operation: 'create' | 'update' | 'delete',
   recordId: string
 ): Promise<void> {
-  debugger
   const engine = await getEngine();
   window.dispatchEvent(
     new CustomEvent('db:changed', { detail: { table, operation, recordId } })

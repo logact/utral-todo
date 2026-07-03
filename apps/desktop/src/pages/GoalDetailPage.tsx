@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { getTodo } from '../db/todos';
 import { GoalDetail } from './GoalDetail';
 import type { Todo } from '../types';
+import { dbStore } from '../db/store';
+import { getTodo } from '@utral/db-schema/todo-ops';
 
 export function GoalDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,7 +14,7 @@ export function GoalDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    getTodo(id).then((loaded) => {
+    getTodo(dbStore, id).then((loaded) => {
       setGoal(loaded);
       setLoading(false);
     });

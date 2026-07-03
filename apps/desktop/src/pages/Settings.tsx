@@ -24,8 +24,9 @@ import { processQueue, start, stop, getSyncStatus } from '../lib/sync/syncEngine
 import {
   getTimeSlotDefinitions,
   updateTimeSlotDefinition,
-} from '../db/timeSlotDefinitions';
-import { ensureTimeSlotTodo } from '../db/timeSlots';
+  ensureTimeSlotTodo,
+} from '@utral/db-schema/timeslots';
+import { dbStore } from '../db/store';
 import type { TimeSlotConfig } from '../types';
 
 function formatTimeValue(hour: number, minute: number): string {
@@ -126,7 +127,7 @@ export function Settings() {
       if (lastSyncAt) setLastSync(lastSyncAt);
 
       try {
-        const definitions = await getTimeSlotDefinitions();
+        const definitions = await getTimeSlotDefinitions(dbStore);
         setTimeSlots(definitions);
       } catch (err) {
         console.error('[Settings] Failed to load time slot definitions:', err);
@@ -360,12 +361,12 @@ export function Settings() {
               slot={slot}
               onChange={async (changes) => {
                 try {
-                  await updateTimeSlotDefinition(slot.id, changes);
-                  const updated = await getTimeSlotDefinitions();
+                  await updateTimeSlotDefinition(dbStore, slot.id, changes);
+                  const updated = await getTimeSlotDefinitions(dbStore);
                   setTimeSlots(updated);
                   const changed = updated.find((s) => s.id === slot.id);
                   if (changed) {
-                    await ensureTimeSlotTodo(changed);
+                    await ensureTimeSlotTodo(dbStore, changed);
                   }
                 } catch (err) {
                   console.error('[Settings] Failed to update time slot:', err);

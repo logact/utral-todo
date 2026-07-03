@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import { getTodoLogs, createTodoLog, deleteTodoLog } from '../db/todoLogs';
 import { useDbChangeRefresh } from './useDbChangeRefresh';
 import type { TodoLog, TodoLogType } from '../types';
+import { dbStore } from '../db/store';
+import { createTodoLog, deleteTodoLog, getTodoLogs } from '@utral/db-schema/todo-log-ops';
 
 export function useTodoLogs(todoId: string) {
   const [logs, setLogs] = useState<TodoLog[]>([]);
@@ -9,16 +10,16 @@ export function useTodoLogs(todoId: string) {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const data = await getTodoLogs(todoId);
+    const data = await getTodoLogs(dbStore, todoId);
     setLogs(data);
     setIsLoading(false);
   }, [todoId]);
 
-  useDbChangeRefresh(refresh, { tables: ['todoLogs', 'todoLog', 'todos', 'todo'] });
+  useDbChangeRefresh(refresh, { tables: ['todoLogs', 'todos'] });
 
   const add = useCallback(
     async (type: TodoLogType, content: string, options?: { minutesSpent?: number; metadata?: Record<string, unknown> }) => {
-      const log = await createTodoLog(todoId, type, content, options);
+      const log = await createTodoLog(dbStore, todoId, type, content, options);
       setLogs((prev) => [...prev, log]);
       return log;
     },
@@ -26,7 +27,7 @@ export function useTodoLogs(todoId: string) {
   );
 
   const remove = useCallback(async (id: string) => {
-    await deleteTodoLog(id);
+    await deleteTodoLog(dbStore, id);
     setLogs((prev) => prev.filter((l) => l.id !== id));
   }, []);
 

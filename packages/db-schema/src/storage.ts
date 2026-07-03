@@ -32,8 +32,8 @@ import { SYNC_TABLES } from '@utral/sync-share';
 // Tauri sqlite-proxy and the Expo expo-sqlite instances can share this code.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Entity-name → drizzle table. Mirrors the outbound TABLE_NAME_MAP and the
-// canonical SYNC_TABLES list from @utral/sync-share.
+// Entity-name → drizzle table. Keys are the canonical SYNC_TABLES names from
+// @utral/sync-share; values are the shared SQLite table objects.
 const SYNC_TABLE_MAP: Record<string, any> = {
   [SYNC_TABLES[0]]: todos,
   [SYNC_TABLES[1]]: todoRelations,

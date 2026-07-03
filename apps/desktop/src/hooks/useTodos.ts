@@ -1,22 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useDbChangeRefresh } from './useDbChangeRefresh';
-import {
-  getTodaysTodos,
-  getAllTodos,
-  getUnscheduledTodos,
-  createTodo,
-  updateTodo,
-  deleteTodo,
-  updateTodoStatus,
-  updateTodoSchedule,
-  getOverdueTodos,
-  getInProgressTodos,
-  getUnscheduledHighPriorityTodos,
-  reorderTodos,
-  getRepeatTemplates,
-  getTodaysGoals,
-} from '../db/todos';
-import { setOccurrenceStatus } from '../db/repeatOccurrences';
 import { db } from '../db/drizzle-adapter';
 import { todos as todosTable, repeatOccurrences } from '../db/schema';
 import { gte } from 'drizzle-orm';
@@ -29,6 +12,9 @@ import {
 } from '../types';
 import { getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import type { Todo, TodoStatus, Priority, RepeatOccurrence } from '../types';
+import { dbStore } from '../db/store';
+import { setOccurrenceStatus } from '@utral/db-schema/repeat-occurrence-ops';
+import { createTodo, deleteTodo, getAllTodos, getInProgressTodos, getOverdueTodos, getRepeatTemplates, getTodaysGoals, getTodaysTodos, getUnscheduledHighPriorityTodos, getUnscheduledTodos, reorderTodos, updateTodo, updateTodoSchedule, updateTodoStatus } from '@utral/db-schema/todo-ops';
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -36,12 +22,12 @@ export function useTodos() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const all = await getAllTodos();
+    const all = await getAllTodos(dbStore);
     setTodos(all);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'todoRelations', 'repeatOccurrences'] });
 
   const add = useCallback(
     async (
@@ -56,7 +42,7 @@ export function useTodos() {
         tags?: string[];
       }
     ) => {
-      const todo = await createTodo(title, options);
+      const todo = await createTodo(dbStore, title, options);
       setTodos((prev) => [...prev, todo]);
       return todo;
     },
@@ -76,7 +62,7 @@ export function useTodos() {
         tags?: string[];
       }
     ) => {
-      const todo = await createTodo(title, { ...options, parentId });
+      const todo = await createTodo(dbStore, title, { ...options, parentId });
       setTodos((prev) => [...prev, todo]);
       return todo;
     },
@@ -84,14 +70,14 @@ export function useTodos() {
   );
 
   const update = useCallback(async (id: string, updates: Partial<Todo>) => {
-    await updateTodo(id, updates);
+    await updateTodo(dbStore, id, updates);
     setTodos((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
     );
   }, []);
 
   const remove = useCallback(async (id: string) => {
-    await deleteTodo(id);
+    await deleteTodo(dbStore, id);
     setTodos((prev) => prev.filter((t) => t.id !== id && !isDescendant(t, id, prev)));
   }, []);
 
@@ -99,10 +85,10 @@ export function useTodos() {
     if (isVirtualTodoId(id)) {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;
-      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      await setOccurrenceStatus(dbStore, parsed.templateId, new Date(parsed.dateKey), status);
       return;
     }
-    await updateTodoStatus(id, status);
+    await updateTodoStatus(dbStore, id, status);
     setTodos((prev) =>
       prev.map((t) =>
         t.id === id
@@ -113,7 +99,7 @@ export function useTodos() {
   }, []);
 
   const reorder = useCallback(async (orderedIds: string[]) => {
-    await reorderTodos(orderedIds);
+    await reorderTodos(dbStore, orderedIds);
     setTodos((prev) => {
       const map = new Map(prev.map((t) => [t.id, t]));
       const reordered = orderedIds.map((id) => map.get(id)).filter(Boolean) as Todo[];
@@ -139,18 +125,18 @@ export function useTodaysTodos() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = await getTodaysTodos();
+    const today = await getTodaysTodos(dbStore);
     setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence', 'pluses', 'pluse', 'actionEdges', 'actionEdge', 'plans', 'plan'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'todoRelations', 'repeatOccurrences', 'pluses', 'actionEdges', 'plans'] });
 
   const setStatus = useCallback(async (id: string, status: TodoStatus) => {
     if (isVirtualTodoId(id)) {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;
-      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      await setOccurrenceStatus(dbStore, parsed.templateId, new Date(parsed.dateKey), status);
       setTodos((prev) =>
         prev.map((t) =>
           t.id === id
@@ -160,7 +146,7 @@ export function useTodaysTodos() {
       );
       return;
     }
-    await updateTodoStatus(id, status);
+    await updateTodoStatus(dbStore, id, status);
     setTodos((prev) =>
       prev.map((t) =>
         t.id === id
@@ -179,12 +165,12 @@ export function useTodayScheduled() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = await getTodaysTodos();
+    const today = await getTodaysTodos(dbStore);
     setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'todoRelations', 'repeatOccurrences'] });
 
   return { todos, isLoading, refresh };
 }
@@ -195,12 +181,12 @@ export function useTodayInProgress() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = await getInProgressTodos();
+    const today = await getInProgressTodos(dbStore);
     setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo'] });
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
 
   return { todos, isLoading, refresh };
 }
@@ -211,12 +197,12 @@ export function useTodayOverdue() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = await getOverdueTodos();
+    const today = await getOverdueTodos(dbStore);
     setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo'] });
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
 
   return { todos, isLoading, refresh };
 }
@@ -227,12 +213,12 @@ export function useTodayGoals() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = await getTodaysGoals();
+    const today = await getTodaysGoals(dbStore);
     setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'todoRelations'] });
 
   return { todos, isLoading, refresh };
 }
@@ -243,12 +229,12 @@ export function useTodaySuggested() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const today = await getUnscheduledHighPriorityTodos();
+    const today = await getUnscheduledHighPriorityTodos(dbStore);
     setTodos(today);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo'] });
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
 
   return { todos, isLoading, refresh };
 }
@@ -276,17 +262,17 @@ export function useTodayData() {
     if (isVirtualTodoId(id)) {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;
-      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
+      await setOccurrenceStatus(dbStore, parsed.templateId, new Date(parsed.dateKey), status);
       return;
     }
 
-    await updateTodoStatus(id, status);
+    await updateTodoStatus(dbStore, id, status);
     await refresh();
   }, [refresh]);
 
   const schedule = useCallback(async (id: string, date: Date) => {
     if (isVirtualTodoId(id)) return;
-    await updateTodoSchedule(id, date);
+    await updateTodoSchedule(dbStore, id, date);
     await refresh();
   }, [refresh]);
 
@@ -324,8 +310,8 @@ export function useScheduleTodos() {
         ) as any[];
         return rows.filter((t: any) => t.status !== 'done' && !t.isSystemTask);
       })(),
-      getUnscheduledTodos(),
-      getRepeatTemplates(),
+      getUnscheduledTodos(dbStore),
+      getRepeatTemplates(dbStore),
       (async () => {
         const rows = await db.select().from(repeatOccurrences) as any[];
         return rows;
@@ -337,7 +323,7 @@ export function useScheduleTodos() {
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['todos', 'todo', 'relations', 'todoRelation', 'repeatOccurrences', 'repeatOccurrence'] });
+  useDbChangeRefresh(refresh, { tables: ['todos', 'relations', 'todoRelations', 'repeatOccurrences'] });
 
   const todoMapByDate = useMemo(() => {
     const map = new Map<string, Todo[]>();
@@ -390,7 +376,7 @@ export function useScheduleTodos() {
 
   const schedule = useCallback(async (id: string, date: Date | undefined) => {
     if (isVirtualTodoId(id)) return;
-    await updateTodoSchedule(id, date);
+    await updateTodoSchedule(dbStore, id, date);
     setRealTodos((prev) => prev.map((t) => (t.id === id ? { ...t, scheduledDate: date } : t)));
   }, []);
 
@@ -398,8 +384,8 @@ export function useScheduleTodos() {
     if (isVirtualTodoId(id)) {
       const parsed = parseVirtualTodoId(id);
       if (!parsed) return;
-      await setOccurrenceStatus(parsed.templateId, new Date(parsed.dateKey), status);
-      const nodeId = await getOrCreateDeviceId();
+      await setOccurrenceStatus(dbStore, parsed.templateId, new Date(parsed.dateKey), status);
+      const nodeId = getOrCreateDeviceId();
       const hlc = newHLC(nodeId);
       setOccurrences((prev) => {
         const existing = prev.find((o) => o.id === id);
@@ -414,7 +400,7 @@ export function useScheduleTodos() {
       });
       return;
     }
-    await updateTodoStatus(id, status);
+    await updateTodoStatus(dbStore, id, status);
     setRealTodos((prev) => prev.map((t) => (t.id === id ? { ...t, status, completedAt: status === 'done' ? new Date() : undefined } : t)));
   }, []);
 

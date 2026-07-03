@@ -4,22 +4,25 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DEFAULT_TIME_SLOTS, getTimeSlotForTodo, type TimeSlotConfig } from '@utral/types';
 import {
-  getTodayTodos,
+  DEFAULT_TIME_SLOTS,
+  getTimeSlotForTodo,
+  type TimeSlotConfig,
+  type Todo,
+  type Pluse,
+} from '@utral/types';
+import {
+  getTodaysTodos,
   getInProgressTodos,
   getOverdueTodos,
-  getTodayGoals,
+  getTodaysGoals,
   getUnscheduledHighPriorityTodos,
   updateTodoStatus,
   createTodo,
   updateTodoSchedule,
-} from '@/lib/todos';
-import { getAllPluses } from '@/lib/pluse';
-import { extractAtSchedule, formatSchedulePreview } from '@/lib/atSchedule';
-import { getTimeSlotDefinitions, ensureTimeSlotTodo } from '@/lib/timeSlots';
-import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
+} from '@utral/db-schema/todo-ops';
 import {
+  getAllPluses,
   startPluseTimer,
   pausePluseTimer,
   resumePluseTimer,
@@ -27,8 +30,14 @@ import {
   advancePluseTimer,
   getElapsedSeconds,
   getActivePluseTimer,
-} from '@/lib/database';
-import type { Todo, Pluse } from '@/lib/database';
+} from '@utral/db-schema/pluse-ops';
+import { extractAtSchedule, formatSchedulePreview } from '@/lib/atSchedule';
+import {
+  getTimeSlotDefinitions,
+  ensureTimeSlotTodo,
+} from '@utral/db-schema/timeslots';
+import { dbStore } from '@/lib/db-store';
+import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
 import * as Notifications from 'expo-notifications';
 
 Notifications.setNotificationHandler({
@@ -272,7 +281,7 @@ function PluseMiniTimer({
 
   // Reconstruct local state from the persisted pluse row (authoritative).
   const syncFromDb = useCallback(async () => {
-    const active = await getActivePluseTimer();
+    const active = await getActivePluseTimer(dbStore);
     if (!active || active.id !== pluse.id) {
       setIsRunning(false);
       setIsCompleted(false);
@@ -301,7 +310,7 @@ function PluseMiniTimer({
         setIsRunning(false);
         setIsCompleted(true);
         setStartTime(null);
-        await stopPluseTimer(pluse.id);
+        await stopPluseTimer(dbStore, pluse.id);
       } else {
         setCurrentIndex(idx);
         if (idx === active.currentIntervalIndex) {
@@ -381,7 +390,7 @@ function PluseMiniTimer({
         setCurrentIndex(nextIndex);
         setElapsedSeconds(0);
         setStartTime(null);
-        pausePluseTimer(pluse.id, 0, nextIndex).catch(() => {});
+        pausePluseTimer(dbStore, pluse.id, 0, nextIndex).catch(() => {});
 
         scheduleNotification(
           `${pluse.name} — Interval ${currentIndex + 1} complete`,
@@ -394,7 +403,7 @@ function PluseMiniTimer({
           timeoutRef.current = setTimeout(() => {
             setIsRunning(true);
             setStartTime(Date.now());
-            resumePluseTimer(pluse.id).catch(() => {});
+            resumePluseTimer(dbStore, pluse.id).catch(() => {});
             hapticImpact();
           }, 2000);
         }
@@ -402,7 +411,7 @@ function PluseMiniTimer({
         setIsRunning(false);
         setIsCompleted(true);
         setStartTime(null);
-        stopPluseTimer(pluse.id).catch(() => {});
+        stopPluseTimer(dbStore, pluse.id).catch(() => {});
         scheduleNotification(`${pluse.name} — Complete!`, 'All intervals finished. Great work!', 1);
       }
     }
@@ -421,7 +430,7 @@ function PluseMiniTimer({
       setElapsedSeconds(0);
       setIsRunning(true);
       setStartTime(Date.now());
-      await startPluseTimer(pluse.id);
+      await startPluseTimer(dbStore, pluse.id);
       return;
     }
 
@@ -430,15 +439,15 @@ function PluseMiniTimer({
       setIsRunning(false);
       setElapsedSeconds(total);
       setStartTime(null);
-      await pausePluseTimer(pluse.id, total, currentIndex);
+      await pausePluseTimer(dbStore, pluse.id, total, currentIndex);
     } else {
       setIsRunning(true);
       setStartTime(Date.now());
       // First-ever start (idle) resets progress; otherwise resume where paused.
       if (pluse.timerStatus === 'idle' && elapsedSeconds === 0 && currentIndex === 0) {
-        await startPluseTimer(pluse.id);
+        await startPluseTimer(dbStore, pluse.id);
       } else {
-        await resumePluseTimer(pluse.id);
+        await resumePluseTimer(dbStore, pluse.id);
       }
     }
   }, [isRunning, isCompleted, elapsedSeconds, startTime, currentIndex, pluse.id, pluse.timerStatus]);
@@ -455,12 +464,12 @@ function PluseMiniTimer({
     setElapsedSeconds(0);
     setStartTime(null);
     hapticImpact();
-    await advancePluseTimer(pluse.id, nextIndex);
+    await advancePluseTimer(dbStore, pluse.id, nextIndex);
   }, [currentIndex, totalItems, pluse.id]);
 
   const restart = useCallback(async () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    await stopPluseTimer(pluse.id);
+    await stopPluseTimer(dbStore, pluse.id);
     setCurrentIndex(0);
     setElapsedSeconds(0);
     setIsRunning(false);
@@ -587,37 +596,37 @@ export default function TodayScreen() {
 
   const { data: todayTodos = [] } = useQuery({
     queryKey: ['todos', 'today'],
-    queryFn: getTodayTodos,
+    queryFn: () => getTodaysTodos(dbStore),
   });
 
   const { data: inProgress = [] } = useQuery({
     queryKey: ['todos', 'inProgress'],
-    queryFn: getInProgressTodos,
+    queryFn: () => getInProgressTodos(dbStore),
   });
 
   const { data: overdue = [] } = useQuery({
     queryKey: ['todos', 'overdue'],
-    queryFn: getOverdueTodos,
+    queryFn: () => getOverdueTodos(dbStore),
   });
 
   const { data: goals = [] } = useQuery({
     queryKey: ['todos', 'goals'],
-    queryFn: getTodayGoals,
+    queryFn: () => getTodaysGoals(dbStore),
   });
 
   const { data: suggested = [] } = useQuery({
     queryKey: ['todos', 'suggested'],
-    queryFn: getUnscheduledHighPriorityTodos,
+    queryFn: () => getUnscheduledHighPriorityTodos(dbStore),
   });
 
   const { data: pluses = [] } = useQuery({
     queryKey: ['pluses'],
-    queryFn: getAllPluses,
+    queryFn: () => getAllPluses(dbStore),
   });
 
   const { data: timeSlotDefs = [] } = useQuery({
     queryKey: ['timeSlots'],
-    queryFn: getTimeSlotDefinitions,
+    queryFn: () => getTimeSlotDefinitions(dbStore),
   });
 
   // DB-driven slot definitions, falling back to the shared defaults until they load.
@@ -631,7 +640,7 @@ export default function TodayScreen() {
     let cancelled = false;
     (async () => {
       for (const slot of timeSlotDefs) {
-        await ensureTimeSlotTodo(slot);
+        await ensureTimeSlotTodo(dbStore, slot);
       }
       if (!cancelled) queryClient.invalidateQueries({ queryKey: ['todos'] });
     })().catch((err) => console.error('[timeSlots] ensure failed:', err));
@@ -643,7 +652,7 @@ export default function TodayScreen() {
   const createMutation = useMutation({
     mutationFn: () => {
       const { title, scheduledDate } = extractAtSchedule(quickTitle);
-      return createTodo({ title: title || quickTitle.trim(), scheduledDate });
+      return createTodo(dbStore, title || quickTitle.trim(), { scheduledDate });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] });
@@ -657,7 +666,7 @@ export default function TodayScreen() {
   const toggleStatus = useCallback(
     async (todo: Todo) => {
       const newStatus = todo.status === 'done' ? 'pending' : 'done';
-      await updateTodoStatus(todo.id, newStatus);
+      await updateTodoStatus(dbStore, todo.id, newStatus);
       hapticImpact();
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     },
@@ -666,7 +675,7 @@ export default function TodayScreen() {
 
   const setFocus = useCallback(
     async (todo: Todo) => {
-      await updateTodoStatus(todo.id, 'in_progress');
+      await updateTodoStatus(dbStore, todo.id, 'in_progress');
       hapticImpact();
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     },
@@ -689,7 +698,7 @@ export default function TodayScreen() {
     async (todo: Todo) => {
       const now = new Date();
       now.setHours(9, 0, 0, 0);
-      await updateTodoSchedule(todo.id, now);
+      await updateTodoSchedule(dbStore, todo.id, now);
       hapticImpact();
       queryClient.invalidateQueries({ queryKey: ['todos'] });
     },

@@ -30,7 +30,7 @@ is specific to the server.
 3. `pull_seq { from, to }` replays a `seq` range to one device.
 
 Registered tables are passed in by the app (`apps/server/src/sync/setup.ts`):
-`todo, todoRelation, todoLog, actionEdge, pluse, repeatOccurrence, plan, timeSlot`.
+`todos, todoRelations, todoLogs, actionEdges, pluses, repeatOccurrences, plans, timeSlots`.
 
 ## How to use the package
 
@@ -55,8 +55,8 @@ storage.init();                              // creates tables + prepares statem
 
 export const syncHandler = new SyncHandler({
   storage,
-  tables: ['todo', 'todoRelation', 'todoLog', 'actionEdge',
-           'pluse', 'repeatOccurrence', 'plan', 'timeSlot'],
+  tables: ['todos', 'todoRelations', 'todoLogs', 'actionEdges',
+           'pluses', 'repeatOccurrences', 'plans', 'timeSlots'],
   onBroadcast: (event, excludeDeviceId) => {/* optional external hook, e.g. push notifs */},
 });
 ```

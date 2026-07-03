@@ -11,25 +11,16 @@ import {
   Target,
   ArrowRight,
 } from 'lucide-react';
-import { getTodo, updateTodoStatus, getSubGoals, updateRepeatRule, createTodo, deleteTodo } from '../db/todos';
-import {
-  traceSourceChain,
-  getSpawnedTodos,
-  getTemplateForInstance,
-  createRelation,
-  updateRelation,
-  deleteRelation,
-} from '../db/relations';
 import { useTodoLogs } from '../hooks/useTodoLogs';
-import {
-  getAllActionEdgesForTodo,
-  createActionEdge,
-} from '../db/actionEdges';
 import { formatDuration, formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from './RoadToGoalGraph';
 import { GoalPath } from './GoalPath';
 import { UnifiedLogSection } from './UnifiedLogSection';
 import type { Todo, RepeatRule, ActionEdge, TodoStatus, TodoRelationType } from '../types';
+import { dbStore } from '../db/store';
+import { createActionEdge, getAllActionEdgesForTodo } from '@utral/db-schema/action-edge-ops';
+import { createRelation, deleteRelation, getSpawnedTodos, getTemplateForInstance, traceSourceChain, updateRelation } from '@utral/db-schema/relation-ops';
+import { createTodo, deleteTodo, getSubGoals, getTodo, updateRepeatRule, updateTodoStatus } from '@utral/db-schema/todo-ops';
 
 export function TodoExecutionPanel({
   todoId,
@@ -89,7 +80,7 @@ export function TodoExecutionPanel({
     }
     const todos: Todo[] = [];
     for (const id of connectedIds) {
-      const t = await getTodo(id);
+      const t = await getTodo(dbStore, id);
       if (t) todos.push(t);
     }
     setGraphNodes(todos);
@@ -97,28 +88,28 @@ export function TodoExecutionPanel({
 
   const loadTodo = useCallback(async () => {
     setIsLoadingTodo(true);
-    const t = await getTodo(todoId);
+    const t = await getTodo(dbStore, todoId);
     if (t) {
       setTodo(t);
-      const goals = await getSubGoals(t.id);
+      const goals = await getSubGoals(dbStore, t.id);
       setSubGoals(goals);
 
       const [chain, spawned, tmpl] = await Promise.all([
-        traceSourceChain(t.id),
-        getSpawnedTodos(t.id),
-        getTemplateForInstance(t.id),
+        traceSourceChain(dbStore, t.id),
+        getSpawnedTodos(dbStore, t.id),
+        getTemplateForInstance(dbStore, t.id),
       ]);
       setSourceChain(chain);
       setSpawnedTodos(spawned);
       setTemplateTodo(tmpl ?? null);
 
-      const edges = await getAllActionEdgesForTodo(t.id);
+      const edges = await getAllActionEdgesForTodo(dbStore, t.id);
 
       // Find the ultimate goal via the road-to-goal chain (achieves / parent_of).
       const root = chain.find((x) => x.nodeType === 'goal');
       const goalId = root?.id ?? t.id;
       if (goalId !== t.id) {
-        const g = await getTodo(goalId);
+        const g = await getTodo(dbStore, goalId);
         setGoalTodo(g ?? t);
       } else {
         setGoalTodo(t);
@@ -136,7 +127,7 @@ export function TodoExecutionPanel({
 
   useEffect(() => {
     if (autoStart && todo?.status === 'pending') {
-      updateTodoStatus(todoId, 'in_progress').then(() => {
+      updateTodoStatus(dbStore, todoId, 'in_progress').then(() => {
         setTodo((prev) => (prev ? { ...prev, status: 'in_progress', startedAt: new Date() } : prev));
         addLog('system', 'Started execution', {
           metadata: { action: 'status_change', from: 'pending', to: 'in_progress' },
@@ -146,7 +137,7 @@ export function TodoExecutionPanel({
   }, [todo?.status, todo?.id, todoId, autoStart, addLog]);
 
   async function markDone() {
-    await updateTodoStatus(todoId, 'done');
+    await updateTodoStatus(dbStore, todoId, 'done');
     setTodo((prev) =>
       prev ? { ...prev, status: 'done', completedAt: new Date() } : prev
     );
@@ -156,7 +147,7 @@ export function TodoExecutionPanel({
   }
 
   async function markUndone() {
-    await updateTodoStatus(todoId, 'pending');
+    await updateTodoStatus(dbStore, todoId, 'pending');
     setTodo((prev) =>
       prev ? { ...prev, status: 'pending', completedAt: undefined } : prev
     );
@@ -187,14 +178,14 @@ export function TodoExecutionPanel({
       rule.endDate = new Date(repeatEndDate);
     }
 
-    await updateRepeatRule(todoId, rule);
+    await updateRepeatRule(dbStore, todoId, rule);
     setTodo((prev) => (prev ? { ...prev, repeatRule: rule } : prev));
     setShowRepeatForm(false);
     setIsUpdatingRepeat(false);
   }
 
   async function handleRemoveRepeat() {
-    await updateRepeatRule(todoId, undefined);
+    await updateRepeatRule(dbStore, todoId, undefined);
     setTodo((prev) => (prev ? { ...prev, repeatRule: undefined } : prev));
     setShowRepeatForm(false);
   }
@@ -205,7 +196,7 @@ export function TodoExecutionPanel({
     if (!todo) return;
     const currentStatus = todo.status;
     const newStatus: TodoStatus = currentStatus === 'in_progress' ? 'pending' : 'in_progress';
-    await updateTodoStatus(todoId, newStatus);
+    await updateTodoStatus(dbStore, todoId, newStatus);
     setTodo((prev) =>
       prev
         ? {
@@ -224,9 +215,9 @@ export function TodoExecutionPanel({
 
   async function handleCreateNode(title: string) {
     if (!goalTodo) return;
-    const newTodo = await createTodo(title);
-    await createActionEdge(goalTodo.id, newTodo.id, 'to_achieve');
-    const edges = await getAllActionEdgesForTodo(todoId);
+    const newTodo = await createTodo(dbStore, title);
+    await createActionEdge(dbStore, goalTodo.id, newTodo.id, 'to_achieve');
+    const edges = await getAllActionEdgesForTodo(dbStore, todoId);
     await loadGraphNodes(edges, goalTodo.id);
     await addLog('system', `Added node to road: ${title}`, {
       metadata: { action: 'node_create', nodeId: newTodo.id, nodeTitle: title },
@@ -234,8 +225,8 @@ export function TodoExecutionPanel({
   }
 
   async function handleDeleteNode(nodeId: string) {
-    await deleteTodo(nodeId);
-    const edges = await getAllActionEdgesForTodo(todoId);
+    await deleteTodo(dbStore, nodeId);
+    const edges = await getAllActionEdgesForTodo(dbStore, todoId);
     await loadGraphNodes(edges, goalTodo?.id ?? todoId);
     await addLog('system', 'Removed node from road', {
       metadata: { action: 'node_delete', nodeId },
@@ -243,15 +234,15 @@ export function TodoExecutionPanel({
   }
 
   async function handleCreateRelation(fromTodoId: string, toTodoId: string, type: TodoRelationType) {
-    await createRelation(fromTodoId, toTodoId, type);
+    await createRelation(dbStore, fromTodoId, toTodoId, type);
   }
 
   async function handleDeleteRelation(relationId: string) {
-    await deleteRelation(relationId);
+    await deleteRelation(dbStore, relationId);
   }
 
   async function handleUpdateRelation(relationId: string, type: TodoRelationType) {
-    await updateRelation(relationId, { type });
+    await updateRelation(dbStore, relationId, { type });
   }
 
   function formatRepeatRule(rule: RepeatRule): string {

@@ -7,9 +7,10 @@ import {
   Plus,
   CornerDownRight,
 } from 'lucide-react';
-import { getSubTodos, createTodo, deleteTodo, updateTodoStatus, reorderSubTodos } from '../db/todos';
 import { formatDuration } from '../utils/date';
 import type { Todo } from '../types';
+import { dbStore } from '../db/store';
+import { createTodo, deleteTodo, getSubTodos, reorderSubTodos, updateTodoStatus } from '@utral/db-schema/todo-ops';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -86,7 +87,7 @@ function TreeNodeItem({
 
   const loadChildren = useCallback(async () => {
     setIsLoadingChildren(true);
-    const subs = await getSubTodos(todo.id);
+    const subs = await getSubTodos(dbStore, todo.id);
     setChildren(subs);
     setIsLoadingChildren(false);
   }, [todo.id]);
@@ -100,13 +101,13 @@ function TreeNodeItem({
 
   async function handleToggleDone() {
     const newStatus = isDone ? 'pending' : 'done';
-    await updateTodoStatus(todo.id, newStatus as 'pending' | 'done');
+    await updateTodoStatus(dbStore, todo.id, newStatus as 'pending' | 'done');
     onChange();
   }
 
   async function handleAddChild() {
     if (!newChildTitle.trim()) return;
-    await createTodo(newChildTitle.trim(), { parentId: todo.id });
+    await createTodo(dbStore, newChildTitle.trim(), { parentId: todo.id });
     setNewChildTitle('');
     setIsAddingChild(false);
     await loadChildren();
@@ -115,7 +116,7 @@ function TreeNodeItem({
   }
 
   async function handleDelete() {
-    await deleteTodo(todo.id);
+    await deleteTodo(dbStore, todo.id);
     setIsDeleting(false);
     onChange();
   }
@@ -344,7 +345,7 @@ export function TodoTree({ parentId, todos, isEditing, onChange }: TodoTreeProps
 
   async function handleAddStep() {
     if (!newStepTitle.trim()) return;
-    await createTodo(newStepTitle.trim(), { parentId });
+    await createTodo(dbStore, newStepTitle.trim(), { parentId });
     setNewStepTitle('');
     onChange();
   }
@@ -355,7 +356,7 @@ export function TodoTree({ parentId, todos, isEditing, onChange }: TodoTreeProps
     const orderedIds = todos.map((s) => s.id);
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     [orderedIds[index], orderedIds[targetIndex]] = [orderedIds[targetIndex], orderedIds[index]];
-    await reorderSubTodos(parentId, orderedIds);
+    await reorderSubTodos(dbStore, parentId, orderedIds);
     onChange();
   }
 

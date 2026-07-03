@@ -5,12 +5,55 @@ import { db } from '../db/drizzle-adapter';
 import { todos, todoRelations, todoLogs, pluses } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { clearAllData } from '../db/database';
-import * as todosDb from '../db/todos';
-import * as relationsDb from '../db/relations';
-import * as todoLogsDb from '../db/todoLogs';
-import * as actionEdgesDb from '../db/actionEdges';
-import * as plusesDb from '../db/pluse';
-import * as pluseTimersDb from '../db/pluseTimers';
+import { dbStore } from '../db/store';
+import {
+  getAllTodos,
+  getTodo,
+  createTodo,
+  updateTodo,
+  deleteTodo,
+  updateTodoStatus,
+  updateTodoSchedule,
+  getTodaysTodos,
+  getUnscheduledTodos,
+  getOverdueTodos,
+  reorderSubTodos,
+  reorderTodos,
+  updateRepeatRule,
+} from '@utral/db-schema/todo-ops';
+import {
+  getAllRelations,
+  createRelation,
+  deleteRelation,
+  traceSourceChain,
+  getSpawnedTodos,
+  getAssignedInstances,
+} from '@utral/db-schema/relation-ops';
+import {
+  createTodoLog,
+  deleteTodoLog,
+} from '@utral/db-schema/todo-log-ops';
+import {
+  getAllActionEdges,
+  createActionEdge,
+  deleteActionEdge,
+  getAllActionEdgesForTodo,
+} from '@utral/db-schema/action-edge-ops';
+import {
+  getAllPluses,
+  getPluse,
+  createPluse,
+  updatePluse,
+  deletePluse,
+} from '@utral/db-schema/pluse-ops';
+import {
+  getActivePluseTimer,
+  startPluseTimer,
+  pausePluseTimer,
+  resumePluseTimer,
+  stopPluseTimer,
+  advancePluseTimer,
+} from '@utral/db-schema/pluse-ops';
 import type { TodoLog, ActionEdgeType } from '../types';
 
 interface CliRequestEvent {
@@ -29,7 +72,7 @@ function serializeForJson(obj: unknown): unknown {
 async function handleTodos(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'list': {
-      let todos = await todosDb.getAllTodos();
+      let todos = await getAllTodos(dbStore);
       if (args.status) todos = todos.filter((t) => t.status === args.status);
       if (args.priority) todos = todos.filter((t) => t.priority === args.priority);
       if (args.tag) {
@@ -39,11 +82,11 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'get': {
-      const todo = await todosDb.getTodo(String(args.id));
+      const todo = await getTodo(dbStore, String(args.id));
       return { success: true, data: todo ? serializeForJson(todo) : null };
     }
     case 'create': {
-      const todo = await todosDb.createTodo(String(args.title ?? 'Untitled'), {
+      const todo = await createTodo(dbStore, String(args.title ?? 'Untitled'), {
         description: String(args.description ?? ''),
         priority: (args.priority as 'low' | 'medium' | 'high') ?? 'medium',
         parentId: args.parentId ? String(args.parentId) : undefined,
@@ -70,45 +113,45 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       if (args.tags !== undefined) updates.tags = String(args.tags).split(',').map((t) => t.trim());
       if (args.repeatRule !== undefined) updates.repeatRule = args.repeatRule ? JSON.parse(String(args.repeatRule)) : null;
       if (args.order !== undefined) updates.order = Number(args.order);
-      await todosDb.updateTodo(String(args.id), updates as never);
+      await updateTodo(dbStore, String(args.id), updates as never);
       return { success: true };
     }
     case 'delete': {
-      await todosDb.deleteTodo(String(args.id));
+      await deleteTodo(dbStore, String(args.id));
       return { success: true };
     }
     case 'status': {
-      await todosDb.updateTodoStatus(String(args.id), String(args.status) as 'pending' | 'in_progress' | 'done');
+      await updateTodoStatus(dbStore, String(args.id), String(args.status) as 'pending' | 'in_progress' | 'done');
       return { success: true };
     }
     case 'schedule': {
       const date = args.date ? new Date(String(args.date)) : undefined;
-      await todosDb.updateTodoSchedule(String(args.id), date);
+      await updateTodoSchedule(dbStore, String(args.id), date);
       return { success: true };
     }
     case 'unschedule': {
-      await todosDb.updateTodoSchedule(String(args.id), undefined);
+      await updateTodoSchedule(dbStore, String(args.id), undefined);
       return { success: true };
     }
     case 'today': {
-      const todos = await todosDb.getTodaysTodos();
+      const todos = await getTodaysTodos(dbStore);
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'unscheduled': {
-      const todos = await todosDb.getUnscheduledTodos();
+      const todos = await getUnscheduledTodos(dbStore);
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'overdue': {
-      const todos = await todosDb.getOverdueTodos();
+      const todos = await getOverdueTodos(dbStore);
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'inbox': {
-      const all = await todosDb.getAllTodos();
+      const all = await getAllTodos(dbStore);
       const todos = all.filter((t) => t.status !== 'done');
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'search': {
-      const all = await todosDb.getAllTodos();
+      const all = await getAllTodos(dbStore);
       const q = String(args.query ?? args.id ?? '').toLowerCase();
       const todos = all.filter(
         (t) =>
@@ -118,7 +161,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'reorder': {
-      await todosDb.reorderSubTodos(String(args.id), [String(args.id)]);
+      await reorderSubTodos(dbStore, String(args.id), [String(args.id)]);
       // Actually reorderSubTodos takes parentId and orderedIds - this is tricky
       // The bridge will just update the order field directly
       await db.update(todos).set({ order: Number(args.order) }).where(eq(todos.id, String(args.id)));
@@ -126,20 +169,20 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
     }
     case 'reorder-bulk': {
       const ids = String(args.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-      await todosDb.reorderTodos(ids);
+      await reorderTodos(dbStore, ids);
       return { success: true };
     }
     case 'spawned': {
-      const todos = await relationsDb.getSpawnedTodos(String(args.id));
+      const todos = await getSpawnedTodos(dbStore, String(args.id));
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'instances': {
-      const todos = await relationsDb.getAssignedInstances(String(args.id));
+      const todos = await getAssignedInstances(dbStore, String(args.id));
       return { success: true, data: todos.map(serializeForJson) };
     }
     case 'repeat-rule': {
       const rule = args.rule ? JSON.parse(String(args.rule)) : undefined;
-      await todosDb.updateRepeatRule(String(args.id), rule);
+      await updateRepeatRule(dbStore, String(args.id), rule);
       return { success: true };
     }
     case 'sync-repeats': {
@@ -156,7 +199,7 @@ async function handleTodos(action: string, args: Record<string, unknown>) {
 async function handleRelations(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'list': {
-      const relations = await relationsDb.getAllRelations();
+      const relations = await getAllRelations(dbStore);
       let result = relations;
       if (args.fromTodoId) result = result.filter((r) => r.fromTodoId === args.fromTodoId);
       if (args.toTodoId) result = result.filter((r) => r.toTodoId === args.toTodoId);
@@ -164,7 +207,8 @@ async function handleRelations(action: string, args: Record<string, unknown>) {
       return { success: true, data: result.map(serializeForJson) };
     }
     case 'create': {
-      const relation = await relationsDb.createRelation(
+      const relation = await createRelation(
+        dbStore,
         String(args.fromTodoId),
         String(args.toTodoId),
         (args.type as 'depends_on' | 'blocked_by' | 'parent_of' | 'source_from' | 'assign_from') ?? 'depends_on'
@@ -172,11 +216,11 @@ async function handleRelations(action: string, args: Record<string, unknown>) {
       return { success: true, data: serializeForJson(relation) };
     }
     case 'delete': {
-      await relationsDb.deleteRelation(String(args.id));
+      await deleteRelation(dbStore, String(args.id));
       return { success: true };
     }
     case 'source-chain': {
-      const chain = await relationsDb.traceSourceChain(String(args.id));
+      const chain = await traceSourceChain(dbStore, String(args.id));
       return { success: true, data: chain.map(serializeForJson) };
     }
     default:
@@ -195,7 +239,8 @@ async function handleTodoLogs(action: string, args: Record<string, unknown>) {
       return { success: true, data: logs.map(serializeForJson) };
     }
     case 'create': {
-      const log = await todoLogsDb.createTodoLog(
+      const log = await createTodoLog(
+        dbStore,
         String(args.todoId),
         (args.type as TodoLog['type']) ?? 'thought',
         String(args.content ?? ''),
@@ -207,7 +252,7 @@ async function handleTodoLogs(action: string, args: Record<string, unknown>) {
       return { success: true, data: serializeForJson(log) };
     }
     case 'delete': {
-      await todoLogsDb.deleteTodoLog(String(args.id));
+      await deleteTodoLog(dbStore, String(args.id));
       return { success: true };
     }
     default:
@@ -220,11 +265,12 @@ async function handleTodoLogs(action: string, args: Record<string, unknown>) {
 async function handleActionEdges(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'list': {
-      const edges = await actionEdgesDb.getAllActionEdges();
+      const edges = await getAllActionEdges(dbStore);
       return { success: true, data: edges.map(serializeForJson) };
     }
     case 'create': {
-      const edge = await actionEdgesDb.createActionEdge(
+      const edge = await createActionEdge(
+        dbStore,
         String(args.fromTodoId),
         String(args.toTodoId),
         (args.type as ActionEdgeType) ?? 'pre_do'
@@ -232,11 +278,11 @@ async function handleActionEdges(action: string, args: Record<string, unknown>) 
       return { success: true, data: serializeForJson(edge) };
     }
     case 'delete': {
-      await actionEdgesDb.deleteActionEdge(String(args.id));
+      await deleteActionEdge(dbStore, String(args.id));
       return { success: true };
     }
     case 'for-todo': {
-      const edges = await actionEdgesDb.getAllActionEdgesForTodo(String(args.id));
+      const edges = await getAllActionEdgesForTodo(dbStore, String(args.id));
       return { success: true, data: edges.map(serializeForJson) };
     }
     default:
@@ -249,15 +295,16 @@ async function handleActionEdges(action: string, args: Record<string, unknown>) 
 async function handlePluses(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'list': {
-      const pluses = await plusesDb.getAllPluses();
+      const pluses = await getAllPluses(dbStore);
       return { success: true, data: pluses.map(serializeForJson) };
     }
     case 'get': {
-      const pluse = await plusesDb.getPluse(String(args.id));
+      const pluse = await getPluse(dbStore, String(args.id));
       return { success: true, data: pluse ? serializeForJson(pluse) : null };
     }
     case 'create': {
-      const pluse = await plusesDb.createPluse(
+      const pluse = await createPluse(
+        dbStore,
         String(args.name ?? 'Untitled'),
         args.intervals ? (Array.isArray(args.intervals) ? (args.intervals as number[]) : JSON.parse(String(args.intervals))) : [1500, 300],
         args.repeatCount ? Number(args.repeatCount) : 1,
@@ -275,11 +322,11 @@ async function handlePluses(action: string, args: Record<string, unknown>) {
       if (args.repeatCount !== undefined) updates.repeatCount = Number(args.repeatCount);
       if (args.intervalTodos !== undefined) updates.intervalTodos = JSON.parse(String(args.intervalTodos));
       if (args.autoAdvance !== undefined) updates.autoAdvance = args.autoAdvance === true || args.autoAdvance === 'true';
-      await plusesDb.updatePluse(String(args.id), updates);
+      await updatePluse(dbStore, String(args.id), updates);
       return { success: true };
     }
     case 'delete': {
-      await plusesDb.deletePluse(String(args.id));
+      await deletePluse(dbStore, String(args.id));
       return { success: true };
     }
     default:
@@ -292,30 +339,30 @@ async function handlePluses(action: string, args: Record<string, unknown>) {
 async function handlePluseTimers(action: string, args: Record<string, unknown>) {
   switch (action) {
     case 'active': {
-      const pluse = await pluseTimersDb.getActivePluseTimer();
+      const pluse = await getActivePluseTimer(dbStore);
       return { success: true, data: pluse ? serializeForJson(pluse) : null };
     }
     case 'start': {
-      const pluse = await pluseTimersDb.startPluseTimer(String(args.id));
+      const pluse = await startPluseTimer(dbStore, String(args.id));
       return { success: true, data: serializeForJson(pluse) };
     }
     case 'pause': {
       const accumulatedSeconds = args.accumulatedSeconds ? Number(args.accumulatedSeconds) : 0;
       const currentIntervalIndex = args.currentIntervalIndex ? Number(args.currentIntervalIndex) : 0;
-      const pluse = await pluseTimersDb.pausePluseTimer(String(args.id), accumulatedSeconds, currentIntervalIndex);
+      const pluse = await pausePluseTimer(dbStore, String(args.id), accumulatedSeconds, currentIntervalIndex);
       return { success: true, data: serializeForJson(pluse) };
     }
     case 'resume': {
-      const pluse = await pluseTimersDb.resumePluseTimer(String(args.id));
+      const pluse = await resumePluseTimer(dbStore, String(args.id));
       return { success: true, data: serializeForJson(pluse) };
     }
     case 'stop': {
-      await pluseTimersDb.stopPluseTimer(String(args.id));
+      await stopPluseTimer(dbStore, String(args.id));
       return { success: true };
     }
     case 'advance': {
       const currentIntervalIndex = args.currentIntervalIndex ? Number(args.currentIntervalIndex) : 0;
-      const pluse = await pluseTimersDb.advancePluseTimer(String(args.id), currentIntervalIndex);
+      const pluse = await advancePluseTimer(dbStore, String(args.id), currentIntervalIndex);
       return { success: true, data: serializeForJson(pluse) };
     }
     default:

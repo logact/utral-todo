@@ -17,14 +17,15 @@ import {
 import { BigMapCanvas } from './BigMapCanvas';
 import { useBigMapViewport } from '../hooks/useBigMapViewport';
 import { computeUnifiedGraphLayout, computeGoalRoadLayout, type LayoutResult } from './BigMapLayout';
-import { getAllTodos, getTodo, createGoal, createTask } from '../db/todos';
-import { getAllRelations, createRelation } from '../db/relations';
 import { db } from '../db/drizzle-adapter';
 import { todoLogs as todoLogsTable } from '../db/schema';
 import { rowToTodoLog } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import type { Todo, TodoRelation, TodoRelationType, TodoLog, NodeType } from '../types';
 import { inferRelationBetween } from '../utils/relations';
+import { dbStore } from '../db/store';
+import { createRelation, getAllRelations } from '@utral/db-schema/relation-ops';
+import { createGoal, createTask, getAllTodos, getTodo } from '@utral/db-schema/todo-ops';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -209,9 +210,9 @@ export function RoadToGoalGraph({
   const loadData = useCallback(async (signal?: { cancelled: boolean }) => {
     setIsLoading(true);
     const [allTodos, allRelations, goal] = await Promise.all([
-      getAllTodos(),
-      getAllRelations(),
-      getTodo(goalId),
+      getAllTodos(dbStore),
+      getAllRelations(dbStore),
+      getTodo(dbStore, goalId),
     ]);
 
     if (signal?.cancelled) return;
@@ -251,18 +252,18 @@ export function RoadToGoalGraph({
   // Create a new goal/task from an empty-space drop and link it to the source node.
   const handleCreateNodeFromDrag = useCallback(
     async (sourceId: string, title: string, nodeType: NodeType) => {
-      const sourceTodo = await getTodo(sourceId);
+      const sourceTodo = await getTodo(dbStore, sourceId);
       if (!sourceTodo) return;
 
       const newTodo =
         nodeType === 'goal'
-          ? await createGoal(title, { tags: [...sourceTodo.tags] })
-          : await createTask(title, { tags: [...sourceTodo.tags] });
+          ? await createGoal(dbStore, title, { tags: [...sourceTodo.tags] })
+          : await createTask(dbStore, title, { tags: [...sourceTodo.tags] });
 
       const relation = inferRelationBetween(sourceTodo, newTodo);
       if (!relation) return;
 
-      await createRelation(relation.fromId, relation.toId, relation.type);
+      await createRelation(dbStore, relation.fromId, relation.toId, relation.type);
       await reload();
       onRelationsChange?.();
     },

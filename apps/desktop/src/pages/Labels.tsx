@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Tag, Pencil, Trash2, X, Check } from 'lucide-react';
-import { getAllLabels, renameLabel, deleteLabel } from '../db/labels';
 import type { Label } from '../types';
+import { dbStore } from '../db/store';
+import { deleteLabel, getAllLabels, renameLabel } from '@utral/db-schema/label-ops';
 
 export function Labels() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export function Labels() {
 
   async function loadLabels() {
     setIsLoading(true);
-    const data = await getAllLabels();
+    const data = await getAllLabels(dbStore);
     setLabels(data);
     setIsLoading(false);
   }
@@ -30,13 +31,13 @@ export function Labels() {
       return;
     }
 
-    await renameLabel(oldName, trimmed);
+    await renameLabel(dbStore, oldName, trimmed);
     setEditingName(null);
     await loadLabels();
   }
 
   async function handleDelete(name: string) {
-    await deleteLabel(name);
+    await deleteLabel(dbStore, name);
     await loadLabels();
   }
 

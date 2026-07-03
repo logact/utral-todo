@@ -2,14 +2,15 @@ import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { getInProgressTodos } from '@/lib/todos';
+import { getInProgressTodos } from '@utral/db-schema/todo-ops';
+import { dbStore } from '@/lib/db-store';
 
 export function FocusSessionCard() {
   const router = useRouter();
 
   const { data: inProgress = [] } = useQuery({
     queryKey: ['todos', 'inProgress'],
-    queryFn: getInProgressTodos,
+    queryFn: () => getInProgressTodos(dbStore),
   });
 
   if (inProgress.length === 0) return null;

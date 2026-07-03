@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, GitBranch, Loader2, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
-import { createGoal, deleteTodo, getTodo, getAllTodos } from '../db/todos';
-import { getAllRelations } from '../db/relations';
 import type { Todo } from '../types';
+import { dbStore } from '../db/store';
+import { getAllRelations } from '@utral/db-schema/relation-ops';
+import { createGoal, deleteTodo, getAllTodos, getTodo } from '@utral/db-schema/todo-ops';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -145,12 +146,12 @@ async function findRoot(todoId: string): Promise<string> {
 
   while (current && !visited.has(current)) {
     visited.add(current);
-    const todo = await getTodo(current);
+    const todo = await getTodo(dbStore, current);
     if (!todo) break;
 
     // Trace parentId only if parent is a goal
     if (todo.parentId) {
-      const parent = await getTodo(todo.parentId);
+      const parent = await getTodo(dbStore, todo.parentId);
       if (parent && parent.nodeType === 'goal') {
         current = todo.parentId;
         continue;
@@ -158,12 +159,12 @@ async function findRoot(todoId: string): Promise<string> {
     }
 
     // Trace source_from only if source is a goal
-    const allRelations = await getAllRelations();
+    const allRelations = await getAllRelations(dbStore);
     const sourceRel = allRelations.find(
       (r) => r.toTodoId === current && r.type === 'source_from'
     );
     if (sourceRel) {
-      const source = await getTodo(sourceRel.fromTodoId);
+      const source = await getTodo(dbStore, sourceRel.fromTodoId);
       if (source && source.nodeType === 'goal') {
         current = sourceRel.fromTodoId;
         continue;
@@ -181,8 +182,8 @@ async function buildTree(
   currentId: string
 ): Promise<{ tree: TreeNode | null; crossEdges: CrossEdge[] }> {
   const [allTodos, allRelations] = await Promise.all([
-    getAllTodos(),
-    getAllRelations(),
+    getAllTodos(dbStore),
+    getAllRelations(dbStore),
   ]);
 
   const todoMap = new Map(allTodos.map((t) => [t.id, t]));
@@ -456,14 +457,14 @@ export function BranchView({ currentTodoId }: { currentTodoId: string }) {
 
   async function handleCreateChild(parentId: string) {
     if (!newChildTitle.trim()) return;
-    await createGoal(newChildTitle.trim(), { parentId });
+    await createGoal(dbStore, newChildTitle.trim(), { parentId });
     setNewChildTitle('');
     setCreatingForId(null);
     setRefreshKey((k) => k + 1);
   }
 
   async function handleDeleteNode(nodeId: string) {
-    await deleteTodo(nodeId);
+    await deleteTodo(dbStore, nodeId);
     setDeletingId(null);
     setRefreshKey((k) => k + 1);
   }

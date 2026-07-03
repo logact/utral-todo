@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import { getAllLabels } from '../db/labels';
 import type { Label } from '../types';
+import { dbStore } from '../db/store';
+import { getAllLabels } from '@utral/db-schema/label-ops';
 
 interface LabelPickerProps {
   tags: string[];
@@ -18,7 +19,7 @@ export function LabelPicker({ tags, onChange, placeholder = 'Type and press Ente
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getAllLabels().then(setSuggestions);
+    getAllLabels(dbStore).then(setSuggestions);
   }, []);
 
   useEffect(() => {

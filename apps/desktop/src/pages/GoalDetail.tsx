@@ -10,19 +10,16 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react';
-import { updateTodo, getTodo } from '../db/todos';
 import { db } from '../db/drizzle-adapter';
 import { todoRelations } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import {
-  createRelation,
-  updateRelation,
-  deleteRelation,
-} from '../db/relations';
 import { formatDateShort } from '../utils/date';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
 import { LabelPicker } from '../components/LabelPicker';
 import type { Todo, GoalStatus, TodoRelationType } from '../types';
+import { dbStore } from '../db/store';
+import { createRelation, deleteRelation, updateRelation } from '@utral/db-schema/relation-ops';
+import { getTodo, updateTodo } from '@utral/db-schema/todo-ops';
 
 const goalStatusConfig: Record<string, { label: string; color: string }> = {
   active: { label: 'Active', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
@@ -96,7 +93,7 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
       goalStatus: editGoalStatus,
       tags: editTags,
     };
-    await updateTodo(goal.id, updates);
+    await updateTodo(dbStore, goal.id, updates);
     onUpdate(updates);
     setIsEditing(false);
     setIsPropertiesOpen(false);
@@ -104,15 +101,15 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
   }
 
   async function handleCreateRelation(fromTodoId: string, toTodoId: string, type: TodoRelationType) {
-    await createRelation(fromTodoId, toTodoId, type);
+    await createRelation(dbStore, fromTodoId, toTodoId, type);
   }
 
   async function handleDeleteRelation(relationId: string) {
-    await deleteRelation(relationId);
+    await deleteRelation(dbStore, relationId);
   }
 
   async function handleUpdateRelation(relationId: string, type: TodoRelationType) {
-    await updateRelation(relationId, { type });
+    await updateRelation(dbStore, relationId, { type });
   }
 
   async function handleReconnectRelation(relationId: string, fromTodoId: string, toTodoId: string) {
@@ -122,15 +119,15 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
     if (!relation) return;
     if (relation.fromTodoId === fromTodoId && relation.toTodoId === toTodoId) return;
 
-    const fromTodo = await getTodo(fromTodoId);
-    const toTodo = await getTodo(toTodoId);
+    const fromTodo = await getTodo(dbStore, fromTodoId);
+    const toTodo = await getTodo(dbStore, toTodoId);
     if (!fromTodo || !toTodo) return;
 
     const allowedTypes = allowedLinkTypesForReconnect(fromTodo, toTodo);
     if (!allowedTypes.includes(relation.type as TodoRelationType)) return;
 
-    await deleteRelation(relationId);
-    await createRelation(fromTodoId, toTodoId, relation.type as TodoRelationType);
+    await deleteRelation(dbStore, relationId);
+    await createRelation(dbStore, fromTodoId, toTodoId, relation.type as TodoRelationType);
     setGraphTick((t) => t + 1);
   }
 
@@ -215,7 +212,7 @@ export function GoalDetail({ goal, onUpdate }: GoalDetailProps) {
         editing
         reloadTick={graphTick}
         onNodeClick={async (todoId) => {
-          const todo = await getTodo(todoId);
+          const todo = await getTodo(dbStore, todoId);
           if (todo?.nodeType === 'goal') {
             navigate(`/goals/${todoId}`);
           } else {

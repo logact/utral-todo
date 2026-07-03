@@ -4,9 +4,10 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllPluses, createPluse, deletePluse, updatePluse } from '@/lib/pluse';
+import { getAllPluses, createPluse, deletePluse, updatePluse } from '@utral/db-schema/pluse-ops';
 import { hapticImpact } from '@/lib/native';
-import type { Pluse } from '@/lib/database';
+import { dbStore } from '@/lib/db-store';
+import type { Pluse } from '@utral/types';
 
 function formatSeconds(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -246,12 +247,12 @@ export default function PlusesScreen() {
 
   const { data: pluses = [] } = useQuery({
     queryKey: ['pluses'],
-    queryFn: getAllPluses,
+    queryFn: () => getAllPluses(dbStore),
   });
 
   const createMutation = useMutation({
     mutationFn: (data: { name: string; intervals: number[]; repeatCount: number; autoAdvance: boolean }) =>
-      createPluse({ name: data.name, intervals: data.intervals, repeatCount: data.repeatCount, autoAdvance: data.autoAdvance }),
+      createPluse(dbStore, data.name, data.intervals, data.repeatCount, undefined, undefined, data.autoAdvance),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
       setIsCreating(false);
@@ -261,7 +262,7 @@ export default function PlusesScreen() {
 
   const editMutation = useMutation({
     mutationFn: (data: { id: string; updates: Partial<Pluse> }) =>
-      updatePluse(data.id, data.updates),
+      updatePluse(dbStore, data.id, data.updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
       setEditingId(null);
@@ -270,7 +271,7 @@ export default function PlusesScreen() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deletePluse(id),
+    mutationFn: (id: string) => deletePluse(dbStore, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pluses'] });
       hapticImpact();

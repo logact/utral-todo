@@ -24,19 +24,10 @@ import {
 } from '@utral/types';
 import type { TimeSlotConfig, TimeSlotDefinition, Todo } from '@utral/types';
 import { newHLC, mergeHLC } from '@utral/sync-share';
+import type { DbStore } from './store.js';
 
-/** Canonical entity names the engine reports changes for. Each app maps these
- *  to its own sync-tracking convention. */
-export type TimeSlotEntity = 'todo' | 'todoLog' | 'timeSlot';
-
-export interface TimeSlotStore {
-  /** Drizzle db instance over the shared @utral/db-schema tables. */
-  db: any;
-  /** Resolve the local device/node id used to stamp HLCs. */
-  getDeviceId(): Promise<string>;
-  /** Record a local mutation so the app's sync layer can push it. */
-  trackChange(entity: TimeSlotEntity, op: 'create' | 'update' | 'delete', id: string): void;
-}
+/** Time-slot engine uses the shared {@link DbStore} interface. */
+export type TimeSlotStore = DbStore;
 
 // ─── Definitions (time_slots table) ──────────────────────────────────────────
 
@@ -56,7 +47,7 @@ function slotConfigToDefinition(
 }
 
 export async function seedDefaultTimeSlots(ctx: TimeSlotStore): Promise<void> {
-  const nodeId = await ctx.getDeviceId();
+  const nodeId = ctx.deviceId;
 
   for (let i = 0; i < DEFAULT_TIME_SLOTS.length; i++) {
     const slot = DEFAULT_TIME_SLOTS[i];
@@ -78,7 +69,7 @@ export async function seedDefaultTimeSlots(ctx: TimeSlotStore): Promise<void> {
       .values(timeSlotDefinitionToRow(definition))
       .onConflictDoNothing({ target: timeSlots.id });
 
-    ctx.trackChange('timeSlot', 'create', slot.id);
+    ctx.notifyDbOperation('timeSlots', 'create', slot.id);
   }
 }
 
@@ -128,7 +119,7 @@ export async function updateTimeSlotDefinition(
   const existing = await getTimeSlotDefinitionById(ctx, id);
   if (!existing) return;
 
-  const nodeId = await ctx.getDeviceId();
+  const nodeId = ctx.deviceId;
   const updatedAt = mergeHLC(existing.updatedAt, newHLC(nodeId));
 
   const row = timeSlotDefinitionToRow({
@@ -138,7 +129,7 @@ export async function updateTimeSlotDefinition(
   });
 
   await ctx.db.update(timeSlots).set(row).where(eq(timeSlots.id, id));
-  ctx.trackChange('timeSlot', 'update', id);
+  ctx.notifyDbOperation('timeSlots', 'update', id);
 }
 
 export async function deleteTimeSlotDefinition(
@@ -148,7 +139,7 @@ export async function deleteTimeSlotDefinition(
   const existing = await getTimeSlotDefinitionById(ctx, id);
   if (!existing) return;
 
-  const nodeId = await ctx.getDeviceId();
+  const nodeId = ctx.deviceId;
   const updatedAt = mergeHLC(existing.updatedAt, newHLC(nodeId));
 
   await ctx.db
@@ -160,7 +151,7 @@ export async function deleteTimeSlotDefinition(
       updatedAtNode: updatedAt.node,
     })
     .where(eq(timeSlots.id, id));
-  ctx.trackChange('timeSlot', 'delete', id);
+  ctx.notifyDbOperation('timeSlots', 'delete', id);
 }
 
 // ─── Boundary milestone todos ────────────────────────────────────────────────
@@ -206,7 +197,7 @@ async function ensureMilestoneTodo(
       scheduledMs !== scheduledDate.getTime();
 
     if (needsUpdate) {
-      const nodeId = await ctx.getDeviceId();
+      const nodeId = ctx.deviceId;
       const mergedUpdatedAt = existing.updatedAt
         ? mergeHLC(existing.updatedAt, newHLC(nodeId))
         : newHLC(nodeId);
@@ -224,13 +215,13 @@ async function ensureMilestoneTodo(
           })
         )
         .where(eq(todos.id, id));
-      ctx.trackChange('todo', 'update', id);
+      ctx.notifyDbOperation('todos', 'update', id);
     }
 
     return id;
   }
 
-  const nodeId = await ctx.getDeviceId();
+  const nodeId = ctx.deviceId;
   const hlc = newHLC(nodeId);
   const todo: Todo = {
     id,
@@ -251,7 +242,7 @@ async function ensureMilestoneTodo(
   };
 
   await ctx.db.insert(todos).values(todoToRow(todo));
-  ctx.trackChange('todo', 'create', id);
+  ctx.notifyDbOperation('todos', 'create', id);
 
   return id;
 }
@@ -283,7 +274,7 @@ async function migrateLegacyTodoToCanonical(
     .where(eq(todoLogs.todoId, legacy.id));
 
   for (const log of logs) {
-    const nodeId = await ctx.getDeviceId();
+    const nodeId = ctx.deviceId;
     const existingUpdatedAt =
       log.updatedAtWall != null
         ? { wall: log.updatedAtWall, counter: log.updatedAtCounter ?? 0, node: log.updatedAtNode ?? '' }
@@ -300,10 +291,10 @@ async function migrateLegacyTodoToCanonical(
         updatedAtNode: mergedUpdatedAt.node,
       })
       .where(eq(todoLogs.id, log.id));
-    ctx.trackChange('todoLog', 'update', log.id);
+    ctx.notifyDbOperation('todoLogs', 'update', log.id);
   }
 
-  const nodeId = await ctx.getDeviceId();
+  const nodeId = ctx.deviceId;
   const tombstoneHLC = newHLC(nodeId);
   const mergedUpdatedAt = legacy.updatedAt
     ? mergeHLC(legacy.updatedAt, tombstoneHLC)
@@ -317,7 +308,7 @@ async function migrateLegacyTodoToCanonical(
       updatedAtNode: mergedUpdatedAt.node,
     })
     .where(eq(todos.id, legacy.id));
-  ctx.trackChange('todo', 'delete', legacy.id);
+  ctx.notifyDbOperation('todos', 'delete', legacy.id);
 }
 
 export async function migrateLegacySlotTodos(ctx: TimeSlotStore): Promise<void> {

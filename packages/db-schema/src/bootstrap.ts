@@ -8,7 +8,7 @@
 //   - a default pluse
 //   - boundary milestone todos for the time slots
 //
-// Every write is followed by a sync trackChange call so the records propagate
+// Every write is followed by a notifyDbOperation call so the records propagate
 // to the user's other devices. The bootstrap is idempotent: running it again on
 // a non-empty database is a no-op.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,19 +25,13 @@ import {
   ensureTimeSlotTodo as engineEnsureTimeSlotTodo,
   migrateLegacySlotTodos as engineMigrateLegacySlotTodos,
   type TimeSlotStore,
-  type TimeSlotEntity,
 } from './timeSlotEngine.js';
 import { newHLC } from '@utral/sync-share';
 import { DEFAULT_TIME_SLOTS } from '@utral/types';
 import type { Todo, Plan, Pluse, TimeSlotDefinition } from '@utral/types';
+import type { DbStore } from './store.js';
 
-export interface BootstrapStore {
-  /** Drizzle db instance over the shared @utral/db-schema tables. */
-  db: any;
-  /** Resolve the local device/node id used to stamp HLCs. */
-  getDeviceId(): Promise<string>;
-  /** Record a local mutation so the app's sync layer can push it. */
-  trackChange(entity: string, op: 'create' | 'update' | 'delete', id: string): void;
+export interface BootstrapStore extends DbStore {
   /** Optional hook called after bootstrap completes successfully. */
   onComplete?(): void;
 }
@@ -57,7 +51,7 @@ async function ensureRootGoal(store: BootstrapStore): Promise<void> {
 
   if (existing.length > 0) return;
 
-  const deviceId = await store.getDeviceId();
+  const deviceId = store.deviceId;
   const hlc = newHLC(deviceId);
 
   const rootGoal: Todo = {
@@ -78,7 +72,7 @@ async function ensureRootGoal(store: BootstrapStore): Promise<void> {
   };
 
   await store.db.insert(todos).values(todoToRow(rootGoal));
-  store.trackChange('todo', 'create', rootGoal.id);
+  store.notifyDbOperation('todos', 'create', rootGoal.id);
 
   const plan: Plan = {
     id: ROOT_PLAN_ID,
@@ -93,7 +87,7 @@ async function ensureRootGoal(store: BootstrapStore): Promise<void> {
   };
 
   await store.db.insert(plans).values(planToRow(plan));
-  store.trackChange('plan', 'create', plan.id);
+  store.notifyDbOperation('plans', 'create', plan.id);
 
   await store.db
     .update(todos)
@@ -105,13 +99,13 @@ async function ensureRootGoal(store: BootstrapStore): Promise<void> {
     })
     .where(eq(todos.id, rootGoal.id));
 
-  store.trackChange('todo', 'update', rootGoal.id);
+  store.notifyDbOperation('todos', 'update', rootGoal.id);
 }
 
 // ─── Default time slot definitions ───────────────────────────────────────────
 
 async function seedDefaultTimeSlotsSyncAware(store: BootstrapStore): Promise<void> {
-  const deviceId = await store.getDeviceId();
+  const deviceId = store.deviceId;
 
   for (let i = 0; i < DEFAULT_TIME_SLOTS.length; i++) {
     const slot = DEFAULT_TIME_SLOTS[i];
@@ -138,7 +132,7 @@ async function seedDefaultTimeSlotsSyncAware(store: BootstrapStore): Promise<voi
       .values(timeSlotDefinitionToRow(definition))
       .onConflictDoNothing({ target: timeSlots.id });
 
-    store.trackChange('timeSlot', 'create', slot.id);
+    store.notifyDbOperation('timeSlots', 'create', slot.id);
   }
 }
 
@@ -153,7 +147,7 @@ async function ensureDefaultPluse(store: BootstrapStore): Promise<void> {
 
   if (existing.length > 0) return;
 
-  const deviceId = await store.getDeviceId();
+  const deviceId = store.deviceId;
   const hlc = newHLC(deviceId);
 
   const pluse: Pluse = {
@@ -173,19 +167,13 @@ async function ensureDefaultPluse(store: BootstrapStore): Promise<void> {
   };
 
   await store.db.insert(pluses).values(pluseToRow(pluse));
-  store.trackChange('pluse', 'create', pluse.id);
+  store.notifyDbOperation('pluses', 'create', pluse.id);
 }
 
 // ─── TimeSlot boundary milestone todos ───────────────────────────────────────
 
 function buildTimeSlotStore(store: BootstrapStore): TimeSlotStore {
-  return {
-    db: store.db,
-    getDeviceId: store.getDeviceId,
-    trackChange: (entity: TimeSlotEntity, op: 'create' | 'update' | 'delete', id: string) => {
-      store.trackChange(entity, op, id);
-    },
-  };
+  return store;
 }
 
 async function ensureTimeSlotBoundaryTodos(store: BootstrapStore): Promise<void> {
@@ -210,9 +198,7 @@ export async function bootstrapApp(store: BootstrapStore): Promise<void> {
   await seedDefaultTimeSlotsSyncAware(store);
   await ensureDefaultPluse(store);
   await ensureTimeSlotBoundaryTodos(store);
-
-  const timeSlotStore = buildTimeSlotStore(store);
-  await engineMigrateLegacySlotTodos(timeSlotStore);
+  await engineMigrateLegacySlotTodos(store);
 
   store.onComplete?.();
 }

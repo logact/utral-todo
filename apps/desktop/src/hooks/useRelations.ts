@@ -1,12 +1,8 @@
 import { useState, useCallback } from 'react';
-import {
-  getAllRelations,
-  createRelation,
-  deleteRelation,
-  getRelationsForTodo,
-} from '../db/relations';
 import { useDbChangeRefresh } from './useDbChangeRefresh';
 import type { TodoRelation, TodoRelationType } from '../types';
+import { dbStore } from '../db/store';
+import { createRelation, deleteRelation, getAllRelations, getRelationsForTodo } from '@utral/db-schema/relation-ops';
 
 export function useRelations() {
   const [relations, setRelations] = useState<TodoRelation[]>([]);
@@ -14,16 +10,16 @@ export function useRelations() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const all = await getAllRelations();
+    const all = await getAllRelations(dbStore);
     setRelations(all);
     setIsLoading(false);
   }, []);
 
-  useDbChangeRefresh(refresh, { tables: ['relations', 'todoRelation', 'todos', 'todo'] });
+  useDbChangeRefresh(refresh, { tables: ['relations', 'todoRelations', 'todos'] });
 
   const add = useCallback(
     async (fromTodoId: string, toTodoId: string, type: TodoRelationType) => {
-      const relation = await createRelation(fromTodoId, toTodoId, type);
+      const relation = await createRelation(dbStore, fromTodoId, toTodoId, type);
       setRelations((prev) => [...prev, relation]);
       return relation;
     },
@@ -31,12 +27,12 @@ export function useRelations() {
   );
 
   const remove = useCallback(async (id: string) => {
-    await deleteRelation(id);
+    await deleteRelation(dbStore, id);
     setRelations((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   const getForTodo = useCallback(async (todoId: string) => {
-    return getRelationsForTodo(todoId);
+    return getRelationsForTodo(dbStore, todoId);
   }, []);
 
   return { relations, isLoading, refresh, add, remove, getForTodo };
@@ -49,13 +45,13 @@ export function useTodoRelations(todoId: string) {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    const result = await getRelationsForTodo(todoId);
+    const result = await getRelationsForTodo(dbStore, todoId);
     setOutgoing(result.outgoing);
     setIncoming(result.incoming);
     setIsLoading(false);
   }, [todoId]);
 
-  useDbChangeRefresh(refresh, { tables: ['relations', 'todoRelation', 'todos', 'todo'] });
+  useDbChangeRefresh(refresh, { tables: ['relations', 'todoRelations', 'todos'] });
 
   return { outgoing, incoming, isLoading, refresh };
 }

@@ -2,12 +2,13 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, Home, Plus } from 'lucide-react';
 import { RoadToGoalGraph } from '../components/RoadToGoalGraph';
-import { getRootGoal, getTodo } from '../db/todos';
-import { createRelation, deleteRelation, updateRelation } from '../db/relations';
 import { db } from '../db/drizzle-adapter';
 import { todoRelations } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import type { Todo, TodoRelationType } from '../types';
+import { dbStore } from '../db/store';
+import { createRelation, deleteRelation, updateRelation } from '@utral/db-schema/relation-ops';
+import { getRootGoal, getTodo } from '@utral/db-schema/todo-ops';
 
 export function BigMap() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,7 +19,7 @@ export function BigMap() {
   const goalId = searchParams.get('goal') ?? rootGoalId;
 
   useEffect(() => {
-    getRootGoal().then((g) => {
+    getRootGoal(dbStore).then((g) => {
       setRootGoalId(g?.id);
       setIsLoadingRoot(false);
     });
@@ -30,7 +31,7 @@ export function BigMap() {
 
   const handleCreateRelation = useCallback(
     async (fromTodoId: string, toTodoId: string, type: TodoRelationType) => {
-      await createRelation(fromTodoId, toTodoId, type);
+      await createRelation(dbStore, fromTodoId, toTodoId, type);
       handleReload();
     },
     [handleReload]
@@ -38,7 +39,7 @@ export function BigMap() {
 
   const handleDeleteRelation = useCallback(
     async (relationId: string) => {
-      await deleteRelation(relationId);
+      await deleteRelation(dbStore, relationId);
       handleReload();
     },
     [handleReload]
@@ -46,7 +47,7 @@ export function BigMap() {
 
   const handleUpdateRelation = useCallback(
     async (relationId: string, type: TodoRelationType) => {
-      await updateRelation(relationId, { type });
+      await updateRelation(dbStore, relationId, { type });
       handleReload();
     },
     [handleReload]
@@ -60,15 +61,15 @@ export function BigMap() {
       if (!relation) return;
       if (relation.fromTodoId === fromTodoId && relation.toTodoId === toTodoId) return;
 
-      const fromTodo = await getTodo(fromTodoId);
-      const toTodo = await getTodo(toTodoId);
+      const fromTodo = await getTodo(dbStore, fromTodoId);
+      const toTodo = await getTodo(dbStore, toTodoId);
       if (!fromTodo || !toTodo) return;
 
       const allowedTypes = allowedLinkTypesForReconnect(fromTodo, toTodo);
       if (!allowedTypes.includes(relation.type as TodoRelationType)) return;
 
-      await deleteRelation(relationId);
-      await createRelation(fromTodoId, toTodoId, relation.type as TodoRelationType);
+      await deleteRelation(dbStore, relationId);
+      await createRelation(dbStore, fromTodoId, toTodoId, relation.type as TodoRelationType);
       handleReload();
     },
     [handleReload]
@@ -105,7 +106,7 @@ export function BigMap() {
           <button
             onClick={async () => {
 
-              const g = await getRootGoal();
+              const g = await getRootGoal(dbStore);
               setRootGoalId(g?.id);
             }}
             className="mt-5 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700"
@@ -149,7 +150,7 @@ export function BigMap() {
           editing
           reloadTick={graphTick}
           onNodeClick={async (id) => {
-            const todo = await getTodo(id);
+            const todo = await getTodo(dbStore, id);
             if (todo?.nodeType === 'goal') {
               setSearchParams({ goal: id });
             } else {

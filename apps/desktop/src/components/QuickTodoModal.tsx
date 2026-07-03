@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Calendar, X, Plus, Target, CheckSquare, Brain } from 'lucide-react';
-import { createTodo } from '../db/todos';
 import { extractAtSchedule } from '../utils/atScheduleParser';
 import { formatDate, formatTime, setTimeOfDay, startOfDay, type TimeOfDay } from '../utils/date';
 import type { NodeType, TaskPattern } from '../types';
+import { dbStore } from '../db/store';
+import { createTodo } from '@utral/db-schema/todo-ops';
 
 interface QuickTodoModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function QuickTodoModal({ isOpen, onClose, onCreated }: QuickTodoModalPro
 
     setIsSubmitting(true);
 
-    await createTodo(title, {
+    await createTodo(dbStore, title, {
       nodeType,
       ...(isTask
         ? {

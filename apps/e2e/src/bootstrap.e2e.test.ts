@@ -39,8 +39,8 @@ describe('startup bootstrap sync', () => {
   it('syncs root goal, root plan, default time slots, default pluse, and boundary todos from bootstrap', async () => {
     const store: BootstrapStore = {
       db: desktop.db,
-      getDeviceId: async () => desktop.deviceId,
-      trackChange: async (entity: string, op: 'create' | 'update' | 'delete', id: string) => {
+      deviceId: desktop.deviceId,
+      notifyDbOperation: async (entity: string, op: 'create' | 'update' | 'delete', id: string) => {
         await desktop.handler.syncLocalChange(entity, op, id);
       },
     };
