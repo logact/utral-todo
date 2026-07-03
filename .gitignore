@@ -58,3 +58,5 @@ utral-todo/
 # kimi agent
 session_*
 *.zip
+apps/server/deploy.bak.sh
+apps/server/deploy.sh

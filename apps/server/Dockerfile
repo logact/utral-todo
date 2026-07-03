@@ -9,7 +9,6 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 # Copy workspace manifests first for dependency caching
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
-COPY apps/desktop/package.json ./apps/desktop/
 COPY packages/types/package.json ./packages/types/
 COPY packages/db-schema/package.json ./packages/db-schema/
 COPY packages/sync-share/package.json ./packages/sync-share/
@@ -38,7 +37,6 @@ RUN pnpm --filter @utral/sync-share build
 RUN pnpm --filter @utral/sync-client build
 RUN pnpm --filter @utral/sync-server build
 RUN pnpm --filter server build
-RUN pnpm --filter desktop build
 
 
 # Production stage
