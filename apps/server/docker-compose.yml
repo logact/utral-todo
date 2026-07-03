@@ -4,7 +4,7 @@ services:
     container_name: utral-todo-db
     restart: unless-stopped
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ${DATA_LOCATION}/pgdata:/var/lib/postgresql/data  # ← 挂载到宿主机指定路径
     environment:
       - POSTGRES_USER=utral
       - POSTGRES_PASSWORD=utral
@@ -38,6 +38,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-volumes:
-  pgdata:
