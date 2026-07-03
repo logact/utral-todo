@@ -1,6 +1,6 @@
 import { db } from './drizzle-adapter';
 import { todos, todoRelations, plans as plansTable } from './schema';
-import { eq, and, or, lt, gte, isNotNull, isNull } from 'drizzle-orm';
+import { eq, and, or, lt, gte, isNotNull, isNull, not } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
 import { createPlan } from './plans';
 import { dateMatchesRule, computeVirtualTodo } from '../types';
@@ -554,14 +554,14 @@ export async function getTodosForDate(date: Date): Promise<Todo[]> {
 export async function getUnscheduledTodos(): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
     and(
-      isNotNull(todos.scheduledDate),
-      eq(todos.status, 'done'),
+      isNull(todos.scheduledDate),
+      not(eq(todos.status, 'done')),
       eq(todos.nodeType, 'task'),
       eq(todos.isDeleted, false),
       or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
-  return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
+  return rows.map(rowToTodo);
 }
 
 export async function getOverdueTodos(): Promise<Todo[]> {
@@ -570,13 +570,13 @@ export async function getOverdueTodos(): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
     and(
       lt(todos.dueDate, now),
-      eq(todos.status, 'done'),
+      not(eq(todos.status, 'done')),
       eq(todos.nodeType, 'task'),
       eq(todos.isDeleted, false),
       or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
-  return rows.map(rowToTodo).filter((t) => t.status !== 'done');
+  return rows.map(rowToTodo);
 }
 
 export async function getInProgressTodos(): Promise<Todo[]> {
@@ -594,15 +594,15 @@ export async function getInProgressTodos(): Promise<Todo[]> {
 export async function getUnscheduledHighPriorityTodos(): Promise<Todo[]> {
   const rows = await db.select().from(todos).where(
     and(
-      isNotNull(todos.scheduledDate),
-      eq(todos.status, 'done'),
+      isNull(todos.scheduledDate),
+      not(eq(todos.status, 'done')),
       eq(todos.priority, 'high'),
       eq(todos.nodeType, 'task'),
       eq(todos.isDeleted, false),
       or(isNull(todos.isSystemTask), eq(todos.isSystemTask, false))
     )
   ) as any[];
-  return rows.map(rowToTodo).filter((t) => !t.scheduledDate && t.status !== 'done');
+  return rows.map(rowToTodo);
 }
 
 export async function getTodaysGoals(): Promise<Todo[]> {

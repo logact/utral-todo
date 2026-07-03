@@ -1233,7 +1233,7 @@ export function Today() {
           </div>
 
           <div className="px-3 py-2 flex-1 overflow-y-auto min-h-0 relative">
-            {!hasAnything ? (
+            {timeSlots.length === 0 && !hasAnything ? (
               <div className="text-center py-8">
                 <Target className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto" />
                 <p className="mt-2 text-sm text-slate-400 dark:text-slate-500">
@@ -1242,7 +1242,7 @@ export function Today() {
               </div>
             ) : (
               <div className="space-y-1">
-                {/* Time Slots */}
+                {/* Time Slots - always render so the daily structure is visible */}
                 {timeSlots.map((slot) => (
                   <TimeSlotSection
                     key={slot.id}
