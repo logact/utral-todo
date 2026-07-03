@@ -1,6 +1,6 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import { db } from './drizzle-adapter';
-import { todos, todoRelations, todoLogs, actionEdges, plans, pluses } from './schema';
+import { todos, todoRelations, todoLogs, actionEdges, plans, pluses, syncConfig } from './schema';
 import { eq } from 'drizzle-orm';
 import { parseTodo, parseRelation, parseLog, parseActionEdge, parsePluse, parsePlan } from './client';
 import { todoToRow, relationToRow, todoLogToRow, actionEdgeToRow, planToRow, pluseToRow } from './schema';
@@ -42,6 +42,60 @@ export interface SyncResult {
     pluses: number;
   };
   error?: string;
+}
+
+// Keys used inside the `sync_config` key/value table.
+const CONFIG_KEYS = {
+  serverUrl: 'serverUrl',
+  apiToken: 'apiToken',
+  remoteOpsEnabled: 'remoteOpsEnabled',
+  lastSyncAt: 'lastSyncAt',
+} as const;
+
+async function getConfigValue(key: string): Promise<string | undefined> {
+  const rows = await db.select().from(syncConfig).where(eq(syncConfig.key, key)).limit(1);
+  const value = rows[0]?.value;
+  return value === '' ? undefined : value;
+}
+
+async function setConfigValue(key: string, value: string): Promise<void> {
+  await db.insert(syncConfig).values({ key, value })
+    .onConflictDoUpdate({ target: syncConfig.key, set: { value } });
+}
+
+/**
+ * One-time migration: move sync config from localStorage into the SQLite
+ * `sync_config` table. This runs during app initialization and removes the
+ * legacy keys so it only executes once.
+ */
+export async function migrateLegacySyncConfig(): Promise<void> {
+  try {
+    const serverUrl = localStorage.getItem('syncServerUrl');
+    if (serverUrl) {
+      await setConfigValue(CONFIG_KEYS.serverUrl, normalizeServerUrl(serverUrl));
+      localStorage.removeItem('syncServerUrl');
+    }
+
+    const apiToken = localStorage.getItem('syncApiToken');
+    if (apiToken) {
+      await setConfigValue(CONFIG_KEYS.apiToken, apiToken);
+      localStorage.removeItem('syncApiToken');
+    }
+
+    const remoteOpsEnabled = localStorage.getItem('syncRemoteOpsEnabled');
+    if (remoteOpsEnabled) {
+      await setConfigValue(CONFIG_KEYS.remoteOpsEnabled, remoteOpsEnabled);
+      localStorage.removeItem('syncRemoteOpsEnabled');
+    }
+
+    const lastSyncAt = localStorage.getItem('lastSyncAt');
+    if (lastSyncAt) {
+      await setConfigValue(CONFIG_KEYS.lastSyncAt, lastSyncAt);
+      localStorage.removeItem('lastSyncAt');
+    }
+  } catch (err) {
+    console.error('[sync] failed to migrate legacy sync config:', err);
+  }
 }
 
 function normalizeServerUrl(url: string): string {
@@ -227,7 +281,7 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
     });
 
     // Save last sync timestamp
-    localStorage.setItem('lastSyncAt', new Date().toISOString());
+    await setConfigValue(CONFIG_KEYS.lastSyncAt, new Date().toISOString());
     result.success = true;
     return result;
   } catch (err) {
@@ -237,30 +291,27 @@ export async function syncAll(config: SyncConfig): Promise<SyncResult> {
   }
 }
 
-export function getLastSyncAt(): Date | undefined {
-  const raw = localStorage.getItem('lastSyncAt');
+export async function getLastSyncAt(): Promise<Date | undefined> {
+  const raw = await getConfigValue(CONFIG_KEYS.lastSyncAt);
   if (!raw) return undefined;
   return new Date(raw);
 }
 
-export function getSyncConfig(): SyncConfig | undefined {
-  const serverUrl = localStorage.getItem('syncServerUrl');
-  if (!serverUrl) return undefined;
+export async function getSyncConfig(): Promise<SyncConfig | undefined> {
+  const serverUrl = await getConfigValue(CONFIG_KEYS.serverUrl);
+  const apiToken = await getConfigValue(CONFIG_KEYS.apiToken);
+  const remoteOpsEnabledRaw = await getConfigValue(CONFIG_KEYS.remoteOpsEnabled);
   return {
     serverUrl,
-    apiToken: localStorage.getItem('syncApiToken') || undefined,
-    remoteOpsEnabled: localStorage.getItem('syncRemoteOpsEnabled') === 'true',
+    apiToken,
+    remoteOpsEnabled: remoteOpsEnabledRaw === 'true',
   };
 }
 
-export function saveSyncConfig(config: SyncConfig): void {
-  localStorage.setItem('syncServerUrl', normalizeServerUrl(config.serverUrl));
-  if (config.apiToken) {
-    localStorage.setItem('syncApiToken', config.apiToken);
-  } else {
-    localStorage.removeItem('syncApiToken');
-  }
-  localStorage.setItem('syncRemoteOpsEnabled', config.remoteOpsEnabled ? 'true' : 'false');
+export async function saveSyncConfig(config: SyncConfig): Promise<void> {
+  await setConfigValue(CONFIG_KEYS.serverUrl, normalizeServerUrl(config.serverUrl));
+  await setConfigValue(CONFIG_KEYS.apiToken, config.apiToken || '');
+  await setConfigValue(CONFIG_KEYS.remoteOpsEnabled, config.remoteOpsEnabled ? 'true' : 'false');
 }
 
 export function validateServerUrl(url: string): { valid: boolean; error?: string } {

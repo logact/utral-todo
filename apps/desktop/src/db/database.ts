@@ -5,18 +5,23 @@ import {
 } from './schema';
 import { eq } from 'drizzle-orm';
 import { notifyDbOperation, getOrCreateDeviceId } from '../lib/sync/syncEngine';
+import { migrateLegacySyncConfig } from './sync';
 import { bootstrapApp, type BootstrapStore } from '@utral/db-schema/bootstrap';
 
 export { db };
 
 export async function initDatabase(): Promise<void> {
   await runMigrations();
+  await migrateLegacySyncConfig();
 
   const store: BootstrapStore = {
     db,
     getDeviceId: getOrCreateDeviceId,
     trackChange: (entity, op, id) => {
-      notifyDbOperation(entity, op, id).catch(() => {});
+      notifyDbOperation(entity, op, id).catch((e) => {
+        debugger
+        console.error('Failed to notify DB operation:', e);
+      });
     },
   };
 
@@ -45,12 +50,9 @@ export async function resetAllData(): Promise<void> {
   // Clear every local table (domain + sync infra).
   await clearAllData();
 
-  // Wipe cached sync identity and configuration from localStorage.
+  // Wipe cached device id from localStorage. Sync configuration lives in the
+  // `sync_config` table and is already cleared by clearAllData() above.
   localStorage.removeItem('syncDeviceId');
-  localStorage.removeItem('syncServerUrl');
-  localStorage.removeItem('syncApiToken');
-  localStorage.removeItem('syncRemoteOpsEnabled');
-  localStorage.removeItem('lastSyncAt');
 
   // Recreate the default dataset so the app is usable immediately, not just on relaunch.
   await runMigrations();
@@ -59,7 +61,7 @@ export async function resetAllData(): Promise<void> {
     db,
     getDeviceId: getOrCreateDeviceId,
     trackChange: (entity, op, id) => {
-      notifyDbOperation(entity, op, id).catch(() => {});
+      notifyDbOperation(entity, op, id).catch((e) => {console.error('Failed to notify DB operation:', e);});
     },
   };
 

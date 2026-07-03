@@ -5,5 +5,6 @@ import * as schema from './schema';
 const DATABASE_NAME = 'utral-todo.db';
 
 const expoDb = openDatabaseSync(DATABASE_NAME);
+console.log('[expo-db] database path:', expoDb.databasePath);
 export const db = drizzle(expoDb, { schema });
 export { expoDb, schema };

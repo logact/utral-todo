@@ -1,5 +1,8 @@
 import type { Todo, TodoRelation, TodoLog, RepeatRule, ActionEdge, Pluse, Plan, HLCTimestamp } from '../types';
 import { newHLC, stringToHLC, dateToHLC } from '../types';
+import { db } from './drizzle-adapter';
+import { syncConfig } from './schema';
+import { eq } from 'drizzle-orm';
 
 export function parseDate(value: unknown): Date | undefined {
   if (value === null || value === undefined) return undefined;
@@ -169,12 +172,19 @@ export function parsePlan(data: unknown): Plan {
 
 // Sync helper: fetch from remote server
 export async function syncFetch(path: string, options?: RequestInit): Promise<Response> {
-  const serverUrl = localStorage.getItem('syncServerUrl') || '';
-  if (!serverUrl) {
+  const rows = await db.select().from(syncConfig).where(eq(syncConfig.key, 'serverUrl')).limit(1);
+  const rawServerUrl = rows[0]?.value;
+  if (!rawServerUrl) {
     throw new Error('Sync server URL not configured');
   }
-  const url = serverUrl.endsWith('/') ? serverUrl.slice(0, -1) : serverUrl;
-  const res = await fetch(`${url}${path}`, {
+
+  let serverUrl = rawServerUrl.trim();
+  if (!serverUrl.startsWith('http://') && !serverUrl.startsWith('https://')) {
+    serverUrl = 'http://' + serverUrl;
+  }
+  serverUrl = serverUrl.endsWith('/') ? serverUrl.slice(0, -1) : serverUrl;
+
+  const res = await fetch(`${serverUrl}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });

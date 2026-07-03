@@ -1,6 +1,7 @@
 import { db } from './drizzle-adapter';
 import { hlcState } from './schema';
 import { eq } from 'drizzle-orm';
+import { saveSyncConfig } from './sync';
 
 interface NativeBridge {
   platform?: string;
@@ -41,17 +42,14 @@ export async function initIOSSync(): Promise<void> {
     console.error('[iosSync] Failed to get native deviceId:', err);
   }
 
-  // Mirror sync config from native storage to localStorage
+  // Mirror sync config from native storage into the DB
   try {
     const config = await bridge.call('sync', 'getSyncConfig') as {
       serverUrl?: string;
       apiToken?: string;
     } | null;
     if (config?.serverUrl) {
-      localStorage.setItem('syncServerUrl', config.serverUrl);
-      if (config.apiToken) {
-        localStorage.setItem('syncApiToken', config.apiToken);
-      }
+      await saveSyncConfig({ serverUrl: config.serverUrl, apiToken: config.apiToken });
     }
   } catch (err) {
     console.error('[iosSync] Failed to get native sync config:', err);

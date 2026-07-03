@@ -61,13 +61,11 @@ export async function getOrCreateDeviceId(): Promise<string> {
 }
 
 async function getEngine(): Promise<TauriSyncHandler> {
-  if (!engine) {
-    const config = getSyncConfig();
-    if (!config?.serverUrl) {
-      throw new Error('Sync not configured');
-    }
 
-    const serverUrl = withSyncPath(getWsUrl(normalizeServerUrl(config.serverUrl)));
+  if (!engine) {
+    const config = await getSyncConfig();
+    const serverUrl = config?.serverUrl ? withSyncPath(getWsUrl(normalizeServerUrl(config.serverUrl))) : undefined;
+    
 
     engine = new TauriSyncHandler({
       serverUrl,
@@ -76,8 +74,14 @@ async function getEngine(): Promise<TauriSyncHandler> {
       channel: config.channel || 'default',
       emitter: new WindowEventEmitter(),
     });
+    if(config ){
+      await engine.init().catch((err) => {
+        console.error('Failed to initialize sync engine:', err);
+      });
+    }
 
-    await engine.init();
+
+ 
   }
   return engine;
 }
@@ -89,6 +93,7 @@ export async function notifyDbOperation(
   operation: 'create' | 'update' | 'delete',
   recordId: string
 ): Promise<void> {
+  debugger
   const engine = await getEngine();
   window.dispatchEvent(
     new CustomEvent('db:changed', { detail: { table, operation, recordId } })

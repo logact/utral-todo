@@ -9,7 +9,7 @@ import {
   type SyncConfig,
 } from './database';
 
-export async function getSyncConfig(): Promise<SyncConfig | null> {
+export async function getSyncConfig(): Promise<SyncConfig> {
   return getSyncConfigData();
 }
 
@@ -38,18 +38,19 @@ function withSyncPath(wsUrl: string): string {
   return wsUrl.includes(SYNC_WS_PATH) ? wsUrl : wsUrl + SYNC_WS_PATH;
 }
 
+export function getResolvedSyncUrl(serverUrl: string): string {
+  if (!serverUrl.trim()) return '';
+  return withSyncPath(getWsUrl(normalizeServerUrl(serverUrl)));
+}
+
 // --- Singleton Engine ---
 
 let engine: ExpoSyncHandler | null = null;
 
 async function getEngine(): Promise<ExpoSyncHandler> {
   if (!engine) {
-    const config = await getSyncConfig();
-    if (!config?.serverUrl) {
-      throw new Error('Sync not configured');
-    }
-
-    const serverUrl = withSyncPath(getWsUrl(normalizeServerUrl(config.serverUrl)));
+    let config = await getSyncConfig();
+    const serverUrl = config.serverUrl ? withSyncPath(getWsUrl(normalizeServerUrl(config.serverUrl))) : "" ;
     const deviceId = await getDeviceId();
 
     engine = new ExpoSyncHandler({
@@ -72,8 +73,11 @@ async function getEngine(): Promise<ExpoSyncHandler> {
         },
       },
     });
+    if(serverUrl){
+      await engine.init();
+    }
 
-    await engine.init();
+    
   }
   return engine;
 }
@@ -95,6 +99,7 @@ export async function notifyDbOperation(
 // --- Public API ---
 
 export async function syncAll(): Promise<void> {
+  debugger
   console.log('[sync] syncAll');
   const engine = await getEngine();
   engine.forceSync();

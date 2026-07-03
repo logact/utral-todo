@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { syncAll, getSyncConfig, setSyncConfig } from '@/lib/sync';
-import { resetAllData } from '@/lib/database';
+import { syncAll, getSyncConfig, setSyncConfig, getResolvedSyncUrl } from '@/lib/sync';
+import { resetAllData, getDatabasePath } from '@/lib/database';
 import {
   getTimeSlotDefinitions,
   updateTimeSlotDefinition,
@@ -126,6 +126,9 @@ export default function SettingsScreen() {
   const [timeSlots, setTimeSlots] = useState<TimeSlotDefinition[]>([]);
   const [resetState, setResetState] = useState<'idle' | 'confirm' | 'resetting' | 'done' | 'error'>('idle');
   const [resetError, setResetError] = useState('');
+  const [databasePath, setDatabasePath] = useState('');
+
+  const resolvedSyncUrl = useMemo(() => getResolvedSyncUrl(serverUrl), [serverUrl]);
 
   useEffect(() => {
     loadSettings();
@@ -150,6 +153,7 @@ export default function SettingsScreen() {
       setServerUrl(config.serverUrl || '');
       setApiToken(config.apiToken || '');
     }
+    setDatabasePath(getDatabasePath());
     const { status } = await Notifications.getPermissionsAsync();
     setNotificationsEnabled(status === 'granted');
   };
@@ -309,6 +313,10 @@ export default function SettingsScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                  Sync path: /ws/sync
+                  {resolvedSyncUrl ? ` → ${resolvedSyncUrl}` : ''}
+                </Text>
               </View>
 
               <View>
@@ -417,6 +425,12 @@ export default function SettingsScreen() {
                 {Device.osName} {Device.osVersion}
               </Text>
             </View>
+            {databasePath ? (
+              <View style={{ marginTop: 4 }}>
+                <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 2 }}>Database path</Text>
+                <Text style={{ fontSize: 11, color: '#0f172a' }}>{databasePath}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 

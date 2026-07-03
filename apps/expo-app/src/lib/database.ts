@@ -37,16 +37,19 @@ async function setHlcValue(key: string, value: string): Promise<void> {
     .onConflictDoUpdate({ target: schema.hlcState.key, set: { value } });
 }
 
-export async function getSyncConfigData(): Promise<SyncConfig | null> {
+export async function getSyncConfigData(): Promise<SyncConfig> {
   const serverUrl = await getConfigValue('server_url');
-  if (serverUrl === undefined) return null;
   const apiToken = await getConfigValue('api_token');
-  return { serverUrl, apiToken: apiToken || undefined };
+  return { serverUrl: serverUrl ?? '', apiToken: apiToken || undefined };
 }
 
 export async function setSyncConfigData(config: SyncConfig): Promise<void> {
   await setConfigValue('server_url', config.serverUrl);
   await setConfigValue('api_token', config.apiToken || '');
+}
+
+export function getDatabasePath(): string {
+  return expoDb.databasePath;
 }
 
 export async function getHLCState(): Promise<HLCState> {

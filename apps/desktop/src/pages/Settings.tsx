@@ -19,7 +19,7 @@ import { useTheme } from '../context/ThemeContext';
 import { resetAllData } from '../db/database';
 import { db } from '../db/drizzle-adapter';
 import { todos, todoRelations, todoLogs, actionEdges, pluses } from '../db/schema';
-import { getSyncConfig, saveSyncConfig, validateServerUrl } from '../db/sync';
+import { getSyncConfig, saveSyncConfig, getLastSyncAt, validateServerUrl } from '../db/sync';
 import { processQueue, start, stop, getSyncStatus } from '../lib/sync/syncEngine';
 import {
   getTimeSlotDefinitions,
@@ -111,37 +111,40 @@ export function Settings() {
   const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>([]);
 
   useEffect(() => {
-    const config = getSyncConfig();
-    if (config) {
-      setServerUrl(config.serverUrl);
-      setApiToken(config.apiToken || '');
-    } else {
-      setServerUrl('http://localhost:3001');
-    }
-
-    // Use localStorage for lastSyncAt since syncState is now in the sync engine
-    const lastSyncAt = localStorage.getItem('lastSyncAt');
-    if (lastSyncAt) setLastSync(new Date(lastSyncAt));
+    let interval: ReturnType<typeof setInterval> | undefined;
 
     (async () => {
+      const config = await getSyncConfig();
+      if (config) {
+        setServerUrl(config.serverUrl);
+        setApiToken(config.apiToken || '');
+      } else {
+        setServerUrl('http://localhost:3001');
+      }
+
+      const lastSyncAt = await getLastSyncAt();
+      if (lastSyncAt) setLastSync(lastSyncAt);
+
       try {
         const definitions = await getTimeSlotDefinitions();
         setTimeSlots(definitions);
       } catch (err) {
         console.error('[Settings] Failed to load time slot definitions:', err);
       }
+
+      interval = setInterval(() => {
+        try {
+          const status = getSyncStatus();
+          setPendingCount(status.pendingCount);
+        } catch {
+          // sync engine not started yet
+        }
+      }, 2000);
     })();
 
-    const interval = setInterval(() => {
-      try {
-        const status = getSyncStatus();
-        setPendingCount(status.pendingCount);
-      } catch {
-        // sync engine not started yet
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
   function handleSave() {
@@ -159,7 +162,7 @@ export function Settings() {
     setResetState('resetting');
     setResetError('');
 
-    const config = getSyncConfig();
+    const config = await getSyncConfig();
     const serverUrl = config?.serverUrl;
 
     try {
@@ -197,14 +200,14 @@ export function Settings() {
     }
   }
 
-  function handleSaveSyncConfig() {
+  async function handleSaveSyncConfig() {
     const validation = validateServerUrl(serverUrl);
     if (!validation.valid) {
       setUrlError(validation.error || 'Invalid URL');
       return;
     }
     setUrlError('');
-    saveSyncConfig({ serverUrl, apiToken: apiToken || undefined });
+    await saveSyncConfig({ serverUrl, apiToken: apiToken || undefined });
     stop();
     start().catch((err) => {
       console.error('[Settings] Failed to start sync:', err);

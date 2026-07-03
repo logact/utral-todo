@@ -7,35 +7,41 @@ export function useSync() {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    const config = getSyncConfig();
-    if (!config?.serverUrl) {
-      setSyncStatus('idle');
-      return;
-    }
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false;
 
-    setSyncStatus('syncing');
-    start().catch((err) => {
-      console.error('[useSync] Failed to start:', err);
-      setSyncStatus('error');
-    });
+    (async () => {
+      const config = await getSyncConfig();
+      if (cancelled) return;
+      if (!config?.serverUrl) {
+        setSyncStatus('idle');
+        return;
+      }
 
-    // Poll pending count from sync engine
-    const interval = setInterval(() => {
-      try {
-        const status = getSyncStatus();
-        setPendingCount(status.pendingCount);
-        if (status.connected) {
-          setSyncStatus(status.pendingCount > 0 ? 'syncing' : 'idle');
-        } else {
+      setSyncStatus('syncing');
+      start().catch((err) => {
+        console.error('[useSync] Failed to start:', err);
+        setSyncStatus('error');
+      });
+
+      interval = setInterval(() => {
+        try {
+          const status = getSyncStatus();
+          setPendingCount(status.pendingCount);
+          if (status.connected) {
+            setSyncStatus(status.pendingCount > 0 ? 'syncing' : 'idle');
+          } else {
+            setSyncStatus('offline');
+          }
+        } catch {
           setSyncStatus('offline');
         }
-      } catch {
-        setSyncStatus('offline');
-      }
-    }, 2000);
+      }, 2000);
+    })();
 
     return () => {
-      clearInterval(interval);
+      cancelled = true;
+      if (interval) clearInterval(interval);
       stop();
     };
   }, []);
