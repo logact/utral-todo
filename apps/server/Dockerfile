@@ -25,7 +25,6 @@ COPY packages/sync-share ./packages/sync-share
 COPY packages/sync-client ./packages/sync-client
 COPY packages/sync-server ./packages/sync-server
 COPY apps/server ./apps/server
-COPY apps/desktop ./apps/desktop
 
 # Re-link workspace dependencies now that source is present
 RUN pnpm install
@@ -68,8 +67,7 @@ COPY --from=builder /app/packages/sync-share /app/packages/sync-share
 COPY --from=builder /app/packages/sync-client /app/packages/sync-client
 COPY --from=builder /app/packages/sync-server /app/packages/sync-server
 
-# Copy built frontend apps
-COPY --from=builder /app/apps/desktop/dist /app/static/desktop
+
 
 ENV NODE_ENV=production
 ENV PORT=3001
