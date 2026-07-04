@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
-import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllTodos, updateTodoStatus } from '@utral/db-schema/todo-ops';
+import { getAllTodos, updateTodoStatus, deleteTodo } from '@utral/db-schema/todo-ops';
 import { hapticImpact } from '@/lib/native';
 import { dbStore } from '@/lib/db-store';
 import { useDbChangeRefresh } from '@/hooks/useDbChangeRefresh';
@@ -35,6 +35,24 @@ export default function TodosScreen() {
       await updateTodoStatus(dbStore, todo.id, newStatus);
       hapticImpact();
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+    },
+    [queryClient]
+  );
+
+  const handleDelete = useCallback(
+    (todo: Todo) => {
+      Alert.alert('Delete', `Delete "${todo.title}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteTodo(dbStore, todo.id);
+            hapticImpact();
+            queryClient.invalidateQueries({ queryKey: ['todos'] });
+          },
+        },
+      ]);
     },
     [queryClient]
   );
@@ -145,6 +163,7 @@ export default function TodosScreen() {
             </Pressable>
             <Pressable
               onPress={() => router.push(`/todo/${item.id}`)}
+              onLongPress={() => handleDelete(item)}
               style={{ flex: 1 }}
             >
               <Text
