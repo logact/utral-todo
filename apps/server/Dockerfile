@@ -53,6 +53,7 @@ COPY --from=builder /app/node_modules /app/node_modules
 # Copy server app preserving directory structure for symlink integrity
 COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/drizzle ./drizzle
+COPY --from=builder /app/apps/server/drizzle.config.ts ./
 COPY --from=builder /app/apps/server/package.json ./
 COPY --from=builder /app/apps/server/node_modules ./node_modules
 COPY --from=builder /app/apps/server/docker-entrypoint.sh ./
