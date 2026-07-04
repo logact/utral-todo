@@ -14,6 +14,7 @@
         "https://*:*"
       ]
     },
+    "websocket:default",
     "notification:default",
     "notification:allow-request-permission",
     "notification:allow-is-permission-granted",

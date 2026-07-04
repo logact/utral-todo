@@ -27,6 +27,7 @@
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-os": "^2.2.1",
     "@tauri-apps/plugin-sql": "^2.0.0",
+    "@tauri-apps/plugin-websocket": "^2.4.2",
     "@utral/db-schema": "workspace:*",
     "@utral/sync-client": "workspace:*",
     "@utral/sync-share": "workspace:*",
@@ -58,8 +59,8 @@
     "tailwindcss": "^4.3.0",
     "tsx": "^4.19.4",
     "typescript": "~6.0.2",
-    "vitest": "^4.1.9",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^4.1.9"
   }
 }

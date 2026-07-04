@@ -1,4 +1,5 @@
 import type { SyncSocket } from '@utral/sync-client';
+import WebSocket from '@tauri-apps/plugin-websocket';
 
 export class TauriWebSocketTransport {
   connect(url: string): SyncSocket {
@@ -6,10 +7,10 @@ export class TauriWebSocketTransport {
 
     const socket: SyncSocket = {
       send(data: string) {
-        ws.send(data);
+        wsPromise.then((ws) => ws.send(data));
       },
       close() {
-        ws.close();
+        wsPromise.then((ws) => ws.disconnect());
       },
       onMessage(handler) {
         let h = handlers.get('message');
@@ -45,30 +46,24 @@ export class TauriWebSocketTransport {
       },
     };
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(url);
-    } catch (err) {
-      setTimeout(() => handlers.get('error')?.forEach((h) => h(err)), 0);
-      return socket;
-    }
+    const wsPromise = WebSocket.connect(url).then((ws) => {
+      ws.addListener((message) => {
+        if (message.type === 'Text') {
+          handlers.get('message')?.forEach((h) =>
+            (h as (data: string) => void)(message.data)
+          );
+        } else if (message.type === 'Close') {
+          handlers.get('close')?.forEach((h) => (h as () => void)());
+        }
+      });
 
-    ws.onopen = () => {
       handlers.get('open')?.forEach((h) => (h as () => void)());
-    };
 
-    ws.onclose = () => {
-      handlers.get('close')?.forEach((h) => (h as () => void)());
-    };
-
-    ws.onerror = (event) => {
-      handlers.get('error')?.forEach((h) => (h as (err: unknown) => void)(event));
-    };
-
-    ws.onmessage = (event) => {
-      const data = typeof event.data === 'string' ? event.data : String(event.data);
-      handlers.get('message')?.forEach((h) => (h as (data: string) => void)(data));
-    };
+      return ws;
+    }).catch((err) => {
+      setTimeout(() => handlers.get('error')?.forEach((h) => h(err)), 0);
+      throw err;
+    });
 
     return socket;
   }

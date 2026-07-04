@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "postinstall": "pnpm --filter @utral/types build && pnpm --filter @utral/sync-share build && pnpm --filter @utral/sync-client build && pnpm --filter @utral/db-schema build",
     "dev:all": "concurrently \"pnpm server:dev\" \"pnpm desktop:dev\" --names server,vite --prefix-colors cyan,green",
 
     "server:dev": "pnpm --filter server dev",
