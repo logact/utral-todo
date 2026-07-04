@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @utral/types build && pnpm --filter @utral/sync-share build && pnpm --filter @utral/sync-server build",
+    "predev": "pnpm --filter @utral/types build && pnpm --filter @utral/sync-share build && pnpm --filter @utral/sync-client build && pnpm --filter @utral/db-schema build && pnpm --filter @utral/sync-server build",
     "dev": "nodemon --exec 'tsx src/index.ts' --ext ts",
     "build": "tsc",
     "start": "node dist/index.js",

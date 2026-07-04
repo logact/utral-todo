@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @utral/types build && pnpm --filter @utral/sync-share build && pnpm --filter @utral/sync-client build && pnpm --filter @utral/db-schema build",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

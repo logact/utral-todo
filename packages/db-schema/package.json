@@ -3,64 +3,64 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     },
     "./store": {
       "types": "./src/store.ts",
-      "default": "./src/store.ts"
+      "default": "./dist/store.js"
     },
     "./id": {
       "types": "./src/id.ts",
-      "default": "./src/id.ts"
+      "default": "./dist/id.js"
     },
     "./storage": {
       "types": "./src/storage.ts",
-      "default": "./src/storage.ts"
+      "default": "./dist/storage.js"
     },
     "./timeslots": {
       "types": "./src/timeSlotEngine.ts",
-      "default": "./src/timeSlotEngine.ts"
+      "default": "./dist/timeSlotEngine.js"
     },
     "./bootstrap": {
       "types": "./src/bootstrap.ts",
-      "default": "./src/bootstrap.ts"
+      "default": "./dist/bootstrap.js"
     },
     "./todo-ops": {
       "types": "./src/todoOps.ts",
-      "default": "./src/todoOps.ts"
+      "default": "./dist/todoOps.js"
     },
     "./pluse-ops": {
       "types": "./src/pluseOps.ts",
-      "default": "./src/pluseOps.ts"
+      "default": "./dist/pluseOps.js"
     },
     "./plan-ops": {
       "types": "./src/planOps.ts",
-      "default": "./src/planOps.ts"
+      "default": "./dist/planOps.js"
     },
     "./relation-ops": {
       "types": "./src/relationOps.ts",
-      "default": "./src/relationOps.ts"
+      "default": "./dist/relationOps.js"
     },
     "./action-edge-ops": {
       "types": "./src/actionEdgeOps.ts",
-      "default": "./src/actionEdgeOps.ts"
+      "default": "./dist/actionEdgeOps.js"
     },
     "./todo-log-ops": {
       "types": "./src/todoLogOps.ts",
-      "default": "./src/todoLogOps.ts"
+      "default": "./dist/todoLogOps.js"
     },
     "./repeat-occurrence-ops": {
       "types": "./src/repeatOccurrenceOps.ts",
-      "default": "./src/repeatOccurrenceOps.ts"
+      "default": "./dist/repeatOccurrenceOps.js"
     },
     "./label-ops": {
       "types": "./src/labelOps.ts",
-      "default": "./src/labelOps.ts"
+      "default": "./dist/labelOps.js"
     }
   },
   "scripts": {
