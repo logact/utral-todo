@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { syncAll, getSyncConfig, setSyncConfig, getResolvedSyncUrl, getSyncStatus } from '@/lib/sync';
+import { syncAll, getSyncConfig, setSyncConfig, getResolvedSyncUrl, getSyncStatus, resetEngine, startSync } from '@/lib/sync';
 import { resetAllData, getDatabasePath } from '@/lib/database';
 import {
   getTimeSlotDefinitions,
@@ -178,8 +178,11 @@ export default function SettingsScreen() {
     const url = serverUrl.trim();
     if (!url) {
       await setSyncConfig({ serverUrl: '', apiToken: '' });
+      resetEngine();
     } else {
       await setSyncConfig({ serverUrl: url, apiToken: apiToken.trim() || undefined });
+      resetEngine();
+      startSync();
     }
   };
 

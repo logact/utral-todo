@@ -88,6 +88,16 @@ export function getSyncStatus(): { connected: boolean; state: SyncClientState } 
   };
 }
 
+export function resetEngine(): void {
+  if (engine) {
+    engine.disconnect();
+    engine = null;
+    connectionState = 'idle';
+    started = false;
+    console.log('[sync] Engine reset');
+  }
+}
+
 export async function notifyDbOperation(
   table: string,
   operation: 'create' | 'update' | 'delete',
