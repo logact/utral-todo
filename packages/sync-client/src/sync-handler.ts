@@ -100,10 +100,10 @@ export class SyncClientHandler {
           // but don't re-apply our own event — the record is already local.
           const own = event.deviceId === this.opts.deviceId;
           console.log(
-            `[sync] recv event seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId}${own ? ' (own echo)' : ''} dev=${this.opts.deviceId}`,
+            `[sync] onReady seq=${event.seq} ${event.operation} ${event.table}/${event.recordId} from=${event.deviceId}${own ? ' (own echo)' : ''} dev=${this.opts.deviceId}`,
           );
           if (!own) {
-            this.applyRemoteEvent(event);
+            this.applyRemoteEvent(event).catch(err => console.error('[sync] applyRemoteEvent failed:', err));
           }
           // Record the highest contiguous seq we've processed so a
           // reconnect/restart resumes from here instead of replaying the
@@ -135,24 +135,16 @@ export class SyncClientHandler {
 
     this.setState('connecting');
     try {
-      // Resume the reorder buffer from the last seq we durably processed, so a
-      // restart doesn't expect seq 1 again and stall behind a phantom gap. The
-      // constructor seeds 1 for the first-ever connect.
       const lastSeq = await this.opts.storage.getLastSeq();
+      console.log(`[sync] connecting: lastSeq=${lastSeq}`);
       this.reorderBuffer.reset(lastSeq != null ? lastSeq + 1 : 1);
       await this.openSocket();
       this.reconnectAttempts = 0;
       this.setState('connected');
 
-      // Initial sync handshake, in order:
-      //  1. Push any local writes that were queued while disconnected, so the
-      //     server (and other devices) learn about them.
-      //  2. Ask the server to replay everything we missed on this channel since
-      //     the last seq we durably processed. The replayed events arrive as
-      //     `event` messages and flow through the reorder buffer + applyRemoteEvent
-      //     like any live event, so ordering/merge is unchanged.
       await this.flushQueue();
       await this.requestRemoteChanges(lastSeq);
+      console.log('[sync] initial sync handshake complete');
     } catch (err) {
       this.setState('error');
       this.onError?.(err);
@@ -343,6 +335,8 @@ export class SyncClientHandler {
       return;
     }
 
+    console.log(`[sync] raw msg type=${(msg as any).type}`);
+
     const handlers = this.messageHandlers.get(msg.type as string);
     if (!handlers || handlers.size === 0) return;
 
@@ -376,7 +370,6 @@ export class SyncClientHandler {
   // ─── Queue flush ───────────────────────────────────────────────────
 
   protected async flushQueue(): Promise<void> {
-    debugger
     if (this._state !== 'connected') return;
     
     const items = await this.opts.storage.getQueueItems();
@@ -407,7 +400,12 @@ export class SyncClientHandler {
     const { table, recordId, operation, payload } = event;
     const incomingData = payload as SyncableRecord | undefined;
 
-    if (!incomingData) return;
+    if (!incomingData) {
+      console.warn(`[sync] applyRemoteEvent: empty payload for ${table}/${recordId}`);
+      return;
+    }
+
+    console.log(`[sync] applyRemoteEvent: ${operation} ${table}/${recordId}`);
 
     const existingRecord = await this.opts.storage.getRecord(table, recordId);
 

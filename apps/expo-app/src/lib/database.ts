@@ -53,7 +53,6 @@ export function getDatabasePath(): string {
 }
 
 export async function getHLCState(): Promise<HLCState> {
-  debugger
   const node = await getHlcValue('node');
   if (node !== undefined && node !== '') {
     return {

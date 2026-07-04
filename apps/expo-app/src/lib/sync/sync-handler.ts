@@ -1,19 +1,25 @@
-import type { SyncHandlerOptions } from '@utral/sync-client';
+import type { SyncHandlerOptions, SyncClientState } from '@utral/sync-client';
 import { SyncClientHandler } from '@utral/sync-client';
 import { createSqliteSyncStorage, type SqliteSyncStorage } from '@utral/db-schema/storage';
 import { db } from '../../db';
 import { ExpoWebSocketTransport } from './websocket-transport';
 
-export type ExpoSyncOptions = Omit<SyncHandlerOptions, 'transport' | 'storage'>;
+export type ExpoSyncOptions = Omit<SyncHandlerOptions, 'transport' | 'storage'> & {
+  onStateChange?: (state: SyncClientState) => void;
+};
 
 export class ExpoSyncHandler extends SyncClientHandler {
   constructor(opts: ExpoSyncOptions) {
     const storage = createSqliteSyncStorage(db);
+    const { onStateChange, ...rest } = opts;
     super({
-      ...opts,
+      ...rest,
       storage,
       transport: new ExpoWebSocketTransport(),
     });
+    if (onStateChange) {
+      this.onStateChange = onStateChange;
+    }
   }
 
   async init(): Promise<void> {

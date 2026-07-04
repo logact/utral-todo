@@ -1,5 +1,6 @@
 import { ExpoSyncHandler } from './sync/sync-handler';
-import { queryClient } from './query-client';
+import type { SyncClientState } from '@utral/sync-client';
+import { emitDbChange } from './sync-notifier';
 import {
   getSyncConfigData,
   setSyncConfigData,
@@ -46,6 +47,7 @@ export function getResolvedSyncUrl(serverUrl: string): string {
 // --- Singleton Engine ---
 
 let engine: ExpoSyncHandler | null = null;
+let connectionState: SyncClientState = 'idle';
 
 async function getEngine(): Promise<ExpoSyncHandler> {
   if (!engine) {
@@ -59,17 +61,14 @@ async function getEngine(): Promise<ExpoSyncHandler> {
       userId: (config as any).userId || 'default',
       channel: (config as any).channel || 'default',
       apiToken: config.apiToken,
+      onStateChange: (state: SyncClientState) => {
+        connectionState = state;
+        console.log(`[sync] state=${state}`);
+      },
       emitter: {
         emitRemoteApplied: (table: string, operation: string, recordId: string) => {
-          // Invalidate react-query caches so the UI refreshes
-          if (table === 'todos') {
-            queryClient.invalidateQueries({ queryKey: ['todos'] });
-          } else if (table === 'pluses') {
-            queryClient.invalidateQueries({ queryKey: ['pluses'] });
-          } else if (table === 'timeSlots') {
-            queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
-            queryClient.invalidateQueries({ queryKey: ['todos'] });
-          }
+          console.log(`[sync] emitRemoteApplied table=${table} op=${operation} id=${recordId}`);
+          emitDbChange({ table, operation, recordId });
         },
       },
     });
@@ -80,6 +79,13 @@ async function getEngine(): Promise<ExpoSyncHandler> {
     
   }
   return engine;
+}
+
+export function getSyncStatus(): { connected: boolean; state: SyncClientState } {
+  return {
+    connected: connectionState === 'connected',
+    state: connectionState,
+  };
 }
 
 export async function notifyDbOperation(
@@ -99,11 +105,9 @@ export async function notifyDbOperation(
 // --- Public API ---
 
 export async function syncAll(): Promise<void> {
-  debugger
   console.log('[sync] syncAll');
   const engine = await getEngine();
   engine.forceSync();
-
 }
 
 let started = false;
@@ -113,7 +117,13 @@ export function startSync(): void {
   started = true;
   console.log('[sync] Starting real-time sync');
   getEngine()
-    .then((engine) => engine.connect())
+    .then((engine) => {
+      console.log('[sync] Engine created, connecting...');
+      return engine.connect();
+    })
+    .then(() => {
+      console.log('[sync] Sync connected successfully');
+    })
     .catch((err) => {
       console.error('[sync] Failed to start sync engine:', err);
       started = false;

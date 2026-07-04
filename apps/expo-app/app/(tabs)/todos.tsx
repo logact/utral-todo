@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllTodos, updateTodoStatus } from '@utral/db-schema/todo-ops';
 import { hapticImpact } from '@/lib/native';
 import { dbStore } from '@/lib/db-store';
+import { useDbChangeRefresh } from '@/hooks/useDbChangeRefresh';
 import type { Todo, TodoStatus } from '@utral/types';
 
 type FilterStatus = TodoStatus | 'all';
@@ -17,6 +18,11 @@ export default function TodosScreen() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<FilterStatus>('all');
+
+  const refreshTodos = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['todos'] });
+  }, [queryClient]);
+  useDbChangeRefresh(refreshTodos, { tables: ['todos'] });
 
   const { data: todos = [] } = useQuery({
     queryKey: ['todos'],

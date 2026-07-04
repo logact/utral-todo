@@ -38,6 +38,7 @@ import {
 } from '@utral/db-schema/timeslots';
 import { dbStore } from '@/lib/db-store';
 import { hapticImpact, hapticNotification, scheduleNotification, requestNotificationPermission } from '@/lib/native';
+import { useDbChangeRefresh } from '@/hooks/useDbChangeRefresh';
 import * as Notifications from 'expo-notifications';
 
 Notifications.setNotificationHandler({
@@ -587,6 +588,13 @@ export default function TodayScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+
+  const refreshAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['todos'] });
+    queryClient.invalidateQueries({ queryKey: ['pluses'] });
+    queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
+  }, [queryClient]);
+  useDbChangeRefresh(refreshAll, { tables: ['todos', 'pluses', 'timeSlots'] });
 
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');

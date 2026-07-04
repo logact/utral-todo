@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { syncAll, getSyncConfig, setSyncConfig, getResolvedSyncUrl } from '@/lib/sync';
+import { syncAll, getSyncConfig, setSyncConfig, getResolvedSyncUrl, getSyncStatus } from '@/lib/sync';
 import { resetAllData, getDatabasePath } from '@/lib/database';
 import {
   getTimeSlotDefinitions,
@@ -123,17 +123,32 @@ export default function SettingsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [syncError, setSyncError] = useState('');
+  const [connectionState, setConnectionState] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'>('idle');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [timeSlots, setTimeSlots] = useState<TimeSlotDefinition[]>([]);
   const [resetState, setResetState] = useState<'idle' | 'confirm' | 'resetting' | 'done' | 'error'>('idle');
   const [resetError, setResetError] = useState('');
   const [databasePath, setDatabasePath] = useState('');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const resolvedSyncUrl = useMemo(() => getResolvedSyncUrl(serverUrl), [serverUrl]);
 
   useEffect(() => {
     loadSettings();
     loadTimeSlots();
+
+    intervalRef.current = setInterval(() => {
+      try {
+        const status = getSyncStatus();
+        setConnectionState(status.state);
+      } catch {
+        setConnectionState('idle');
+      }
+    }, 2000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
   const loadTimeSlots = async () => {
@@ -382,6 +397,28 @@ export default function SettingsScreen() {
                       {syncError}
                     </Text>
                   ) : null}
+                </View>
+              ) : null}
+
+              {serverUrl ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+                  <View style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: connectionState === 'connected' ? '#22c55e'
+                      : connectionState === 'connecting' || connectionState === 'reconnecting' ? '#f59e0b'
+                      : connectionState === 'error' ? '#f43f5e'
+                      : '#94a3b8',
+                  }} />
+                  <Text style={{ fontSize: 12, color: '#64748b' }}>
+                    {connectionState === 'connected' ? 'Connected'
+                      : connectionState === 'connecting' ? 'Connecting...'
+                      : connectionState === 'reconnecting' ? 'Reconnecting...'
+                      : connectionState === 'disconnected' ? 'Disconnected'
+                      : connectionState === 'error' ? 'Connection error'
+                      : 'Idle'}
+                  </Text>
                 </View>
               ) : null}
             </View>

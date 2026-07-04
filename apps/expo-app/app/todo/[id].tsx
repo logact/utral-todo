@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodo, updateTodo, updateTodoStatus, deleteTodo } from '@utral/db-schema/todo-ops';
 import { hapticImpact, scheduleNotification, cancelAllNotifications, requestNotificationPermission } from '@/lib/native';
 import { dbStore } from '@/lib/db-store';
+import { useDbChangeRefresh } from '@/hooks/useDbChangeRefresh';
 import type { Todo } from '@utral/types';
 
 export default function TodoDetailScreen() {
@@ -14,6 +15,12 @@ export default function TodoDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+
+  const refreshTodo = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['todo', id] });
+    queryClient.invalidateQueries({ queryKey: ['todos'] });
+  }, [queryClient, id]);
+  useDbChangeRefresh(refreshTodo, { tables: ['todos'] });
 
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduleInput, setScheduleInput] = useState('');

@@ -1,12 +1,20 @@
+import { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { getInProgressTodos } from '@utral/db-schema/todo-ops';
 import { dbStore } from '@/lib/db-store';
+import { useDbChangeRefresh } from '@/hooks/useDbChangeRefresh';
 
 export function FocusSessionCard() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const refresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['todos', 'inProgress'] });
+  }, [queryClient]);
+  useDbChangeRefresh(refresh, { tables: ['todos'] });
 
   const { data: inProgress = [] } = useQuery({
     queryKey: ['todos', 'inProgress'],

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, FlatList, Pressable, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllPluses, createPluse, deletePluse, updatePluse } from '@utral/db-schema/pluse-ops';
 import { hapticImpact } from '@/lib/native';
 import { dbStore } from '@/lib/db-store';
+import { useDbChangeRefresh } from '@/hooks/useDbChangeRefresh';
 import type { Pluse } from '@utral/types';
 
 function formatSeconds(totalSeconds: number): string {
@@ -244,6 +245,11 @@ export default function PlusesScreen() {
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const refreshPluses = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['pluses'] });
+  }, [queryClient]);
+  useDbChangeRefresh(refreshPluses, { tables: ['pluses'] });
 
   const { data: pluses = [] } = useQuery({
     queryKey: ['pluses'],
