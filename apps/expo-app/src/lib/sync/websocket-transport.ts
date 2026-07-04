@@ -1,12 +1,8 @@
 import type { SyncSocket } from '@utral/sync-client';
 
 export class ExpoWebSocketTransport {
-  private handlers = new Map<string, Set<Function>>();
-
   connect(url: string): SyncSocket {
     const handlers = new Map<string, Set<Function>>();
-
-    const ws = new WebSocket(url);
 
     const socket: SyncSocket = {
       send(data: string) {
@@ -48,6 +44,14 @@ export class ExpoWebSocketTransport {
         h.add(handler);
       },
     };
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch (err) {
+      setTimeout(() => handlers.get('error')?.forEach((h) => (h as (err: unknown) => void)(err)), 0);
+      return socket;
+    }
 
     ws.onopen = () => {
       handlers.get('open')?.forEach((h) => (h as () => void)());

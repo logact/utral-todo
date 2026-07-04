@@ -3,7 +3,6 @@ import type { SyncSocket } from '@utral/sync-client';
 export class TauriWebSocketTransport {
   connect(url: string): SyncSocket {
     const handlers = new Map<string, Set<(...args: unknown[]) => void>>();
-    const ws = new WebSocket(url);
 
     const socket: SyncSocket = {
       send(data: string) {
@@ -45,6 +44,14 @@ export class TauriWebSocketTransport {
         h.add(handler as (...args: unknown[]) => void);
       },
     };
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch (err) {
+      setTimeout(() => handlers.get('error')?.forEach((h) => h(err)), 0);
+      return socket;
+    }
 
     ws.onopen = () => {
       handlers.get('open')?.forEach((h) => (h as () => void)());

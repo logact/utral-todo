@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -1051,76 +1051,81 @@ export default function TodayScreen() {
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
           onPress={() => setQuickOpen(false)}
         >
-          <Pressable
-            style={{
-              backgroundColor: 'white',
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              padding: 16,
-              paddingBottom: insets.bottom + 16,
-            }}
-            onPress={(e: any) => e.stopPropagation?.()}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ width: '100%' }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <Text style={{ fontSize: 18, fontWeight: '600', color: '#0f172a' }}>
-                Quick Add
-              </Text>
-              <Pressable onPress={() => setQuickOpen(false)} style={{ padding: 8 }}>
-                <Ionicons name="close" size={20} color="#94a3b8" />
-              </Pressable>
-            </View>
-            <TextInput
+            <Pressable
               style={{
-                width: '100%',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: '#f1f5f9',
-                fontSize: 16,
-                color: '#0f172a',
+                backgroundColor: 'white',
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                padding: 16,
+                paddingBottom: insets.bottom + 16,
               }}
-              placeholder="What needs to be done?  (try @tomorrow, @friday 3pm)"
-              placeholderTextColor="#94a3b8"
-              value={quickTitle}
-              onChangeText={setQuickTitle}
-              autoFocus
-              onSubmitEditing={handleQuickCreate}
-            />
-            {quickPreview.scheduledDate && (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  alignSelf: 'flex-start',
-                  marginTop: 10,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: '#eef2ff',
-                }}
-              >
-                <Ionicons name="calendar-outline" size={14} color="#6366f1" />
-                <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: '500', color: '#6366f1' }}>
-                  {formatSchedulePreview(quickPreview.scheduledDate)}
+              onPress={(e: any) => e.stopPropagation?.()}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <Text style={{ fontSize: 18, fontWeight: '600', color: '#0f172a' }}>
+                  Quick Add
                 </Text>
+                <Pressable onPress={() => setQuickOpen(false)} style={{ padding: 8 }}>
+                  <Ionicons name="close" size={20} color="#94a3b8" />
+                </Pressable>
               </View>
-            )}
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
-              <Pressable
-                onPress={handleQuickCreate}
-                disabled={!quickTitle.trim()}
+              <TextInput
                 style={{
-                  paddingHorizontal: 20,
-                  paddingVertical: 10,
+                  width: '100%',
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
                   borderRadius: 12,
-                  backgroundColor: '#6366f1',
-                  opacity: quickTitle.trim() ? 1 : 0.5,
+                  backgroundColor: '#f1f5f9',
+                  fontSize: 16,
+                  color: '#0f172a',
                 }}
-              >
-                <Text style={{ color: 'white', fontWeight: '500', fontSize: 14 }}>Add</Text>
-              </Pressable>
-            </View>
-          </Pressable>
+                placeholder="What needs to be done?  (try @tomorrow, @friday 3pm)"
+                placeholderTextColor="#94a3b8"
+                value={quickTitle}
+                onChangeText={setQuickTitle}
+                autoFocus
+                onSubmitEditing={handleQuickCreate}
+              />
+              {quickPreview.scheduledDate && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    alignSelf: 'flex-start',
+                    marginTop: 10,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: '#eef2ff',
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={14} color="#6366f1" />
+                  <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: '500', color: '#6366f1' }}>
+                    {formatSchedulePreview(quickPreview.scheduledDate)}
+                  </Text>
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+                <Pressable
+                  onPress={handleQuickCreate}
+                  disabled={!quickTitle.trim()}
+                  style={{
+                    paddingHorizontal: 20,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: '#6366f1',
+                    opacity: quickTitle.trim() ? 1 : 0.5,
+                  }}
+                >
+                  <Text style={{ color: 'white', fontWeight: '500', fontSize: 14 }}>Add</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </View>

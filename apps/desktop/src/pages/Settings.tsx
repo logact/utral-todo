@@ -127,6 +127,16 @@ export function Settings() {
       if (lastSyncAt) setLastSync(lastSyncAt);
 
       try {
+        const initialStatus = getSyncStatus();
+        setPendingCount(initialStatus.pendingCount);
+        if (!initialStatus.connected && config?.serverUrl) {
+          setSyncStatus('offline');
+        }
+      } catch {
+        // sync engine not started yet
+      }
+
+      try {
         const definitions = await getTimeSlotDefinitions(dbStore);
         setTimeSlots(definitions);
       } catch (err) {
@@ -137,6 +147,11 @@ export function Settings() {
         try {
           const status = getSyncStatus();
           setPendingCount(status.pendingCount);
+          if (!status.connected) {
+            setSyncStatus('offline');
+          } else {
+            setSyncStatus((prev) => (prev === 'offline' ? 'idle' : prev));
+          }
         } catch {
           // sync engine not started yet
         }
