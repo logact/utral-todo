@@ -6,6 +6,17 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig(async () => ({
   base: process.env.TAURI_ENV_PLATFORM ? '/' : '/desktop/',
   plugins: [react(), tailwindcss()],
+  // Disable code splitting for Tauri production builds. The Tauri custom
+  // protocol (tauri://) can return HTML fallbacks for dynamically imported
+  // chunks, causing "text/html is not a valid JavaScript MIME type" and a
+  // blank screen. Keeping everything in one chunk avoids those runtime loads.
+  build: {
+    rollupOptions: {
+      output: {
+        codeSplitting: false,
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: 1420,
