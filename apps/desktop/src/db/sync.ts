@@ -321,7 +321,16 @@ export function validateServerUrl(url: string): { valid: boolean; error?: string
   }
   try {
     const normalized = normalizeServerUrl(trimmed);
-    new URL(normalized);
+    const parsed = new URL(normalized);
+    if (parsed.pathname && parsed.pathname !== '/') {
+      return {
+        valid: false,
+        error: `Server URL must not include a path. Did you mean port "${parsed.pathname.slice(1)}"?`,
+      };
+    }
+    if (!parsed.hostname) {
+      return { valid: false, error: 'Invalid URL format. Try: http://localhost:3001' };
+    }
     return { valid: true };
   } catch {
     return { valid: false, error: 'Invalid URL format. Try: http://localhost:3001' };
